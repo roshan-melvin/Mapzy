@@ -1,2 +1,2 @@
-DEEPBLUES11
-NILL
+static code = "yegiyqgnrugbqsbnzgcwjlrfwnzqkbqdmbnm"
+
