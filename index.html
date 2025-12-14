@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="initial-scale=1.0">
+    <title>Mappls Map</title>
+    <script src="https://sdk.mappls.com/map/sdk/web?v=3.0&access_token=yegiyqgnrugbqsbnzgcwjlrfwnzqkbqdmbnm&callback=initMap1" defer async></script>
+    <script src="https://sdk.mappls.com/map/sdk/plugins?access_token=yegiyqgnrugbqsbnzgcwjlrfwnzqkbqdmbnm&v=3.0&libraries=search"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+        }
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+        
+        /* Control Panel */
+        .control-panel {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            z-index: 1000;
+            min-width: 250px;
+        }
+        
+        .search-container {
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .search-box {
+            width: 100%;
+            padding: 8px 12px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+        
+        .search-box:focus {
+            border-color: #4CAF50;
+        }
+        
+        .layers-title {
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #333;
+        }
+        
+        .layer-option {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+            cursor: pointer;
+        }
+        
+        .layer-option input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            margin-right: 10px;
+            cursor: pointer;
+        }
+        
+        .layer-option label {
+            cursor: pointer;
+            user-select: none;
+            font-size: 14px;
+            color: #555;
+        }
+        
+        .layer-option.disabled {
+            opacity: 0.5;
+        }
+        
+        .layer-option.disabled label {
+            text-decoration: line-through;
+        }
+        
+        .coming-soon {
+            font-size: 11px;
+            color: #999;
+            margin-left: 5px;
+        }
+        
+        /* Search Autocomplete Styles */
+        .auto-suggest {
+            position: absolute;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            max-height: 300px;
+            overflow-y: auto;
+            z-index: 2000;
+            margin-top: 5px;
+        }
+        
+        .auto-suggest-item {
+            padding: 10px 15px;
+            cursor: pointer;
+            border-bottom: 1px solid #f0f0f0;
+            transition: background-color 0.2s;
+        }
+        
+        .auto-suggest-item:hover {
+            background-color: #f5f5f5;
+        }
+        
+        .auto-suggest-item:last-child {
+            border-bottom: none;
+        }
+        
+        .place-name {
+            font-weight: 500;
+            color: #333;
+            margin-bottom: 3px;
+        }
+        
+        .place-address {
+            font-size: 12px;
+            color: #777;
+        }
+        
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 1001;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        #error {
+            display: none;
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: #ff4444;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 5px;
+            z-index: 1001;
+            max-width: 300px;
+        }
+        
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #4CAF50;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div id="loading">
+        <div class="spinner"></div>
+        <p>Loading Mappls Map...</p>
+    </div>
+    <div id="error"></div>
+    <div id="map"></div>
+    
+    <div class="control-panel">
+        <div class="search-container">
+            <input type="text" id="searchBox" class="search-box" placeholder="Search places...">
+        </div>
+        
+        <div class="layers-title">Map Layers</div>
+        
+        <div class="layer-option">
+            <input type="checkbox" id="trafficToggle" checked>
+            <label for="trafficToggle">Traffic</label>
+        </div>
+        
+        <div class="layer-option disabled">
+            <input type="checkbox" id="camerasToggle" disabled>
+            <label for="camerasToggle">Speed Cameras</label>
+            <span class="coming-soon">(coming soon)</span>
+        </div>
+        
+        <div class="layer-option disabled">
+            <input type="checkbox" id="signalsToggle" disabled>
+            <label for="signalsToggle">Traffic Signals</label>
+            <span class="coming-soon">(coming soon)</span>
+        </div>
+        
+        <div class="layer-option disabled">
+            <input type="checkbox" id="hazardsToggle" disabled>
+            <label for="hazardsToggle">Hazards</label>
+            <span class="coming-soon">(coming soon)</span>
+        </div>
+    </div>
+
+    <script>
+        var map;
+        var trafficLayer;
+        var currentMarker;
+        
+        // This callback function is called by Mappls SDK when it's ready
+        function initMap1() {
+            console.log('initMap1 called - SDK is ready!');
+            
+            try {
+                // Hide loading indicator
+                document.getElementById('loading').style.display = 'none';
+                
+                // Initialize map - using array format [lat, lng]
+                map = new mappls.Map('map', {
+                    center: [28.638698, 77.276045],
+                    zoom: 13
+                });
+                
+                // Add traffic layer when map loads
+                map.addListener('load', function() {
+                    console.log('Map loaded! Adding traffic layer...');
+                    
+                    // Enable traffic layer
+                    trafficLayer = mappls.traffic({map: map});
+                    
+                    console.log('Traffic layer added!');
+                    
+                    // Initialize place search plugin with autocomplete
+                    initPlaceSearch();
+                });
+                
+                // Setup traffic toggle
+                document.getElementById('trafficToggle').addEventListener('change', function(e) {
+                    if (e.target.checked) {
+                        trafficLayer = mappls.traffic({map: map});
+                        console.log('Traffic layer enabled');
+                    } else {
+                        if (trafficLayer) {
+                            mappls.remove({map: map, layer: trafficLayer});
+                            console.log('Traffic layer disabled');
+                        }
+                    }
+                });
+                
+                console.log('Map initialized successfully!');
+                
+            } catch (error) {
+                console.error('Error initializing map:', error);
+                const errorDiv = document.getElementById('error');
+                errorDiv.textContent = 'Error: ' + error.message;
+                errorDiv.style.display = 'block';
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+        
+        // Initialize Place Search with autocomplete
+        function initPlaceSearch() {
+            const searchBox = document.getElementById('searchBox');
+            
+            // Configure place search options
+            var placeOptions = {
+                location: [28.638698, 77.276045], // Current map center as radial bias
+                width: 250,
+                height: 300,
+                clearButton: true,
+                blank_callback: function() {
+                    console.log('Search cleared');
+                    // Remove marker when search is cleared
+                    if (currentMarker) {
+                        currentMarker.remove();
+                        currentMarker = null;
+                    }
+                }
+            };
+            
+            // Callback when place is selected
+            function searchCallback(data) {
+                console.log('Place selected:', data);
+                
+                if (data && data.eLoc) {
+                    // Remove previous marker
+                    if (currentMarker) {
+                        currentMarker.remove();
+                    }
+                    
+                    // Get coordinates
+                    const lat = parseFloat(data.latitude) || parseFloat(data.lat);
+                    const lng = parseFloat(data.longitude) || parseFloat(data.lng);
+                    
+                    if (lat && lng) {
+                        // Add marker at selected location
+                        currentMarker = new mappls.Marker({
+                            map: map,
+                            position: [lat, lng],
+                            fitbounds: true
+                        });
+                        
+                        // Center map on selected location
+                        map.setCenter([lat, lng]);
+                        map.setZoom(15);
+                        
+                        console.log('Marker placed at:', lat, lng);
+                    }
+                } else if (data && data.error) {
+                    console.error('Search error:', data.error);
+                }
+            }
+            
+            // Initialize the search plugin
+            new mappls.search(searchBox, placeOptions, searchCallback);
+            
+            console.log('Place search initialized');
+        }
+    </script>
+</body>
+</html>
