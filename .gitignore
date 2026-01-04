@@ -1,0 +1,16 @@
+# Mappls API Configuration - Contains sensitive access tokens
+config.js
+
+# Environment files
+.env
+.env.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
