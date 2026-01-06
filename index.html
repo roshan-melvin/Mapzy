@@ -39,7 +39,9 @@
             width: 90%;
             max-width: 600px;
             display: flex;
-            flex-direction: column;
+            flex-direction: row;
+            align-items: center;
+            gap: 12px;
         }
 
         .search-icon {
@@ -93,58 +95,35 @@
             transform: translateY(-2px);
         }
 
-        /* Control Panel - Layers */
-        .control-panel {
-            position: absolute;
-            top: 15px;
-            left: 15px;
-            background: white;
-            padding: 15px;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-            z-index: 1000;
-            min-width: 250px;
+        /* Reposition Mappls Controls to Bottom Right - Stacked Vertically */
+        /* 3D View Control */
+        .mappls-ctrl-group:has(.mappls-ctrl-3d),
+        .mappls-ctrl-3d {
+            position: absolute !important;
+            bottom: 100px !important;
+            right: 15px !important;
+            top: auto !important;
+            left: auto !important;
         }
 
-        .layers-title {
-            font-weight: 600;
-            margin-bottom: 10px;
-            color: #333;
+        /* Zoom Controls (+/-) */
+        .mappls-ctrl-group:has(.mappls-ctrl-zoom-in),
+        .mappls-ctrl-zoom {
+            position: absolute !important;
+            bottom: 55px !important;
+            right: 15px !important;
+            top: auto !important;
+            left: auto !important;
         }
 
-        .layer-option {
-            display: flex;
-            align-items: center;
-            margin-bottom: 10px;
-            cursor: pointer;
-        }
-
-        .layer-option input[type="checkbox"] {
-            width: 18px;
-            height: 18px;
-            margin-right: 10px;
-            cursor: pointer;
-        }
-
-        .layer-option label {
-            cursor: pointer;
-            user-select: none;
-            font-size: 14px;
-            color: #555;
-        }
-
-        .layer-option.disabled {
-            opacity: 0.5;
-        }
-
-        .layer-option.disabled label {
-            text-decoration: line-through;
-        }
-
-        .coming-soon {
-            font-size: 11px;
-            color: #999;
-            margin-left: 5px;
+        /* Fullscreen Control */
+        .mappls-ctrl-group:has(.mappls-ctrl-fullscreen),
+        .mappls-ctrl-fullscreen {
+            position: absolute !important;
+            bottom: 10px !important;
+            right: 15px !important;
+            top: auto !important;
+            left: auto !important;
         }
 
         /* Search Autocomplete Styles - Force Above Search Bar */
@@ -414,6 +393,63 @@
         .location-dot.to {
             background: #F44336;
         }
+
+        /* Current Location Button */
+        .location-btn {
+            width: 56px;
+            height: 56px;
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12),
+                0 2px 8px rgba(0, 0, 0, 0.08);
+            flex-shrink: 0;
+        }
+
+        .location-btn:hover {
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.16),
+                0 4px 12px rgba(0, 0, 0, 0.12);
+            transform: translateY(-2px);
+        }
+
+        .location-btn:active {
+            transform: translateY(0);
+        }
+
+        .location-btn svg {
+            width: 24px;
+            height: 24px;
+            stroke: #4CAF50;
+            transition: stroke 0.3s ease;
+        }
+
+        .location-btn:hover svg {
+            stroke: #45a049;
+        }
+
+        .location-btn.loading svg {
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        .search-wrapper {
+            position: relative;
+            flex: 1;
+        }
     </style>
 </head>
 
@@ -427,40 +463,24 @@
 
     <!-- Premium Search Bar - Center Bottom -->
     <div class="search-container">
-        <input type="text" id="searchBox" class="search-box" placeholder="Search places, addresses, landmarks...">
-        <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="11" cy="11" r="8"></circle>
-            <path d="m21 21-4.35-4.35"></path>
-        </svg>
+        <div class="search-wrapper">
+            <input type="text" id="searchBox" class="search-box" placeholder="Search places, addresses, landmarks...">
+            <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.35-4.35"></path>
+            </svg>
+        </div>
+        <button class="location-btn" id="currentLocationBtn" title="Get Current Location">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+        </button>
     </div>
 
-    <!-- Layers Control Panel -->
-    <div class="control-panel">
-        <div class="layers-title">Map Layers</div>
 
-        <div class="layer-option">
-            <input type="checkbox" id="trafficToggle" checked>
-            <label for="trafficToggle">Traffic</label>
-        </div>
-
-        <div class="layer-option">
-            <input type="checkbox" id="camerasToggle" checked>
-            <label for="camerasToggle">Speed Cameras</label>
-        </div>
-
-        <div class="layer-option disabled">
-            <input type="checkbox" id="signalsToggle" disabled>
-            <label for="signalsToggle">Traffic Signals</label>
-            <span class="coming-soon">(coming soon)</span>
-        </div>
-
-        <div class="layer-option disabled">
-            <input type="checkbox" id="hazardsToggle" disabled>
-            <label for="hazardsToggle">Hazards</label>
-            <span class="coming-soon">(coming soon)</span>
-        </div>
-    </div>
 
     <!-- Navigation Panel -->
     <div class="nav-panel">
@@ -578,37 +598,12 @@
 
                     // Initialize navigation
                     initNavigation();
+
+                    // Initialize current location button
+                    initCurrentLocationBtn();
                 });
 
-                // Setup traffic toggle
-                document.getElementById('trafficToggle').addEventListener('change', function (e) {
-                    if (e.target.checked) {
-                        trafficLayer = mappls.traffic({ map: map });
-                        console.log('Traffic layer enabled');
-                    } else {
-                        if (trafficLayer) {
-                            mappls.remove({ map: map, layer: trafficLayer });
-                            console.log('Traffic layer disabled');
-                        }
-                    }
-                });
 
-                // Setup speed cameras toggle
-                document.getElementById('camerasToggle').addEventListener('change', function (e) {
-                    if (e.target.checked) {
-                        try {
-                            safetyLayer = mappls.safety({ map: map });
-                            console.log('Speed cameras layer enabled');
-                        } catch (error) {
-                            console.error('Error enabling speed cameras:', error);
-                        }
-                    } else {
-                        if (safetyLayer) {
-                            mappls.remove({ map: map, layer: safetyLayer });
-                            console.log('Speed cameras layer disabled');
-                        }
-                    }
-                });
 
                 console.log('Map initialized successfully!');
 
@@ -760,6 +755,96 @@
             });
 
             console.log('Navigation initialized');
+        }
+
+        // Current Location Button functionality
+        function initCurrentLocationBtn() {
+            const locationBtn = document.getElementById('currentLocationBtn');
+
+            locationBtn.addEventListener('click', function () {
+                if (!navigator.geolocation) {
+                    alert('Geolocation is not supported by your browser');
+                    return;
+                }
+
+                // Add loading state
+                locationBtn.classList.add('loading');
+                locationBtn.disabled = true;
+
+                navigator.geolocation.getCurrentPosition(
+                    function (position) {
+                        const lat = position.coords.latitude;
+                        const lng = position.coords.longitude;
+
+                        console.log('Current location:', lat, lng);
+
+                        // Center map on current location
+                        map.setCenter([lat, lng]);
+                        map.setZoom(15);
+
+                        // Remove previous current location marker
+                        if (currentMarker) {
+                            currentMarker.remove();
+                        }
+
+                        // Add marker at current location
+                        currentMarker = new mappls.Marker({
+                            map: map,
+                            position: [lat, lng],
+                            fitbounds: true,
+                            icon: {
+                                url: 'data:image/svg+xml;base64,' + btoa(`
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24">
+                                        <circle cx="12" cy="12" r="10" fill="#4CAF50" stroke="white" stroke-width="3"/>
+                                        <circle cx="12" cy="12" r="4" fill="white"/>
+                                    </svg>
+                                `),
+                                width: 32,
+                                height: 32
+                            }
+                        });
+
+                        // Add popup
+                        const popup = new mappls.Popup({ offset: [0, -15] })
+                            .setLngLat([lat, lng])
+                            .setHTML('<strong>📍 You are here</strong>')
+                            .addTo(map);
+
+                        // Remove loading state
+                        locationBtn.classList.remove('loading');
+                        locationBtn.disabled = false;
+                    },
+                    function (error) {
+                        console.error('Error getting location:', error);
+                        let errorMsg = 'Unable to get your location';
+
+                        switch (error.code) {
+                            case error.PERMISSION_DENIED:
+                                errorMsg = 'Location permission denied. Please allow location access.';
+                                break;
+                            case error.POSITION_UNAVAILABLE:
+                                errorMsg = 'Location information unavailable.';
+                                break;
+                            case error.TIMEOUT:
+                                errorMsg = 'Location request timed out.';
+                                break;
+                        }
+
+                        alert(errorMsg);
+
+                        // Remove loading state
+                        locationBtn.classList.remove('loading');
+                        locationBtn.disabled = false;
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        timeout: 10000,
+                        maximumAge: 0
+                    }
+                );
+            });
+
+            console.log('Current location button initialized');
         }
 
         // Calculate and display route
