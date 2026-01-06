@@ -168,10 +168,11 @@
             overflow-y: auto !important;
         }
 
-        4px 20px;
-        cursor: pointer;
-        border-bottom: 1px solid rgba(0, 0, 0, 0.05);
-        transition: all 0.2s ease;
+        .auto-suggest-item {
+            padding: 14px 20px;
+            cursor: pointer;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+            transition: all 0.2s ease;
         }
 
         .auto-suggest-item:hover {
@@ -198,224 +199,221 @@
         .place-address {
             font-size: 13px;
             color: #777;
+            line-height: 1.4;
+        }
 
-            line-height: 1.4 .place-address {
-                font-size: 12px;
-                color: #777;
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 1001;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        #error {
+            display: none;
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: #ff4444;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 5px;
+            z-index: 1001;
+            max-width: 300px;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #4CAF50;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
             }
 
-            #loading {
-                position: absolute;
-                top: 50%;
-                left: 50%;
-                transform: translate(-50%, -50%);
-                text-align: center;
-                z-index: 1001;
-                background: white;
-                padding: 20px;
-                border-radius: 8px;
-                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            100% {
+                transform: rotate(360deg);
             }
+        }
 
-            #error {
-                display: none;
-                position: absolute;
-                top: 20px;
-                right: 20px;
-                background: #ff4444;
-                color: white;
-                padding: 15px 20px;
-                border-radius: 5px;
-                z-index: 1001;
-                max-width: 300px;
-            }
+        /* Navigation Panel - Right Side */
+        .nav-panel {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+            z-index: 1000;
+            width: 320px;
+            max-height: calc(100vh - 30px);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
 
-            .spinner {
-                border: 4px solid #f3f3f3;
-                border-top: 4px solid #4CAF50;
-                border-radius: 50%;
-                width: 40px;
-                height: 40px;
-                animation: spin 1s linear infinite;
-                margin: 0 auto 10px;
-            }
+        .nav-header {
+            padding: 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-weight: 600;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
 
-            @keyframes spin {
-                0% {
-                    transform: rotate(0deg);
-                }
+        .nav-body {
+            padding: 16px;
+            overflow-y: auto;
+            flex: 1;
+        }
 
-                100% {
-                    transform: rotate(360deg);
-                }
-            }
+        .nav-input-group {
+            margin-bottom: 12px;
+        }
 
-            /* Navigation Panel - Right Side */
-            .nav-panel {
-                position: absolute;
-                top: 15px;
-                right: 15px;
-                background: white;
-                border-radius: 12px;
-                box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
-                z-index: 1000;
-                width: 320px;
-                max-height: calc(100vh - 30px);
-                display: flex;
-                flex-direction: column;
-                overflow: hidden;
-            }
+        .nav-label {
+            font-size: 12px;
+            font-weight: 500;
+            color: #666;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
 
-            .nav-header {
-                padding: 16px;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                color: white;
-                font-weight: 600;
-                font-size: 16px;
-                display: flex;
-                align-items: center;
-                gap: 8px;
-            }
+        .nav-input {
+            width: 100%;
+            padding: 12px 14px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            outline: none;
+            transition: all 0.2s ease;
+        }
 
-            .nav-body {
-                padding: 16px;
-                overflow-y: auto;
-                flex: 1;
-            }
+        .nav-input:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
 
-            .nav-input-group {
-                margin-bottom: 12px;
-            }
+        .nav-button {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 8px;
+        }
 
-            .nav-label {
-                font-size: 12px;
-                font-weight: 500;
-                color: #666;
-                margin-bottom: 6px;
-                display: flex;
-                align-items: center;
-                gap: 6px;
-            }
+        .nav-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
 
-            .nav-input {
-                width: 100%;
-                padding: 12px 14px;
-                border: 2px solid #e0e0e0;
-                border-radius: 8px;
-                font-size: 14px;
-                outline: none;
-                transition: all 0.2s ease;
-            }
+        .nav-button:active {
+            transform: translateY(0);
+        }
 
-            .nav-input:focus {
-                border-color: #667eea;
-                box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-            }
+        .nav-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
 
-            .nav-button {
-                width: 100%;
-                padding: 14px;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                color: white;
-                border: none;
-                border-radius: 8px;
-                font-size: 15px;
-                font-weight: 600;
-                cursor: pointer;
-                transition: all 0.3s ease;
-                margin-top: 8px;
-            }
+        .nav-button-secondary {
+            background: white;
+            color: #667eea;
+            border: 2px solid #667eea;
+        }
 
-            .nav-button:hover {
-                transform: translateY(-2px);
-                box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
-            }
+        .nav-button-secondary:hover {
+            background: #f5f7ff;
+        }
 
-            .nav-button:active {
-                transform: translateY(0);
-            }
+        .route-info {
+            background: #f8f9fa;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 12px;
+            display: none;
+        }
 
-            .nav-button:disabled {
-                background: #ccc;
-                cursor: not-allowed;
-                transform: none;
-            }
+        .route-info.active {
+            display: block;
+        }
 
-            .nav-button-secondary {
-                background: white;
-                color: #667eea;
-                border: 2px solid #667eea;
-            }
+        .route-stat {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
 
-            .nav-button-secondary:hover {
-                background: #f5f7ff;
-            }
+        .route-stat-label {
+            color: #666;
+        }
 
-            .route-info {
-                background: #f8f9fa;
-                padding: 12px;
-                border-radius: 8px;
-                margin-top: 12px;
-                display: none;
-            }
+        .route-stat-value {
+            font-weight: 600;
+            color: #333;
+        }
 
-            .route-info.active {
-                display: block;
-            }
+        .route-steps {
+            margin-top: 16px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
 
-            .route-stat {
-                display: flex;
-                justify-content: space-between;
-                margin-bottom: 8px;
-                font-size: 14px;
-            }
+        .route-step {
+            padding: 10px;
+            background: white;
+            border-left: 3px solid #667eea;
+            margin-bottom: 8px;
+            border-radius: 4px;
+            font-size: 13px;
+            line-height: 1.5;
+        }
 
-            .route-stat-label {
-                color: #666;
-            }
+        .route-step-distance {
+            color: #999;
+            font-size: 11px;
+            margin-top: 4px;
+        }
 
-            .route-stat-value {
-                font-weight: 600;
-                color: #333;
-            }
+        .location-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 4px;
+        }
 
-            .route-steps {
-                margin-top: 16px;
-                max-height: 300px;
-                overflow-y: auto;
-            }
+        .location-dot.from {
+            background: #4CAF50;
+        }
 
-            .route-step {
-                padding: 10px;
-                background: white;
-                border-left: 3px solid #667eea;
-                margin-bottom: 8px;
-                border-radius: 4px;
-                font-size: 13px;
-                line-height: 1.5;
-            }
-
-            .route-step-distance {
-                color: #999;
-                font-size: 11px;
-                margin-top: 4px;
-            }
-
-            .location-dot {
-                width: 8px;
-                height: 8px;
-                border-radius: 50%;
-                display: inline-block;
-                margin-right: 4px;
-            }
-
-            .location-dot.from {
-                background: #4CAF50;
-            }
-
-            .location-dot.to {
-                background: #F44336;
-            }
+        .location-dot.to {
+            background: #F44336;
+        }
     </style>
 </head>
 
@@ -446,10 +444,9 @@
             <label for="trafficToggle">Traffic</label>
         </div>
 
-        <div class="layer-option disabled">
-            <input type="checkbox" id="camerasToggle" disabled>
+        <div class="layer-option">
+            <input type="checkbox" id="camerasToggle" checked>
             <label for="camerasToggle">Speed Cameras</label>
-            <span class="coming-soon">(coming soon)</span>
         </div>
 
         <div class="layer-option disabled">
@@ -531,14 +528,15 @@
             mainScript.async = true;
             document.head.appendChild(mainScript);
 
-            // Load plugins SDK (with search and direction)
+            // Load plugins SDK (with search, direction, and safety)
             const pluginsScript = document.createElement('script');
-            pluginsScript.src = `https://sdk.mappls.com/map/sdk/plugins?access_token=${token}&v=3.0&libraries=search,direction`;
+            pluginsScript.src = `https://sdk.mappls.com/map/sdk/plugins?access_token=${token}&v=3.0&libraries=search,direction,safety`;
             document.head.appendChild(pluginsScript);
         })();
 
         var map;
         var trafficLayer;
+        var safetyLayer;
         var currentMarker;
         var fromMarker, toMarker;
         var currentRoute;
@@ -560,10 +558,18 @@
 
                 // Add traffic layer when map loads
                 map.addListener('load', function () {
-                    console.log('Map loaded! Adding traffic layer...');
+                    console.log('Map loaded! Adding traffic and safety layers...');
 
                     // Enable traffic layer
                     trafficLayer = mappls.traffic({ map: map });
+
+                    // Enable safety layer (speed cameras)
+                    try {
+                        safetyLayer = mappls.safety({ map: map });
+                        console.log('Safety layer (speed cameras) added!');
+                    } catch (error) {
+                        console.error('Error adding safety layer:', error);
+                    }
 
                     console.log('Traffic layer added!');
 
@@ -583,6 +589,23 @@
                         if (trafficLayer) {
                             mappls.remove({ map: map, layer: trafficLayer });
                             console.log('Traffic layer disabled');
+                        }
+                    }
+                });
+
+                // Setup speed cameras toggle
+                document.getElementById('camerasToggle').addEventListener('change', function (e) {
+                    if (e.target.checked) {
+                        try {
+                            safetyLayer = mappls.safety({ map: map });
+                            console.log('Speed cameras layer enabled');
+                        } catch (error) {
+                            console.error('Error enabling speed cameras:', error);
+                        }
+                    } else {
+                        if (safetyLayer) {
+                            mappls.remove({ map: map, layer: safetyLayer });
+                            console.log('Speed cameras layer disabled');
                         }
                     }
                 });
