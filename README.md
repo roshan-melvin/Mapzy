@@ -1,1 +1,2 @@
-yo
+
+static code = "agtofjqdydevmnjedjlpintqdxdzbfdiktnb"
