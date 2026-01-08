@@ -14,3 +14,14 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# Flutter builds
+zwap/build/
+zwap/.dart_tool/
+zwap/.flutter-plugins
+zwap/.flutter-plugins-dependencies
+zwap/.pub-cache/
+zwap/.pub/
+zwap/android/.gradle
+zwap/android/local.properties
+zwap/android/key.properties
