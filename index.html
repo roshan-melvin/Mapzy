@@ -685,49 +685,18 @@
                     const eloc = selectedPlace.eLoc;
 
                     if (eloc) {
-                        // ========== GET LATITUDE & LONGITUDE FROM ELOC ==========
-                        // Use Mappls Geocoding API to convert eLoc to lat/lng
-                        mappls.Geocode({ eloc: eloc }, function (geocodeData) {
-                            if (geocodeData && geocodeData.results && geocodeData.results.length > 0) {
-                                const result = geocodeData.results[0];
-                                const latitude = result.lat;
-                                const longitude = result.lng;
-
-                                console.log('📍 COORDINATES:');
-                                console.log('  Latitude:', latitude);
-                                console.log('  Longitude:', longitude);
-                                console.log('  eLoc:', eloc);
-
-                                // Update popup to show coordinates
-                                const popupHtml = `
-                                    <strong>${selectedPlace.placeName}</strong><br>
-                                    ${selectedPlace.placeAddress}<br>
-                                    <hr style="margin: 8px 0;">
-                                    <small>
-                                        📍 Lat: ${latitude}<br>
-                                        📍 Lng: ${longitude}<br>
-                                        🔑 eLoc: ${eloc}
-                                    </small>
-                                `;
-
-                                // Place marker with coordinates info
-                                mappls.pinMarker({
-                                    map: map,
-                                    pin: eloc,
-                                    popupHtml: popupHtml,
-                                    popupOptions: {
-                                        openPopup: true
-                                    }
-                                }, function (marker) {
-                                    currentMarker = marker;
-                                    currentMarker.fitbounds();
-                                    console.log('✓ Marker placed with coordinates');
-                                });
-                            } else {
-                                console.error('Could not get coordinates from eLoc');
-                                // Fallback: place marker without coordinates
-                                placeMarkerWithoutCoords(eloc, selectedPlace);
+                        // Use Mappls pinMarker to place marker using eLoc
+                        mappls.pinMarker({
+                            map: map,
+                            pin: eloc,
+                            popupHtml: selectedPlace.placeName + '<br>' + selectedPlace.placeAddress,
+                            popupOptions: {
+                                openPopup: true
                             }
+                        }, function (marker) {
+                            currentMarker = marker;
+                            currentMarker.fitbounds(); // Auto-zoom to marker
+                            console.log('Marker placed at:', selectedPlace.placeName);
                         });
                     } else {
                         console.error('No eLoc found in selected place');
@@ -737,22 +706,6 @@
                 } else {
                     console.log('No results returned');
                 }
-            }
-
-            // Fallback function to place marker without coordinates
-            function placeMarkerWithoutCoords(eloc, selectedPlace) {
-                mappls.pinMarker({
-                    map: map,
-                    pin: eloc,
-                    popupHtml: selectedPlace.placeName + '<br>' + selectedPlace.placeAddress,
-                    popupOptions: {
-                        openPopup: true
-                    }
-                }, function (marker) {
-                    currentMarker = marker;
-                    currentMarker.fitbounds();
-                    console.log('Marker placed at:', selectedPlace.placeName);
-                });
             }
 
             // Initialize the search plugin

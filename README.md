@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # DeepBlueS11 - Interactive Mapping Application
 
 A web-based mapping application for India featuring place search, turn-by-turn navigation, and real-time hazard detection.
@@ -42,3 +43,7 @@ A web-based mapping application for India featuring place search, turn-by-turn n
 ## License
 
 MIT
+=======
+
+static code = "agtofjqdydevmnjedjlpintqdxdzbfdiktnb"
+>>>>>>> d713560efdfb589373155d91ed286e1ad6920213
