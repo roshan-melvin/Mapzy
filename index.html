@@ -95,35 +95,56 @@
             transform: translateY(-2px);
         }
 
-        /* Reposition Mappls Controls to Bottom Right - Stacked Vertically */
-        /* 3D View Control */
-        .mappls-ctrl-group:has(.mappls-ctrl-3d),
-        .mappls-ctrl-3d {
-            position: absolute !important;
-            bottom: 100px !important;
-            right: 15px !important;
-            top: auto !important;
-            left: auto !important;
+        /* Hide Mappls Watermark and Attribution */
+        #watermark_logo0,
+        img[id^="watermark_logo"],
+        .cst-attrib-cont,
+        #mmi_attrib0 {
+            display: none !important;
+            visibility: hidden !important;
         }
 
-        /* Zoom Controls (+/-) */
-        .mappls-ctrl-group:has(.mappls-ctrl-zoom-in),
-        .mappls-ctrl-zoom {
-            position: absolute !important;
-            bottom: 55px !important;
-            right: 15px !important;
-            top: auto !important;
-            left: auto !important;
-        }
-
-        /* Fullscreen Control */
-        .mappls-ctrl-group:has(.mappls-ctrl-fullscreen),
-        .mappls-ctrl-fullscreen {
+        /* Position Map Controls (3D, +, -) Horizontally at Bottom Left */
+        .map-control {
             position: absolute !important;
             bottom: 10px !important;
-            right: 15px !important;
+            left: 10px !important;
             top: auto !important;
-            left: auto !important;
+            right: auto !important;
+            transform: none !important;
+            z-index: 9999 !important;
+        }
+
+        .map-control .expand-map-control {
+            display: flex !important;
+            flex-direction: row !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            list-style: none !important;
+        }
+
+        .map-control .expand-map-control>li {
+            margin: 0 2px !important;
+        }
+
+        /* Make button corners consistently rounded */
+        .map-control .expand-map-control>li>a,
+        .map-control .expand-map-control>li>button,
+        .map-control .expand-map-control>li {
+            border-radius: 8px !important;
+        }
+
+        /* Override any specific corner radius on first/last items */
+        .map-control .expand-map-control>li:first-child,
+        .map-control .expand-map-control>li:first-child>a,
+        .map-control .expand-map-control>li:first-child>button {
+            border-radius: 8px !important;
+        }
+
+        .map-control .expand-map-control>li:last-child,
+        .map-control .expand-map-control>li:last-child>a,
+        .map-control .expand-map-control>li:last-child>button {
+            border-radius: 8px !important;
         }
 
         /* Search Autocomplete Styles - Force Above Search Bar */
@@ -438,9 +459,12 @@
         }
 
         @keyframes pulse {
-            0%, 100% {
+
+            0%,
+            100% {
                 opacity: 1;
             }
+
             50% {
                 opacity: 0.5;
             }
@@ -449,6 +473,16 @@
         .search-wrapper {
             position: relative;
             flex: 1;
+        }
+
+        /* Hazard Toggle Button Active State */
+        .location-btn.active {
+            background: rgba(255, 215, 0, 0.98);
+            border-color: #FF6B00;
+        }
+
+        .location-btn.active svg {
+            stroke: #FF6B00;
         }
     </style>
 </head>
@@ -472,10 +506,19 @@
             </svg>
         </div>
         <button class="location-btn" id="currentLocationBtn" title="Get Current Location">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="12" r="10"></circle>
                 <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+        </button>
+        <button class="location-btn" id="hazardToggleBtn" title="Toggle Hazard Markers">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z">
+                </path>
+                <line x1="12" y1="9" x2="12" y2="13"></line>
+                <line x1="12" y1="17" x2="12.01" y2="17"></line>
             </svg>
         </button>
     </div>
@@ -555,8 +598,6 @@
         })();
 
         var map;
-        var trafficLayer;
-        var safetyLayer;
         var currentMarker;
         var fromMarker, toMarker;
         var currentRoute;
@@ -576,22 +617,9 @@
                     zoom: 13
                 });
 
-                // Add traffic layer when map loads
+                // Initialize features when map loads
                 map.addListener('load', function () {
-                    console.log('Map loaded! Adding traffic and safety layers...');
-
-                    // Enable traffic layer
-                    trafficLayer = mappls.traffic({ map: map });
-
-                    // Enable safety layer (speed cameras)
-                    try {
-                        safetyLayer = mappls.safety({ map: map });
-                        console.log('Safety layer (speed cameras) added!');
-                    } catch (error) {
-                        console.error('Error adding safety layer:', error);
-                    }
-
-                    console.log('Traffic layer added!');
+                    console.log('Map loaded successfully!');
 
                     // Initialize place search plugin with autocomplete
                     initPlaceSearch();
@@ -601,6 +629,9 @@
 
                     // Initialize current location button
                     initCurrentLocationBtn();
+
+                    // Initialize hazard toggle
+                    initHazardToggle();
                 });
 
 
@@ -873,7 +904,7 @@
                         document.getElementById('getDirections').disabled = false;
                         document.getElementById('clearRoute').style.display = 'block';
                     } else {
-                        alert('No route found. Please try different locations.');
+                        alert('No rout~e found. Please try different locations.');
                         document.getElementById('getDirections').textContent = '🚀 Get Directions';
                         document.getElementById('getDirections').disabled = false;
                     }
@@ -989,6 +1020,136 @@
                 offset: [0, -16]
             };
         }
+
+        // ==================== HAZARD OVERLAY SYSTEM ====================
+        var hazardMarkers = [];
+        var hazardsVisible = false;
+        var isLoadingHazards = false;
+
+        // Initialize hazard toggle button
+        function initHazardToggle() {
+            const hazardBtn = document.getElementById('hazardToggleBtn');
+
+            hazardBtn.addEventListener('click', function () {
+                hazardsVisible = !hazardsVisible;
+
+                if (hazardsVisible) {
+                    hazardBtn.classList.add('active');
+                    loadHazards();
+                } else {
+                    hazardBtn.classList.remove('active');
+                    clearHazards();
+                }
+            });
+
+            // Reload hazards when map moves (if visible)
+            map.addListener('moveend', function () {
+                if (hazardsVisible && !isLoadingHazards) {
+                    loadHazards();
+                }
+            });
+
+            console.log('Hazard toggle initialized');
+        }
+
+        // Load hazards from OpenStreetMap via Overpass API
+        function loadHazards() {
+            const zoom = map.getZoom();
+
+            // Only load hazards at zoom level 10 or higher (city view)
+            if (zoom < 10) {
+                console.log('Zoom in to level 10+ to see hazards');
+                return;
+            }
+
+            if (isLoadingHazards) return;
+            isLoadingHazards = true;
+
+            // Get current map bounds
+            const bounds = map.getBounds();
+            const south = bounds.getSouth();
+            const west = bounds.getWest();
+            const north = bounds.getNorth();
+            const east = bounds.getEast();
+            const bbox = `${south},${west},${north},${east}`;
+
+            // Overpass API query for hazards - simplified for speed
+            const query = `
+                [out:json][timeout:15];
+                (
+                    node["highway"="speed_bump"](${bbox});
+                    node["traffic_calming"](${bbox});
+                );
+                out body;
+            `;
+
+            const overpassUrl = 'https://overpass.kumi.systems/api/interpreter';
+
+            fetch(overpassUrl, {
+                method: 'POST',
+                body: query
+            })
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Hazards loaded:', data.elements.length);
+                    displayHazards(data.elements);
+                    isLoadingHazards = false;
+                })
+                .catch(error => {
+                    console.error('Error loading hazards:', error);
+                    isLoadingHazards = false;
+                });
+        }
+
+        // Display hazard markers on map
+        function displayHazards(hazards) {
+            // Clear existing hazard markers
+            clearHazards();
+
+            // Add markers for each hazard - using Mappls native format
+            hazards.forEach(hazard => {
+                if (hazard.lat && hazard.lon) {
+                    const marker = new mappls.Marker({
+                        map: map,
+                        position: [hazard.lat, hazard.lon],
+                        fitbounds: false,
+                        html: '<div style="background: #FF3333; color: white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: bold; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.3);">⚠</div>',
+                        offset: [0, -20]
+                    });
+
+                    // Create popup content
+                    let popupContent = '<strong>⚠️ Hazard</strong><br>';
+
+                    if (hazard.tags) {
+                        if (hazard.tags.hazard) popupContent += `Type: ${hazard.tags.hazard}<br>`;
+                        if (hazard.tags.traffic_calming) popupContent += `Traffic Calming: ${hazard.tags.traffic_calming}<br>`;
+                        if (hazard.tags.barrier) popupContent += `Barrier: ${hazard.tags.barrier}<br>`;
+                        if (hazard.tags.highway === 'speed_bump') popupContent += 'Type: Speed Bump<br>';
+                        if (hazard.tags.name) popupContent += `Name: ${hazard.tags.name}<br>`;
+                        if (hazard.tags.description) popupContent += `${hazard.tags.description}`;
+                    }
+
+                    // Add popup to marker
+                    marker.on('click', function () {
+                        new mappls.Popup({ offset: [0, -15] })
+                            .setLngLat([hazard.lon, hazard.lat])
+                            .setHTML(popupContent)
+                            .addTo(map);
+                    });
+
+                    hazardMarkers.push(marker);
+                }
+            });
+
+            console.log(`Displayed ${hazardMarkers.length} hazard markers`);
+        }
+
+        // Clear all hazard markers
+        function clearHazards() {
+            hazardMarkers.forEach(marker => marker.remove());
+            hazardMarkers = [];
+        }
+
     </script>
 </body>
 
