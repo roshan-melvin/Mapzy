@@ -1,62 +1,1156 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
+
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OSM World Map - Speed Cameras & Hazards</title>
-    
-    <!-- CSS Reset & Main Styles -->
-    <link rel="stylesheet" href="style.css">
-    
-    <!-- Leaflet CSS -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
-          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" 
-          crossorigin=""/>
+    <meta name="viewport" content="initial-scale=1.0">
+    <title>Mappls Map</title>
 
-    <!-- Leaflet JS -->
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" 
-            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" 
-            crossorigin=""></script>
+    <!-- Load configuration first (contains access token) -->
+    <script src="config.js"></script>
 
-    <!-- osmtogeojson -->
-    <script src="https://unpkg.com/osmtogeojson@3.0.0-beta.5/osmtogeojson.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Premium Search Bar - Center Bottom */
+        .search-container {
+            position: absolute;
+            bottom: 25px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            width: 90%;
+            max-width: 600px;
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 22px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 20px;
+            height: 20px;
+            stroke: #666;
+            pointer-events: none;
+            z-index: 1;
+            transition: stroke 0.3s ease;
+        }
+
+        .search-box:focus~.search-icon {
+            stroke: #4CAF50;
+        }
+
+        .search-box {
+            width: 100%;
+            padding: 18px 24px 18px 54px;
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            border-radius: 50px;
+            font-size: 16px;
+            font-weight: 400;
+            outline: none;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12),
+                0 2px 8px rgba(0, 0, 0, 0.08);
+            color: #333;
+        }
+
+        .search-box::placeholder {
+            color: #999;
+            font-weight: 400;
+        }
+
+        .search-box:hover {
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.16),
+                0 4px 12px rgba(0, 0, 0, 0.12);
+            transform: translateY(-2px);
+        }
+
+        .search-box:focus {
+            border-color: rgba(76, 175, 80, 0.5);
+            box-shadow: 0 12px 48px rgba(76, 175, 80, 0.15),
+                0 4px 16px rgba(76, 175, 80, 0.12);
+            transform: translateY(-2px);
+        }
+
+        /* Hide Mappls Watermark and Attribution */
+        #watermark_logo0,
+        img[id^="watermark_logo"],
+        .cst-attrib-cont,
+        #mmi_attrib0 {
+            display: none !important;
+            visibility: hidden !important;
+        }
+
+        /* Position Map Controls (3D, +, -) Horizontally at Bottom Left */
+        .map-control {
+            position: absolute !important;
+            bottom: 10px !important;
+            left: 10px !important;
+            top: auto !important;
+            right: auto !important;
+            transform: none !important;
+            z-index: 9999 !important;
+        }
+
+        .map-control .expand-map-control {
+            display: flex !important;
+            flex-direction: row !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            list-style: none !important;
+        }
+
+        .map-control .expand-map-control>li {
+            margin: 0 2px !important;
+        }
+
+        /* Make button corners consistently rounded */
+        .map-control .expand-map-control>li>a,
+        .map-control .expand-map-control>li>button,
+        .map-control .expand-map-control>li {
+            border-radius: 8px !important;
+        }
+
+        /* Override any specific corner radius on first/last items */
+        .map-control .expand-map-control>li:first-child,
+        .map-control .expand-map-control>li:first-child>a,
+        .map-control .expand-map-control>li:first-child>button {
+            border-radius: 8px !important;
+        }
+
+        .map-control .expand-map-control>li:last-child,
+        .map-control .expand-map-control>li:last-child>a,
+        .map-control .expand-map-control>li:last-child>button {
+            border-radius: 8px !important;
+        }
+
+        /* Search Autocomplete Styles - Force Above Search Bar */
+        .search-container>div[style*="position"],
+        .search-container .auto-suggest,
+        #searchBox~div {
+            position: absolute !important;
+            bottom: 100% !important;
+            top: auto !important;
+            left: 0 !important;
+            right: 0 !important;
+            margin-bottom: 12px !important;
+            margin-top: 0 !important;
+            background: rgba(255, 255, 255, 0.98) !important;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 0, 0, 0.08) !important;
+            border-radius: 16px !important;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12),
+                0 2px 8px rgba(0, 0, 0, 0.08) !important;
+            max-height: 350px !important;
+            overflow-y: auto !important;
+        }
+
+        .auto-suggest-item {
+            padding: 14px 20px;
+            cursor: pointer;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+            transition: all 0.2s ease;
+        }
+
+        .auto-suggest-item:hover {
+            background-color: rgba(76, 175, 80, 0.08);
+            padding-left: 24px;
+        }
+
+        .auto-suggest-item:first-child {
+            border-radius: 16px 16px 0 0;
+        }
+
+        .auto-suggest-item:last-child {
+            border-bottom: none;
+            border-radius: 0 0 16px 16px;
+        }
+
+        .place-name {
+            font-weight: 500;
+            color: #333;
+            margin-bottom: 4px;
+            font-size: 15px;
+        }
+
+        .place-address {
+            font-size: 13px;
+            color: #777;
+            line-height: 1.4;
+        }
+
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 1001;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        #error {
+            display: none;
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: #ff4444;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 5px;
+            z-index: 1001;
+            max-width: 300px;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #4CAF50;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Navigation Panel - Right Side */
+        .nav-panel {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+            z-index: 1000;
+            width: 320px;
+            max-height: calc(100vh - 30px);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .nav-header {
+            padding: 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-weight: 600;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .nav-body {
+            padding: 16px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .nav-input-group {
+            margin-bottom: 12px;
+        }
+
+        .nav-label {
+            font-size: 12px;
+            font-weight: 500;
+            color: #666;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .nav-input {
+            width: 100%;
+            padding: 12px 14px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            outline: none;
+            transition: all 0.2s ease;
+        }
+
+        .nav-input:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .nav-button {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 8px;
+        }
+
+        .nav-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .nav-button:active {
+            transform: translateY(0);
+        }
+
+        .nav-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .nav-button-secondary {
+            background: white;
+            color: #667eea;
+            border: 2px solid #667eea;
+        }
+
+        .nav-button-secondary:hover {
+            background: #f5f7ff;
+        }
+
+        .route-info {
+            background: #f8f9fa;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 12px;
+            display: none;
+        }
+
+        .route-info.active {
+            display: block;
+        }
+
+        .route-stat {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .route-stat-label {
+            color: #666;
+        }
+
+        .route-stat-value {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .route-steps {
+            margin-top: 16px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .route-step {
+            padding: 10px;
+            background: white;
+            border-left: 3px solid #667eea;
+            margin-bottom: 8px;
+            border-radius: 4px;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .route-step-distance {
+            color: #999;
+            font-size: 11px;
+            margin-top: 4px;
+        }
+
+        .location-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 4px;
+        }
+
+        .location-dot.from {
+            background: #4CAF50;
+        }
+
+        .location-dot.to {
+            background: #F44336;
+        }
+
+        /* Current Location Button */
+        .location-btn {
+            width: 56px;
+            height: 56px;
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12),
+                0 2px 8px rgba(0, 0, 0, 0.08);
+            flex-shrink: 0;
+        }
+
+        .location-btn:hover {
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.16),
+                0 4px 12px rgba(0, 0, 0, 0.12);
+            transform: translateY(-2px);
+        }
+
+        .location-btn:active {
+            transform: translateY(0);
+        }
+
+        .location-btn svg {
+            width: 24px;
+            height: 24px;
+            stroke: #4CAF50;
+            transition: stroke 0.3s ease;
+        }
+
+        .location-btn:hover svg {
+            stroke: #45a049;
+        }
+
+        .location-btn.loading svg {
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        .search-wrapper {
+            position: relative;
+            flex: 1;
+        }
+
+        /* Hazard Toggle Button Active State */
+        .location-btn.active {
+            background: rgba(255, 215, 0, 0.98);
+            border-color: #FF6B00;
+        }
+
+        .location-btn.active svg {
+            stroke: #FF6B00;
+        }
+    </style>
 </head>
-<body>
 
-    <!-- Map Container -->
+<body>
+    <div id="loading">
+        <div class="spinner"></div>
+        <p>Loading Mappls Map...</p>
+    </div>
+    <div id="error"></div>
     <div id="map"></div>
 
-    <!-- UI Overlay: Legend & Controls -->
-    <div class="ui-overlay">
-        <div class="panel">
-            <h1>OSM Live Map</h1>
-            <p class="status" id="status-text">Zoom in to load data (Level 12+)</p>
-            
-            <div class="controls">
-                <label class="control-item">
-                    <input type="checkbox" id="toggle-cameras" checked>
-                    <span class="dot camera"></span>
-                    Speed Cameras
-                </label>
-                <label class="control-item">
-                    <input type="checkbox" id="toggle-signals" checked>
-                    <span class="dot signal"></span>
-                    Traffic Signals
-                </label>
-                <label class="control-item">
-                    <input type="checkbox" id="toggle-hazards" checked>
-                    <span class="dot hazard"></span>
-                    Hazards
-                </label>
+    <!-- Premium Search Bar - Center Bottom -->
+    <div class="search-container">
+        <div class="search-wrapper">
+            <input type="text" id="searchBox" class="search-box" placeholder="Search places, addresses, landmarks...">
+            <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.35-4.35"></path>
+            </svg>
+        </div>
+        <button class="location-btn" id="currentLocationBtn" title="Get Current Location">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+        </button>
+        <button class="location-btn" id="hazardToggleBtn" title="Toggle Hazard Markers">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z">
+                </path>
+                <line x1="12" y1="9" x2="12" y2="13"></line>
+                <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+        </button>
+    </div>
+
+
+
+    <!-- Navigation Panel -->
+    <div class="nav-panel">
+        <div class="nav-header">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="3 11 22 2 13 21 11 13 3 11"></polygon>
+            </svg>
+            Navigation
+        </div>
+
+        <div class="nav-body">
+            <div class="nav-input-group">
+                <div class="nav-label">
+                    <span class="location-dot from"></span>
+                    From (Starting Point)
+                </div>
+                <input type="text" id="fromInput" class="nav-input" placeholder="Your location or address...">
             </div>
-            
-            <div class="legend">
-                <small>Moves map to fetch fresh data.</small>
+
+            <div class="nav-input-group">
+                <div class="nav-label">
+                    <span class="location-dot to"></span>
+                    To (Destination)
+                </div>
+                <input type="text" id="toInput" class="nav-input" placeholder="Where do you want to go?">
+            </div>
+
+            <button id="getDirections" class="nav-button">
+                🚀 Get Directions
+            </button>
+
+            <button id="clearRoute" class="nav-button nav-button-secondary" style="display: none;">
+                ✕ Clear Route
+            </button>
+
+            <div id="routeInfo" class="route-info">
+                <div class="route-stat">
+                    <span class="route-stat-label">📏 Distance:</span>
+                    <span class="route-stat-value" id="routeDistance">-</span>
+                </div>
+                <div class="route-stat">
+                    <span class="route-stat-label">⏱️ Duration:</span>
+                    <span class="route-stat-value" id="routeDuration">-</span>
+                </div>
+                <div class="route-stat">
+                    <span class="route-stat-label">🚗 Via:</span>
+                    <span class="route-stat-value" id="routeVia">-</span>
+                </div>
+
+                <div id="routeSteps" class="route-steps"></div>
             </div>
         </div>
     </div>
 
-    <!-- Application Logic -->
-    <script src="main.js"></script>
+    <script>
+        // Load Mappls SDK with access token from config
+        (function () {
+            const token = MAPPLS_CONFIG.accessToken;
+
+            // Load main SDK
+            const mainScript = document.createElement('script');
+            mainScript.src = `https://sdk.mappls.com/map/sdk/web?v=3.0&access_token=${token}&callback=initMap1`;
+            mainScript.defer = true;
+            mainScript.async = true;
+            document.head.appendChild(mainScript);
+
+            // Load plugins SDK (with search, direction, and safety)
+            const pluginsScript = document.createElement('script');
+            pluginsScript.src = `https://sdk.mappls.com/map/sdk/plugins?access_token=${token}&v=3.0&libraries=search,direction,safety`;
+            document.head.appendChild(pluginsScript);
+        })();
+
+        var map;
+        var currentMarker;
+        var fromMarker, toMarker;
+        var currentRoute;
+        var fromLocation, toLocation;
+
+        // This callback function is called by Mappls SDK when it's ready
+        function initMap1() {
+            console.log('initMap1 called - SDK is ready!');
+
+            try {
+                // Hide loading indicator
+                document.getElementById('loading').style.display = 'none';
+
+                // Initialize map - using array format [lat, lng]
+                map = new mappls.Map('map', {
+                    center: [28.638698, 77.276045],
+                    zoom: 13
+                });
+
+                // Initialize features when map loads
+                map.addListener('load', function () {
+                    console.log('Map loaded successfully!');
+
+                    // Initialize place search plugin with autocomplete
+                    initPlaceSearch();
+
+                    // Initialize navigation
+                    initNavigation();
+
+                    // Initialize current location button
+                    initCurrentLocationBtn();
+
+                    // Initialize hazard toggle
+                    initHazardToggle();
+                });
+
+
+
+                console.log('Map initialized successfully!');
+
+            } catch (error) {
+                console.error('Error initializing map:', error);
+                const errorDiv = document.getElementById('error');
+                errorDiv.textContent = 'Error: ' + error.message;
+                errorDiv.style.display = 'block';
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        // Initialize Place Search with autocomplete
+        function initPlaceSearch() {
+            const searchBox = document.getElementById('searchBox');
+
+            // Configure place search options
+            var placeOptions = {
+                location: [28.638698, 77.276045], // Current map center as radial bias
+                width: 250,
+                height: 300,
+                clearButton: true,
+                blank_callback: function () {
+                    console.log('Search cleared');
+                    // Remove marker when search is cleared
+                    if (currentMarker) {
+                        currentMarker.remove();
+                        currentMarker = null;
+                    }
+                }
+            };
+
+            // Callback when place is selected
+            function searchCallback(data) {
+                console.log('Place selected (full data):', data);
+
+                // Mappls returns an ARRAY of results, not a single object
+                if (data && data.length > 0) {
+                    const selectedPlace = data[0]; // Get first result
+                    console.log('Selected place details:', selectedPlace);
+
+                    // Remove previous marker
+                    if (currentMarker) {
+                        currentMarker.remove();
+                    }
+
+                    // Get eLoc (Mappls unique location ID)
+                    const eloc = selectedPlace.eLoc;
+
+                    if (eloc) {
+                        // Use Mappls pinMarker to place marker using eLoc
+                        mappls.pinMarker({
+                            map: map,
+                            pin: eloc,
+                            popupHtml: selectedPlace.placeName + '<br>' + selectedPlace.placeAddress,
+                            popupOptions: {
+                                openPopup: true
+                            }
+                        }, function (marker) {
+                            currentMarker = marker;
+                            currentMarker.fitbounds(); // Auto-zoom to marker
+                            console.log('Marker placed at:', selectedPlace.placeName);
+                        });
+                    } else {
+                        console.error('No eLoc found in selected place');
+                    }
+                } else if (data && data.error) {
+                    console.error('Search error:', data.error);
+                } else {
+                    console.log('No results returned');
+                }
+            }
+
+            // Initialize the search plugin
+            new mappls.search(searchBox, placeOptions, searchCallback);
+
+            console.log('Place search initialized');
+        }
+
+        // Initialize Navigation
+        function initNavigation() {
+            const fromInput = document.getElementById('fromInput');
+            const toInput = document.getElementById('toInput');
+            const getDirectionsBtn = document.getElementById('getDirections');
+            const clearRouteBtn = document.getElementById('clearRoute');
+
+            // Setup autocomplete for FROM input
+            new mappls.search(fromInput, {
+                location: [28.638698, 77.276045],
+                width: 280,
+                height: 300
+            }, function (data) {
+                if (data && data.length > 0) {
+                    fromLocation = data[0];
+                    console.log('From location selected:', fromLocation);
+
+                    // Place FROM marker
+                    if (fromMarker) fromMarker.remove();
+                    mappls.pinMarker({
+                        map: map,
+                        pin: fromLocation.eLoc,
+                        popupHtml: '🟢 Start: ' + fromLocation.placeName,
+                        icon: createNavMarkerIcon('from')
+                    }, function (marker) {
+                        fromMarker = marker;
+                    });
+                }
+            });
+
+            // Setup autocomplete for TO input
+            new mappls.search(toInput, {
+                location: [28.638698, 77.276045],
+                width: 280,
+                height: 300
+            }, function (data) {
+                if (data && data.length > 0) {
+                    toLocation = data[0];
+                    console.log('To location selected:', toLocation);
+
+                    // Place TO marker
+                    if (toMarker) toMarker.remove();
+                    mappls.pinMarker({
+                        map: map,
+                        pin: toLocation.eLoc,
+                        popupHtml: '🔴 Destination: ' + toLocation.placeName,
+                        icon: createNavMarkerIcon('to')
+                    }, function (marker) {
+                        toMarker = marker;
+                    });
+                }
+            });
+
+            // Get Directions button
+            getDirectionsBtn.addEventListener('click', function () {
+                if (!fromLocation || !toLocation) {
+                    alert('Please select both FROM and TO locations');
+                    return;
+                }
+
+                getDirectionsBtn.disabled = true;
+                getDirectionsBtn.textContent = '⏳ Calculating route...';
+
+                calculateRoute();
+            });
+
+            // Clear Route button
+            clearRouteBtn.addEventListener('click', function () {
+                clearNavigation();
+            });
+
+            console.log('Navigation initialized');
+        }
+
+        // Current Location Button functionality
+        function initCurrentLocationBtn() {
+            const locationBtn = document.getElementById('currentLocationBtn');
+
+            locationBtn.addEventListener('click', function () {
+                if (!navigator.geolocation) {
+                    alert('Geolocation is not supported by your browser');
+                    return;
+                }
+
+                // Add loading state
+                locationBtn.classList.add('loading');
+                locationBtn.disabled = true;
+
+                navigator.geolocation.getCurrentPosition(
+                    function (position) {
+                        const lat = position.coords.latitude;
+                        const lng = position.coords.longitude;
+
+                        console.log('Current location:', lat, lng);
+
+                        // Center map on current location
+                        map.setCenter([lat, lng]);
+                        map.setZoom(15);
+
+                        // Remove previous current location marker
+                        if (currentMarker) {
+                            currentMarker.remove();
+                        }
+
+                        // Add marker at current location
+                        currentMarker = new mappls.Marker({
+                            map: map,
+                            position: [lat, lng],
+                            fitbounds: true,
+                            icon: {
+                                url: 'data:image/svg+xml;base64,' + btoa(`
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24">
+                                        <circle cx="12" cy="12" r="10" fill="#4CAF50" stroke="white" stroke-width="3"/>
+                                        <circle cx="12" cy="12" r="4" fill="white"/>
+                                    </svg>
+                                `),
+                                width: 32,
+                                height: 32
+                            }
+                        });
+
+                        // Add popup
+                        const popup = new mappls.Popup({ offset: [0, -15] })
+                            .setLngLat([lat, lng])
+                            .setHTML('<strong>📍 You are here</strong>')
+                            .addTo(map);
+
+                        // Remove loading state
+                        locationBtn.classList.remove('loading');
+                        locationBtn.disabled = false;
+                    },
+                    function (error) {
+                        console.error('Error getting location:', error);
+                        let errorMsg = 'Unable to get your location';
+
+                        switch (error.code) {
+                            case error.PERMISSION_DENIED:
+                                errorMsg = 'Location permission denied. Please allow location access.';
+                                break;
+                            case error.POSITION_UNAVAILABLE:
+                                errorMsg = 'Location information unavailable.';
+                                break;
+                            case error.TIMEOUT:
+                                errorMsg = 'Location request timed out.';
+                                break;
+                        }
+
+                        alert(errorMsg);
+
+                        // Remove loading state
+                        locationBtn.classList.remove('loading');
+                        locationBtn.disabled = false;
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        timeout: 10000,
+                        maximumAge: 0
+                    }
+                );
+            });
+
+            console.log('Current location button initialized');
+        }
+
+        // Calculate and display route
+        function calculateRoute() {
+            try {
+                // Use Mappls Direction Plugin
+                const directionOptions = {
+                    map: map,
+                    start: fromLocation.eLoc,
+                    end: toLocation.eLoc,
+                    strokeColor: '#667eea',
+                    strokeWidth: 6,
+                    strokeOpacity: 0.8,
+                    fitbounds: true,
+                    divWidth: 0, // Hide default info panel
+                    divId: 'routeInfo'
+                };
+
+                currentRoute = mappls.direction(directionOptions, function (result) {
+                    console.log('Route calculated:', result);
+
+                    if (result && result.routes && result.routes.length > 0) {
+                        displayRouteInfo(result.routes[0]);
+
+                        document.getElementById('getDirections').textContent = '✓ Route Found';
+                        document.getElementById('getDirections').disabled = false;
+                        document.getElementById('clearRoute').style.display = 'block';
+                    } else {
+                        alert('No rout~e found. Please try different locations.');
+                        document.getElementById('getDirections').textContent = '🚀 Get Directions';
+                        document.getElementById('getDirections').disabled = false;
+                    }
+                });
+
+            } catch (error) {
+                console.error('Error calculating route:', error);
+                alert('Error calculating route: ' + error.message);
+                document.getElementById('getDirections').textContent = '🚀 Get Directions';
+                document.getElementById('getDirections').disabled = false;
+            }
+        }
+
+        // Display route information
+        function displayRouteInfo(route) {
+            const routeInfoDiv = document.getElementById('routeInfo');
+            const distanceElem = document.getElementById('routeDistance');
+            const durationElem = document.getElementById('routeDuration');
+            const viaElem = document.getElementById('routeVia');
+            const stepsDiv = document.getElementById('routeSteps');
+
+            // Convert meters to km
+            const distanceKm = (route.distance / 1000).toFixed(1);
+            distanceElem.textContent = distanceKm + ' km';
+
+            // Convert seconds to hours and minutes
+            const totalMinutes = Math.round(route.duration / 60);
+            const hours = Math.floor(totalMinutes / 60);
+            const minutes = totalMinutes % 60;
+            let durationText = '';
+            if (hours > 0) durationText += hours + 'h ';
+            durationText += minutes + 'min';
+            durationElem.textContent = durationText;
+
+            // Via route name
+            viaElem.textContent = route.summary || 'Best route';
+
+            // Display turn-by-turn steps
+            if (route.legs && route.legs[0] && route.legs[0].steps) {
+                const steps = route.legs[0].steps;
+                let stepsHTML = '';
+
+                steps.forEach(function (step, index) {
+                    const stepDistance = (step.distance / 1000).toFixed(1);
+                    const instruction = step.html_instructions || step.instruction || 'Continue';
+
+                    stepsHTML += `
+                        <div class="route-step">
+                            <strong>${index + 1}.</strong> ${instruction}
+                            <div class="route-step-distance">📍 ${stepDistance} km</div>
+                        </div>
+                    `;
+                });
+
+                stepsDiv.innerHTML = stepsHTML;
+            }
+
+            routeInfoDiv.classList.add('active');
+        }
+
+        // Clear navigation
+        function clearNavigation() {
+            // Remove markers
+            if (fromMarker) {
+                fromMarker.remove();
+                fromMarker = null;
+            }
+            if (toMarker) {
+                toMarker.remove();
+                toMarker = null;
+            }
+
+            // Remove route
+            if (currentRoute) {
+                mappls.remove({ map: map, layer: currentRoute });
+                currentRoute = null;
+            }
+
+            // Clear inputs
+            document.getElementById('fromInput').value = '';
+            document.getElementById('toInput').value = '';
+
+            // Hide route info
+            document.getElementById('routeInfo').classList.remove('active');
+            document.getElementById('clearRoute').style.display = 'none';
+            document.getElementById('getDirections').textContent = '🚀 Get Directions';
+            document.getElementById('getDirections').disabled = false;
+
+            // Reset variables
+            fromLocation = null;
+            toLocation = null;
+
+            console.log('Navigation cleared');
+        }
+
+        // Create custom marker icon for navigation
+        function createNavMarkerIcon(type) {
+            const colors = {
+                from: '#4CAF50',
+                to: '#F44336'
+            };
+
+            const svg = `
+                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10" fill="${colors[type]}" stroke="white" stroke-width="3"/>
+                </svg>
+            `;
+
+            return {
+                url: 'data:image/svg+xml;base64,' + btoa(svg),
+                width: 32,
+                height: 32,
+                offset: [0, -16]
+            };
+        }
+
+        // ==================== HAZARD OVERLAY SYSTEM ====================
+        var hazardMarkers = [];
+        var hazardsVisible = false;
+        var isLoadingHazards = false;
+
+        // Initialize hazard toggle button
+        function initHazardToggle() {
+            const hazardBtn = document.getElementById('hazardToggleBtn');
+
+            hazardBtn.addEventListener('click', function () {
+                hazardsVisible = !hazardsVisible;
+
+                if (hazardsVisible) {
+                    hazardBtn.classList.add('active');
+                    loadHazards();
+                } else {
+                    hazardBtn.classList.remove('active');
+                    clearHazards();
+                }
+            });
+
+            // Reload hazards when map moves (if visible)
+            map.addListener('moveend', function () {
+                if (hazardsVisible && !isLoadingHazards) {
+                    loadHazards();
+                }
+            });
+
+            console.log('Hazard toggle initialized');
+        }
+
+        // Load hazards from OpenStreetMap via Overpass API
+        function loadHazards() {
+            const zoom = map.getZoom();
+
+            // Only load hazards at zoom level 10 or higher (city view)
+            if (zoom < 10) {
+                console.log('Zoom in to level 10+ to see hazards');
+                return;
+            }
+
+            if (isLoadingHazards) return;
+            isLoadingHazards = true;
+
+            // Get current map bounds
+            const bounds = map.getBounds();
+            const south = bounds.getSouth();
+            const west = bounds.getWest();
+            const north = bounds.getNorth();
+            const east = bounds.getEast();
+            const bbox = `${south},${west},${north},${east}`;
+
+            // Overpass API query for hazards - simplified for speed
+            const query = `
+                [out:json][timeout:15];
+                (
+                    node["highway"="speed_bump"](${bbox});
+                    node["traffic_calming"](${bbox});
+                );
+                out body;
+            `;
+
+            const overpassUrl = 'https://overpass.kumi.systems/api/interpreter';
+
+            fetch(overpassUrl, {
+                method: 'POST',
+                body: query
+            })
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Hazards loaded:', data.elements.length);
+                    displayHazards(data.elements);
+                    isLoadingHazards = false;
+                })
+                .catch(error => {
+                    console.error('Error loading hazards:', error);
+                    isLoadingHazards = false;
+                });
+        }
+
+        // Display hazard markers on map
+        function displayHazards(hazards) {
+            // Clear existing hazard markers
+            clearHazards();
+
+            // Add markers for each hazard - using Mappls native format
+            hazards.forEach(hazard => {
+                if (hazard.lat && hazard.lon) {
+                    const marker = new mappls.Marker({
+                        map: map,
+                        position: [hazard.lat, hazard.lon],
+                        fitbounds: false,
+                        html: '<div style="background: #FF3333; color: white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: bold; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.3);">⚠</div>',
+                        offset: [0, -20]
+                    });
+
+                    // Create popup content
+                    let popupContent = '<strong>⚠️ Hazard</strong><br>';
+
+                    if (hazard.tags) {
+                        if (hazard.tags.hazard) popupContent += `Type: ${hazard.tags.hazard}<br>`;
+                        if (hazard.tags.traffic_calming) popupContent += `Traffic Calming: ${hazard.tags.traffic_calming}<br>`;
+                        if (hazard.tags.barrier) popupContent += `Barrier: ${hazard.tags.barrier}<br>`;
+                        if (hazard.tags.highway === 'speed_bump') popupContent += 'Type: Speed Bump<br>';
+                        if (hazard.tags.name) popupContent += `Name: ${hazard.tags.name}<br>`;
+                        if (hazard.tags.description) popupContent += `${hazard.tags.description}`;
+                    }
+
+                    // Add popup to marker
+                    marker.on('click', function () {
+                        new mappls.Popup({ offset: [0, -15] })
+                            .setLngLat([hazard.lon, hazard.lat])
+                            .setHTML(popupContent)
+                            .addTo(map);
+                    });
+
+                    hazardMarkers.push(marker);
+                }
+            });
+
+            console.log(`Displayed ${hazardMarkers.length} hazard markers`);
+        }
+
+        // Clear all hazard markers
+        function clearHazards() {
+            hazardMarkers.forEach(marker => marker.remove());
+            hazardMarkers = [];
+        }
+
+    </script>
 </body>
+
 </html>
