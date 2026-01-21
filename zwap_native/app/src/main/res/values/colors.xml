@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Blue and White Theme Colors -->
+    <color name="primary_blue">#2196F3</color>
+    <color name="primary_blue_dark">#1976D2</color>
+    <color name="primary_blue_light">#BBDEFB</color>
+    <color name="accent_blue">#448AFF</color>
+    
+    <color name="white">#FFFFFF</color>
+    <color name="light_gray">#F5F5F5</color>
+    <color name="medium_gray">#E0E0E0</color>
+    <color name="dark_gray">#757575</color>
+    <color name="text_dark">#212121</color>
+    
+    <!-- Search overlay -->
+    <color name="overlay_background">#F8F9FA</color>
+    <color name="history_item_background">#FFFFFF</color>
+</resources>
