@@ -2,6 +2,10 @@
 
 Web-based navigation app with real-time routing, nearby places discovery, and hazard alerts.
 
+deployment link: https://mapzy-sigma.vercel.app/
+
+video link: https://drive.google.com/drive/folders/19NsxZvnwm3R7bOVyOWV3sTi2Zs3RL2Kt?usp=sharing
+
 ## Why It Matters
 
 Promotes road safety and legal compliance by alerting drivers to speed camera locations and road hazards. Helps citizens stay within speed limits, avoid traffic violations, and navigate safely around construction zones and accidents. Supports government road safety initiatives by encouraging responsible driving behavior.
@@ -32,6 +36,4 @@ Users will earn reward points by reporting speed cameras and hazards. A leaderbo
 - Vanilla JavaScript
 
 ---
-
-**Note:** Mappls works for India only.
 
