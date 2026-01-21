@@ -1065,8 +1065,6 @@
                     Sign in with Google
                 </button>
 
-                <!-- Divider -->
-                <div class="auth-divider">OR</div>
 
                 <!-- Email/Password Form -->
                 <div class="email-auth-form active" id="emailAuthForm">
@@ -1186,45 +1184,6 @@
 
 
 
-
-    <!-- Map Style Switcher - Top Right -->
-    <div class="map-style-switcher">
-        <button class="style-toggle-btn" id="styleToggleBtn">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path
-                    d="M12 2v6M12 18v4M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M2 12h6M18 12h4M4.93 19.07l4.24-4.24M14.83 9.17l4.24-4.24">
-                </path>
-            </svg>
-            <span id="currentStyleName">Standard</span>
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="6 9 12 15 18 9"></polyline>
-            </svg>
-        </button>
-        <div class="style-dropdown" id="styleDropdown">
-            <div class="style-option selected" data-style="standard">
-                <div class="style-option-icon standard"></div>
-                <span>Standard</span>
-            </div>
-            <div class="style-option" data-style="hybrid">
-                <div class="style-option-icon hybrid"></div>
-                <span>Hybrid</span>
-            </div>
-            <div class="style-option" data-style="satellite">
-                <div class="style-option-icon satellite"></div>
-                <span>Satellite</span>
-            </div>
-            <div class="style-option" data-style="terrain">
-                <div class="style-option-icon terrain"></div>
-                <span>Terrain</span>
-            </div>
-            <div class="style-option" data-style="night">
-                <div class="style-option-icon night"></div>
-                <span>Night</span>
-            </div>
-        </div>
-    </div>
 
     <!-- Navigation Panel -->
     <div class="nav-panel">
@@ -2114,6 +2073,34 @@
                     radius: 5000,
                     page: 1,
                     fitbounds: true,
+                    geolocation: false,
+                    icon: {
+                        url: getMarkerIcon(category),
+                        width: 30,
+                        height: 40
+                    },
+                    click_callback: function (data) {
+                        console.log('Marker clicked:', data);
+
+                        // Create popup content
+                        const popupHTML = `
+                            <div style="padding: 10px; min-width: 200px;">
+                                <h4 style="margin: 0 0 8px 0; color: #1e293b; font-size: 14px;">
+                                    ${data.placeName || 'Unknown Place'}
+                                </h4>
+                                <p style="margin: 0 0 6px 0; color: #64748b; font-size: 12px;">
+                                    📍 ${data.placeAddress || 'Address not available'}
+                                </p>
+                                ${data.distance ? `<p style="margin: 0; color: #3b82f6; font-size: 11px;">📏 ${data.distance} km away</p>` : ''}
+                            </div>
+                        `;
+
+                        // Show popup
+                        new mappls.Popup({ offset: { 'bottom': [0, -20] } })
+                            .setLngLat([data.longitude, data.latitude])
+                            .setHTML(popupHTML)
+                            .addTo(map);
+                    },
                     callback: function (data) {
                         console.log('Nearby search response:', data);
 

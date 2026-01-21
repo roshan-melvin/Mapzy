@@ -1,49 +1,36 @@
-<<<<<<< HEAD
-# DeepBlueS11 - Interactive Mapping Application
+# Mapzy - Navigation & Safety App
 
-A web-based mapping application for India featuring place search, turn-by-turn navigation, and real-time hazard detection.
+Web-based navigation app with real-time routing, nearby places discovery, and hazard alerts.
+
+## Why It Matters
+
+Promotes road safety and legal compliance by alerting drivers to speed camera locations and road hazards. Helps citizens stay within speed limits, avoid traffic violations, and navigate safely around construction zones and accidents. Supports government road safety initiatives by encouraging responsible driving behavior.
 
 ## Features
 
-- 🗺️ **Interactive Map** - Powered by Mappls SDK with zoom, 3D view, and fullscreen controls
-- 🔍 **Smart Search** - Real-time autocomplete for places, addresses, and landmarks
-- 📍 **Current Location** - GPS-based location tracking
-- 🧭 **Navigation** - Turn-by-turn directions with distance and duration
-- ⚠️ **Hazard Detection** - Real-time display of speed bumps and traffic calming measures from OpenStreetMap
+- **Turn-by-turn Navigation** - Real-time directions with route calculation
+- **Nearby Places** - Find petrol pumps, restaurants, ATMs, hospitals, hotels, cafes, pharmacies, banks within 5km
+- **Hazard Alerts** - View speed cameras and road hazards from OpenStreetMap (toggle on/off)
+- **Authentication** - Google Sign-In & Email/Password login
+
+## Planned: Gamification System
+
+Users will earn reward points by reporting speed cameras and hazards. A leaderboard will rank users based on genuine reports, encouraging community participation.
 
 ## Setup
 
-1. **Get Mappls API Token**
-   - Sign up at [Mappls Console](https://auth.mappls.com/console/)
-   - Generate an access token
+1. Add Mappls API key to `config.js`
+2. Configure Firebase in `firebase-config.js`
+3. Set Firestore security rules
+4. Open `index.html`
 
-2. **Configure Application**
-   ```bash
-   cp config.example.js config.js
-   ```
-   - Edit `config.js` and add your access token
+## Tech Stack
 
-3. **Run Application**
-   - Open `index.html` in a web browser
-   - Allow location permissions when prompted
+- Mappls Web SDK
+- Firebase (Auth & Firestore)
+- OpenStreetMap
+- Vanilla JavaScript
 
-## Usage
+---
 
-- **Search**: Type in the search bar to find places
-- **Navigate**: Use the navigation panel to get directions
-- **Find Location**: Click the location button to center map on your position
-- **View Hazards**: Click the warning button to toggle hazard markers
-
-## Technologies
-
-- Mappls Map SDK v3.0
-- OpenStreetMap Overpass API
-- Browser Geolocation API
-
-## License
-
-MIT
-=======
-
-static code = "agtofjqdydevmnjedjlpintqdxdzbfdiktnb"
->>>>>>> d713560efdfb589373155d91ed286e1ad6920213
+**Note:** Mappls works for India only.

@@ -100,6 +100,10 @@ async function signInWithEmail(email, password) {
         // Save user profile to Firestore
         await saveUserProfile(user);
 
+        // Clear input fields
+        document.getElementById('emailInput').value = '';
+        document.getElementById('passwordInput').value = '';
+
         // Close sidebar after sign in
         closeSidebar();
 
@@ -142,6 +146,10 @@ async function signUpWithEmail(email, password) {
 
         // Save user profile to Firestore
         await saveUserProfile(user);
+
+        // Clear input fields
+        document.getElementById('emailInput').value = '';
+        document.getElementById('passwordInput').value = '';
 
         // Close sidebar after sign up
         closeSidebar();
