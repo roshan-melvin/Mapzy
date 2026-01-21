@@ -21,12 +21,6 @@ Promotes road safety and legal compliance by alerting drivers to speed camera lo
 
 Users will earn reward points by reporting speed cameras and hazards. A leaderboard will rank users based on genuine reports, encouraging community participation.
 
-## Setup
-
-1. Add Mappls API key to `config.js`
-2. Configure Firebase in `firebase-config.js`
-3. Set Firestore security rules
-4. Open `index.html`
 
 ## Tech Stack
 
