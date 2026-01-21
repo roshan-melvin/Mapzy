@@ -1,15 +1,15 @@
 // Firebase Configuration and Authentication
 // This file handles all Firebase initialization and authentication functions
 
-// Firebase Configuration (Injected via Netlify Environment Variables)
+// Firebase Configuration
 const firebaseConfig = {
-    apiKey: "__FIREBASE_API_KEY__",
-    authDomain: "__FIREBASE_AUTH_DOMAIN__",
-    projectId: "__FIREBASE_PROJECT_ID__",
-    storageBucket: "__FIREBASE_STORAGE_BUCKET__",
-    messagingSenderId: "__FIREBASE_MESSAGING_SENDER_ID__",
-    appId: "__FIREBASE_APP_ID__",
-    measurementId: "__FIREBASE_MEASUREMENT_ID__"
+    apiKey: "AIzaSyBlPxQiAFQX_PCNdWRO9kXolpyqWsJ88LM",
+    authDomain: "mapzy2.firebaseapp.com",
+    projectId: "mapzy2",
+    storageBucket: "mapzy2.firebasestorage.app",
+    messagingSenderId: "722722178522",
+    appId: "1:722722178522:web:308907fea0d0249536ece3",
+    measurementId: "G-DJE8NG89Q6"
 };
 
 // Initialize Firebase (will be done after SDK loads)
