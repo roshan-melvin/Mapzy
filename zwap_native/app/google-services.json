@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "722722178522",
+    "project_id": "mapzy2",
+    "storage_bucket": "mapzy2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:722722178522:android:72d16f1a6503233f36ece3",
+        "android_client_info": {
+          "package_name": "com.swapmap.zwap"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "722722178522-5uoed92ot1jhe2us09ndc1skmipi9sv1.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCPGiRRfxRCJTrrz_hnLzKgBB56gP2NzEU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "722722178522-5uoed92ot1jhe2us09ndc1skmipi9sv1.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

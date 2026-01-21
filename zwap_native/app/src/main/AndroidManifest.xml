@@ -8,12 +8,15 @@
         android:label="Zwap Native"
         android:theme="@style/Theme.Zwap">
         
-        <activity android:name=".demo.MainActivity"
+        <activity android:name=".demo.AuthActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity android:name=".demo.MainActivity"
+            android:exported="true" />
     </application>
 </manifest>
