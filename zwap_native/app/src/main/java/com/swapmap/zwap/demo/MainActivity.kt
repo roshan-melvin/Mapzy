@@ -631,7 +631,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             saveToHistory(location)
             selectedELoc = location.mapplsPin
             findViewById<TextView>(R.id.search_trigger).text = location.placeName
-            // findViewById<View>(R.id.btn_directions).visibility = View.VISIBLE
+            findViewById<View>(R.id.btn_directions).visibility = View.VISIBLE
             
             location.mapplsPin?.let { pin ->
                 isFollowMode = false
