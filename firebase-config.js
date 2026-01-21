@@ -17,6 +17,17 @@ let auth;
 let db;
 let currentUser = null;
 
+// Gamification State - Single source of truth
+let userStats = {
+    rewardPoints: 7980,
+    totalReports: 161,
+    reportBreakdown: {
+        hazard: 25,
+        speedCamera: 25,
+        others: 40
+    }
+};
+
 // Initialize Firebase after SDKs are loaded
 function initializeFirebase() {
     try {
@@ -49,6 +60,9 @@ function onAuthStateChanged(user) {
 
         // Load search history
         loadSearchHistory();
+
+        // Load user stats (gamification)
+        loadUserStats();
 
     } else {
         // User is signed out
@@ -311,4 +325,124 @@ function clearSearchHistoryUI() {
     window.searchHistory = [];
 }
 
+// ========== GAMIFICATION FUNCTIONS ==========
+
+// Load user stats from Firestore
+async function loadUserStats() {
+    if (!currentUser) {
+        // Reset to defaults if not logged in
+        userStats = {
+            rewardPoints: 0,
+            totalReports: 0,
+            reportBreakdown: { hazard: 0, speedCamera: 0, others: 0 }
+        };
+        return;
+    }
+
+    try {
+        const userDoc = await db.collection('users').doc(currentUser.uid).get();
+
+        if (userDoc.exists) {
+            const data = userDoc.data();
+            userStats = {
+                rewardPoints: data.rewardPoints || 0,
+                totalReports: data.totalReports || 0,
+                reportBreakdown: data.reportBreakdown || { hazard: 0, speedCamera: 0, others: 0 }
+            };
+        } else {
+            // Initialize for new user
+            userStats = {
+                rewardPoints: 0,
+                totalReports: 0,
+                reportBreakdown: { hazard: 0, speedCamera: 0, others: 0 }
+            };
+            await saveUserStats();
+        }
+
+        console.log('User stats loaded:', userStats);
+        updateRewardPointsUI();
+
+    } catch (error) {
+        console.error('Error loading user stats:', error);
+    }
+}
+
+// Save user stats to Firestore
+async function saveUserStats() {
+    if (!currentUser) return;
+
+    try {
+        await db.collection('users').doc(currentUser.uid).set({
+            rewardPoints: userStats.rewardPoints,
+            totalReports: userStats.totalReports,
+            reportBreakdown: userStats.reportBreakdown
+        }, { merge: true });
+
+        console.log('User stats saved');
+    } catch (error) {
+        console.error('Error saving user stats:', error);
+    }
+}
+
+// Submit a report
+async function submitReport(type, location) {
+    if (!currentUser) {
+        alert('Please sign in to submit reports');
+        return false;
+    }
+
+    try {
+        // Add report to Firestore
+        await db.collection('users').doc(currentUser.uid)
+            .collection('reports')
+            .add({
+                type: type,
+                location: location,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            });
+
+        // Update stats instantly
+        userStats.totalReports += 1;
+        userStats.reportBreakdown[type] += 1;
+        userStats.rewardPoints += 1;
+
+        // Save to Firebase
+        await saveUserStats();
+
+        // Update UI instantly
+        updateRewardPointsUI();
+        updateStatsOverlayUI();
+
+        console.log('Report submitted:', type, location);
+        return true;
+
+    } catch (error) {
+        console.error('Error submitting report:', error);
+        alert('Failed to submit report. Please try again.');
+        return false;
+    }
+}
+
+// Update reward points display in UI
+function updateRewardPointsUI() {
+    const rewardPointsElement = document.getElementById('rewardPoints');
+    if (rewardPointsElement) {
+        rewardPointsElement.textContent = userStats.rewardPoints;
+    }
+}
+
+// Update stats overlay UI
+function updateStatsOverlayUI() {
+    const totalReportsElement = document.getElementById('statsTotalReports');
+    const hazardReportsElement = document.getElementById('statsHazardReports');
+    const speedCameraReportsElement = document.getElementById('statsSpeedCameraReports');
+    const othersReportsElement = document.getElementById('statsOthersReports');
+
+    if (totalReportsElement) totalReportsElement.textContent = userStats.totalReports;
+    if (hazardReportsElement) hazardReportsElement.textContent = userStats.reportBreakdown.hazard;
+    if (speedCameraReportsElement) speedCameraReportsElement.textContent = userStats.reportBreakdown.speedCamera;
+    if (othersReportsElement) othersReportsElement.textContent = userStats.reportBreakdown.others;
+}
+
 console.log('firebase-config.js loaded');
+

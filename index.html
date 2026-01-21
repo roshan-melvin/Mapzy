@@ -829,6 +829,35 @@
             box-shadow: 0 2px 8px rgba(220, 38, 38, 0.15);
         }
 
+        /* Reward Points Display */
+        .reward-points-display {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 8px;
+            padding: 6px 12px;
+            background: #fffbeb;
+            border: 1px solid #fbbf24;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .reward-points-display:hover {
+            background: #fef3c7;
+            transform: scale(1.05);
+        }
+
+        .coin-icon {
+            font-size: 18px;
+        }
+
+        .reward-points-value {
+            font-size: 14px;
+            font-weight: 700;
+            color: #92400e;
+        }
+
         /* Auth Divider */
         .auth-divider {
             display: flex;
@@ -1007,6 +1036,156 @@
             border-color: #fca5a5;
             color: #dc2626;
         }
+
+        /* Stats Overlay */
+        .stats-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(30, 41, 59, 0.95);
+            backdrop-filter: blur(10px);
+            z-index: 1000;
+            display: none;
+            flex-direction: column;
+        }
+
+        .stats-overlay.active {
+            display: flex;
+        }
+
+        .stats-overlay-header {
+            padding: 20px;
+            border-bottom: 1px solid #334155;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .stats-overlay-header h3 {
+            margin: 0;
+            color: white;
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .stats-close-btn {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+
+        .stats-close-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .stats-overlay-content {
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            margin-bottom: 12px;
+        }
+
+        .stat-label {
+            color: #cbd5e1;
+            font-size: 14px;
+        }
+
+        .stat-value {
+            color: #fbbf24;
+            font-size: 20px;
+            font-weight: 700;
+        }
+
+        /* Leaderboard */
+        .leaderboard-section {
+            margin-top: 24px;
+            padding-top: 20px;
+            border-top: 1px solid #334155;
+        }
+
+        .leaderboard-title {
+            margin: 0 0 16px 0;
+            color: white;
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .leaderboard-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .leaderboard-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            border-left: 3px solid transparent;
+        }
+
+        .leaderboard-item.rank-1 {
+            background: rgba(251, 191, 36, 0.1);
+            border-left-color: #fbbf24;
+        }
+
+        .leaderboard-item.rank-2 {
+            background: rgba(203, 213, 225, 0.1);
+            border-left-color: #cbd5e1;
+        }
+
+        .leaderboard-item.rank-3 {
+            background: rgba(205, 127, 50, 0.1);
+            border-left-color: #cd7f32;
+        }
+
+        .leaderboard-item .rank {
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            color: white;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .leaderboard-item .username {
+            flex: 1;
+            color: #e2e8f0;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .leaderboard-item .points {
+            color: #fbbf24;
+            font-size: 14px;
+            font-weight: 600;
+        }
     </style>
 
 </head>
@@ -1090,6 +1269,11 @@
                         <div class="profile-details">
                             <div class="profile-name" id="profileName">User Name</div>
                             <div class="profile-email" id="profileEmail">user@email.com</div>
+                            <!-- Reward Points -->
+                            <div class="reward-points-display" id="rewardPointsDisplay">
+                                <span class="coin-icon" id="coinIcon">🪙</span>
+                                <span class="reward-points-value" id="rewardPoints">7980</span>
+                            </div>
                         </div>
                     </div>
                     <button class="logout-btn" id="logoutBtn">Logout</button>
@@ -1143,6 +1327,64 @@
                 </div>
 
                 <button class="clear-nearby-btn" id="clearNearbyBtn" style="display: none;">Clear All</button>
+            </div>
+        </div>
+
+        <!-- Stats Overlay (appears on coin click) -->
+        <div class="stats-overlay" id="statsOverlay">
+            <div class="stats-overlay-header">
+                <h3>Your Stats</h3>
+                <button class="stats-close-btn" id="statsCloseBtn">✕</button>
+            </div>
+            <div class="stats-overlay-content">
+                <div class="stat-item">
+                    <span class="stat-label">Total Reports Submitted</span>
+                    <span class="stat-value" id="statsTotalReports">161</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">🚧 Hazard Reports</span>
+                    <span class="stat-value" id="statsHazardReports">25</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">📷 Speed Camera Reports</span>
+                    <span class="stat-value" id="statsSpeedCameraReports">25</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">📌 Other Reports</span>
+                    <span class="stat-value" id="statsOthersReports">40</span>
+                </div>
+
+                <!-- Leaderboard Section -->
+                <div class="leaderboard-section">
+                    <h4 class="leaderboard-title">🏆 Leaderboard</h4>
+                    <div class="leaderboard-list">
+                        <div class="leaderboard-item rank-1">
+                            <span class="rank">1</span>
+                            <span class="username">Ram</span>
+                            <span class="points">7980 🪙</span>
+                        </div>
+                        <div class="leaderboard-item rank-2">
+                            <span class="rank">2</span>
+                            <span class="username">Priya</span>
+                            <span class="points">6540 🪙</span>
+                        </div>
+                        <div class="leaderboard-item rank-3">
+                            <span class="rank">3</span>
+                            <span class="username">Arjun</span>
+                            <span class="points">5230 🪙</span>
+                        </div>
+                        <div class="leaderboard-item">
+                            <span class="rank">4</span>
+                            <span class="username">Sneha</span>
+                            <span class="points">4890 🪙</span>
+                        </div>
+                        <div class="leaderboard-item">
+                            <span class="rank">5</span>
+                            <span class="username">Vikram</span>
+                            <span class="points">4120 🪙</span>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -2001,6 +2243,43 @@
 
             // Make closeSidebar available globally for firebase-config.js
             window.closeSidebar = closeSidebarMenu;
+
+            // Gamification - Stats Overlay Toggle
+            const coinIcon = document.getElementById('coinIcon');
+            const rewardPointsDisplay = document.getElementById('rewardPointsDisplay');
+            const statsOverlay = document.getElementById('statsOverlay');
+            const statsCloseBtn = document.getElementById('statsCloseBtn');
+
+            // Open stats overlay on coin click
+            if (coinIcon) {
+                coinIcon.addEventListener('click', function () {
+                    statsOverlay.classList.add('active');
+                    updateStatsOverlayUI();
+                });
+            }
+
+            if (rewardPointsDisplay) {
+                rewardPointsDisplay.addEventListener('click', function () {
+                    statsOverlay.classList.add('active');
+                    updateStatsOverlayUI();
+                });
+            }
+
+            // Close stats overlay
+            if (statsCloseBtn) {
+                statsCloseBtn.addEventListener('click', function () {
+                    statsOverlay.classList.remove('active');
+                });
+            }
+
+            // Close stats overlay when clicking outside
+            if (statsOverlay) {
+                statsOverlay.addEventListener('click', function (e) {
+                    if (e.target === statsOverlay) {
+                        statsOverlay.classList.remove('active');
+                    }
+                });
+            }
 
             console.log('Sidebar initialized');
         }
