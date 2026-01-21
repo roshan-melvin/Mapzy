@@ -1,9 +1,0 @@
-[build]
-  publish = "."
-  command = "chmod +x setup-env.sh && ./setup-env.sh"
-
-[[redirects]]
-  from = "/api/overpass/*"
-  to = "https://overpass.kumi.systems/api/interpreter"
-  status = 200
-  force = true

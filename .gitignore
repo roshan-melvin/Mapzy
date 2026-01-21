@@ -1,8 +1,5 @@
 # Mappls API Configuration - Contains sensitive access tokens
 config.js
-firebase-config.js
-!firebase-config.js.template
-
 
 # Environment files
 .env
