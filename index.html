@@ -1,0 +1,2222 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="initial-scale=1.0">
+    <title>Mapzy</title>
+
+    <!-- Load configuration first (contains access token) -->
+    <script src="config.js"></script>
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+
+    <!-- Firebase Configuration -->
+    <script src="firebase-config.js"></script>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Premium Search Bar - Center Bottom */
+        .search-container {
+            position: absolute;
+            bottom: 25px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            width: 90%;
+            max-width: 600px;
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 22px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 20px;
+            height: 20px;
+            stroke: #666;
+            pointer-events: none;
+            z-index: 1;
+            transition: stroke 0.3s ease;
+        }
+
+        .search-box:focus~.search-icon {
+            stroke: #4CAF50;
+        }
+
+        .search-box {
+            width: 100%;
+            padding: 18px 24px 18px 54px;
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            border-radius: 50px;
+            font-size: 16px;
+            font-weight: 400;
+            outline: none;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12),
+                0 2px 8px rgba(0, 0, 0, 0.08);
+            color: #333;
+        }
+
+        .search-box::placeholder {
+            color: #999;
+            font-weight: 400;
+        }
+
+        .search-box:hover {
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.16),
+                0 4px 12px rgba(0, 0, 0, 0.12);
+            transform: translateY(-2px);
+        }
+
+        .search-box:focus {
+            border-color: rgba(76, 175, 80, 0.5);
+            box-shadow: 0 12px 48px rgba(76, 175, 80, 0.15),
+                0 4px 16px rgba(76, 175, 80, 0.12);
+            transform: translateY(-2px);
+        }
+
+        /* Hide Mappls Watermark and Attribution */
+        #watermark_logo0,
+        img[id^="watermark_logo"],
+        .cst-attrib-cont,
+        #mmi_attrib0 {
+            display: none !important;
+            visibility: hidden !important;
+        }
+
+        /* Position Map Controls (3D, +, -) Horizontally at Bottom Left */
+        .map-control {
+            position: absolute !important;
+            bottom: 10px !important;
+            left: 10px !important;
+            top: auto !important;
+            right: auto !important;
+            transform: none !important;
+            z-index: 9999 !important;
+        }
+
+        .map-control .expand-map-control {
+            display: flex !important;
+            flex-direction: row !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            list-style: none !important;
+        }
+
+        .map-control .expand-map-control>li {
+            margin: 0 2px !important;
+        }
+
+        /* Make button corners consistently rounded */
+        .map-control .expand-map-control>li>a,
+        .map-control .expand-map-control>li>button,
+        .map-control .expand-map-control>li {
+            border-radius: 8px !important;
+        }
+
+        /* Override any specific corner radius on first/last items */
+        .map-control .expand-map-control>li:first-child,
+        .map-control .expand-map-control>li:first-child>a,
+        .map-control .expand-map-control>li:first-child>button {
+            border-radius: 8px !important;
+        }
+
+        .map-control .expand-map-control>li:last-child,
+        .map-control .expand-map-control>li:last-child>a,
+        .map-control .expand-map-control>li:last-child>button {
+            border-radius: 8px !important;
+        }
+
+        /* Search Autocomplete Styles - Force Above Search Bar */
+        .search-container>div[style*="position"],
+        .search-container .auto-suggest,
+        #searchBox~div {
+            position: absolute !important;
+            bottom: 100% !important;
+            top: auto !important;
+            left: 0 !important;
+            right: 0 !important;
+            margin-bottom: 12px !important;
+            margin-top: 0 !important;
+            background: rgba(255, 255, 255, 0.98) !important;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 0, 0, 0.08) !important;
+            border-radius: 16px !important;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12),
+                0 2px 8px rgba(0, 0, 0, 0.08) !important;
+            max-height: 350px !important;
+            overflow-y: auto !important;
+        }
+
+        .auto-suggest-item {
+            padding: 14px 20px;
+            cursor: pointer;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+            transition: all 0.2s ease;
+        }
+
+        .auto-suggest-item:hover {
+            background-color: rgba(76, 175, 80, 0.08);
+            padding-left: 24px;
+        }
+
+        .auto-suggest-item:first-child {
+            border-radius: 16px 16px 0 0;
+        }
+
+        .auto-suggest-item:last-child {
+            border-bottom: none;
+            border-radius: 0 0 16px 16px;
+        }
+
+        .place-name {
+            font-weight: 500;
+            color: #333;
+            margin-bottom: 4px;
+            font-size: 15px;
+        }
+
+        .place-address {
+            font-size: 13px;
+            color: #777;
+            line-height: 1.4;
+        }
+
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 1001;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        #error {
+            display: none;
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: #ff4444;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 5px;
+            z-index: 1001;
+            max-width: 300px;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #4CAF50;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Navigation Panel - Right Side */
+        .nav-panel {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+            z-index: 1000;
+            width: 320px;
+            max-height: calc(100vh - 30px);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .nav-header {
+            padding: 16px;
+            background: #1e293b;
+            color: white;
+            font-weight: 600;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border-bottom: 1px solid #334155;
+        }
+
+        .nav-body {
+            padding: 16px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .nav-input-group {
+            margin-bottom: 12px;
+        }
+
+        .nav-label {
+            font-size: 12px;
+            font-weight: 500;
+            color: #666;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .nav-input {
+            width: 100%;
+            padding: 12px 14px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            outline: none;
+            transition: all 0.2s ease;
+        }
+
+        .nav-input:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .nav-button {
+            width: 100%;
+            padding: 14px;
+            background: #1e293b;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 8px;
+        }
+
+        .nav-button:hover {
+            background: #334155;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(30, 41, 59, 0.4);
+        }
+
+        .nav-button:active {
+            transform: translateY(0);
+        }
+
+        .nav-button:disabled {
+            background: #94a3b8;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .nav-button-secondary {
+            background: white;
+            color: #64748b;
+            border: 2px solid #e5e7eb;
+        }
+
+        .nav-button-secondary:hover {
+            background: #f8fafc;
+            border-color: #cbd5e1;
+            color: #475569;
+        }
+
+        .route-info {
+            background: #f8f9fa;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 12px;
+            display: none;
+        }
+
+        .route-info.active {
+            display: block;
+        }
+
+        .route-stat {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .route-stat-label {
+            color: #666;
+        }
+
+        .route-stat-value {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .route-steps {
+            margin-top: 16px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .route-step {
+            padding: 10px;
+            background: white;
+            border-left: 3px solid #667eea;
+            margin-bottom: 8px;
+            border-radius: 4px;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .route-step-distance {
+            color: #999;
+            font-size: 11px;
+            margin-top: 4px;
+        }
+
+        .location-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 4px;
+        }
+
+        .location-dot.from {
+            background: #4CAF50;
+        }
+
+        .location-dot.to {
+            background: #F44336;
+        }
+
+        /* Current Location Button */
+        .location-btn {
+            width: 56px;
+            height: 56px;
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12),
+                0 2px 8px rgba(0, 0, 0, 0.08);
+            flex-shrink: 0;
+        }
+
+        .location-btn:hover {
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.16),
+                0 4px 12px rgba(0, 0, 0, 0.12);
+            transform: translateY(-2px);
+        }
+
+        .location-btn:active {
+            transform: translateY(0);
+        }
+
+        .location-btn svg {
+            width: 24px;
+            height: 24px;
+            stroke: #4CAF50;
+            transition: stroke 0.3s ease;
+        }
+
+        .location-btn:hover svg {
+            stroke: #45a049;
+        }
+
+        .location-btn.loading svg {
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        .search-wrapper {
+            position: relative;
+            flex: 1;
+        }
+
+        /* Hazard Toggle Button Active State */
+        .location-btn.active {
+            background: rgba(255, 215, 0, 0.98);
+            border-color: #FF6B00;
+        }
+
+        .location-btn.active svg {
+            stroke: #FF6B00;
+        }
+
+        /* Map Style Switcher - Top Right */
+        .map-style-switcher {
+            position: absolute;
+            top: 15px;
+            right: 350px;
+            z-index: 1000;
+        }
+
+        .style-toggle-btn {
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            border-radius: 12px;
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+            font-size: 15px;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .style-toggle-btn:hover {
+            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.16);
+            transform: translateY(-2px);
+        }
+
+        .style-toggle-btn svg {
+            width: 20px;
+            height: 20px;
+            stroke: #667eea;
+        }
+
+        .style-dropdown {
+            position: absolute;
+            top: 100%;
+            right: 0;
+            margin-top: 8px;
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.16);
+            min-width: 200px;
+            overflow: hidden;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-10px);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .style-dropdown.active {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+
+        .style-option {
+            padding: 14px 18px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+            color: #333;
+        }
+
+        .style-option:last-child {
+            border-bottom: none;
+        }
+
+        .style-option:hover {
+            background: rgba(102, 126, 234, 0.08);
+            padding-left: 22px;
+        }
+
+        .style-option.selected {
+            background: rgba(102, 126, 234, 0.12);
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .style-option-icon {
+            width: 18px;
+            height: 18px;
+            border-radius: 4px;
+            border: 2px solid rgba(0, 0, 0, 0.1);
+        }
+
+        .style-option-icon.standard {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        }
+
+        .style-option-icon.hybrid {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .style-option-icon.satellite {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }
+
+        .style-option-icon.terrain {
+            background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+        }
+
+        .style-option-icon.night {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+        }
+
+        /* Hamburger Menu Icon - Top Left */
+        .hamburger-menu {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            z-index: 1997;
+            width: 50px;
+            height: 50px;
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+        }
+
+        .hamburger-menu:hover {
+            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.16);
+            transform: translateY(-2px);
+        }
+
+        .hamburger-menu svg {
+            width: 24px;
+            height: 24px;
+            stroke: #333;
+        }
+
+        /* Sidebar Menu */
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: -350px;
+            width: 350px;
+            height: 100%;
+            background: white;
+            box-shadow: 4px 0 24px rgba(0, 0, 0, 0.15);
+            z-index: 1999;
+            transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            overflow-y: auto;
+        }
+
+        .sidebar.open {
+            left: 0;
+        }
+
+        /* Sidebar Overlay */
+        .sidebar-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1998;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .sidebar-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        /* Sidebar Header */
+        .sidebar-header {
+            padding: 20px;
+            background: #1e293b;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid #334155;
+        }
+
+        .sidebar-title {
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .sidebar-close {
+            width: 32px;
+            height: 32px;
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s ease;
+        }
+
+        .sidebar-close:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .sidebar-close svg {
+            width: 20px;
+            height: 20px;
+            stroke: white;
+        }
+
+        /* Sidebar Content */
+        .sidebar-content {
+            padding: 20px;
+        }
+
+        /* Profile Section */
+        .profile-section {
+            margin-bottom: 24px;
+        }
+
+        .section-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #666;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Profile Info (when logged in) */
+        .profile-info {
+            display: none;
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 16px;
+        }
+
+        .profile-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .profile-photo {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            border: 3px solid white;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .profile-details {
+            flex: 1;
+        }
+
+        .profile-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 4px;
+        }
+
+        .profile-email {
+            font-size: 13px;
+            color: #666;
+        }
+
+        /* Sign In Button */
+        .sign-in-btn {
+            width: 100%;
+            padding: 14px;
+            background: white;
+            border: 2px solid #4285f4;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            color: #4285f4;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .sign-in-btn:hover {
+            background: #4285f4;
+            color: white;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(66, 133, 244, 0.25);
+        }
+
+        .sign-in-btn svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        /* Logout Button */
+        .logout-btn {
+            width: 100%;
+            padding: 12px;
+            background: white;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #64748b;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .logout-btn:hover {
+            background: #fee2e2;
+            border-color: #fca5a5;
+            color: #dc2626;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(220, 38, 38, 0.15);
+        }
+
+        /* Auth Divider */
+        .auth-divider {
+            display: flex;
+            align-items: center;
+            margin: 16px 0;
+            color: #999;
+            font-size: 13px;
+        }
+
+        .auth-divider::before,
+        .auth-divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: #e0e0e0;
+        }
+
+        .auth-divider::before {
+            margin-right: 12px;
+        }
+
+        .auth-divider::after {
+            margin-left: 12px;
+        }
+
+        /* Email/Password Form */
+        .email-auth-form {
+            display: none;
+        }
+
+        .email-auth-form.active {
+            display: block;
+        }
+
+        .form-group {
+            margin-bottom: 12px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            color: #666;
+            margin-bottom: 6px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 12px 14px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            outline: none;
+            transition: all 0.2s ease;
+        }
+
+        .form-input:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .email-sign-in-btn {
+            width: 100%;
+            padding: 14px;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 8px;
+        }
+
+        .email-sign-in-btn:hover {
+            background: #2563eb;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+
+        .toggle-auth-mode {
+            text-align: center;
+            margin-top: 12px;
+            font-size: 13px;
+            color: #666;
+        }
+
+        .toggle-auth-link {
+            color: #3b82f6;
+            cursor: pointer;
+            font-weight: 600;
+            text-decoration: none;
+        }
+
+        .toggle-auth-link:hover {
+            text-decoration: underline;
+        }
+
+        /* Search History Hint */
+        .search-history-hint {
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            text-align: center;
+            color: #666;
+            font-size: 13px;
+        }
+
+        /* Nearby Places Section */
+        .nearby-section {
+            margin-top: 24px;
+            padding-top: 24px;
+            border-top: 1px solid #e5e7eb;
+        }
+
+        .nearby-categories {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-top: 12px;
+        }
+
+        .category-btn {
+            padding: 12px;
+            background: white;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            color: #64748b;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .category-btn:hover {
+            border-color: #3b82f6;
+            color: #3b82f6;
+            background: #eff6ff;
+        }
+
+        .category-btn.active {
+            background: #3b82f6;
+            border-color: #3b82f6;
+            color: white;
+        }
+
+        .category-icon {
+            font-size: 20px;
+        }
+
+        .category-label {
+            font-size: 12px;
+        }
+
+        .clear-nearby-btn {
+            width: 100%;
+            padding: 10px;
+            background: white;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #64748b;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-top: 12px;
+        }
+
+        .clear-nearby-btn:hover {
+            background: #fee2e2;
+            border-color: #fca5a5;
+            color: #dc2626;
+        }
+    </style>
+
+</head>
+
+<body>
+    <!-- Hamburger Menu Icon -->
+    <div class="hamburger-menu" id="hamburgerMenu">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+    </div>
+
+    <!-- Sidebar Overlay -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <!-- Sidebar Menu -->
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-title">Menu</div>
+            <button class="sidebar-close" id="sidebarClose">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
+        </div>
+
+        <div class="sidebar-content">
+            <!-- Profile Section -->
+            <div class="profile-section" id="profileSection">
+                <div class="section-title">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
+                    Profile
+                </div>
+
+                <!-- Sign In Button (shown when logged out) -->
+                <button class="sign-in-btn" id="signInBtn">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 48 48">
+                        <path fill="#FFC107"
+                            d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24c0,11.045,8.955,20,20,20c11.045,0,20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z" />
+                        <path fill="#FF3D00"
+                            d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z" />
+                        <path fill="#4CAF50"
+                            d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36c-5.202,0-9.619-3.317-11.283-7.946l-6.522,5.025C9.505,39.556,16.227,44,24,44z" />
+                        <path fill="#1976D2"
+                            d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.571c0.001-0.001,0.002-0.001,0.003-0.002l6.19,5.238C36.971,39.205,44,34,44,24C44,22.659,43.862,21.35,43.611,20.083z" />
+                    </svg>
+                    Sign in with Google
+                </button>
+
+
+                <!-- Email/Password Form -->
+                <div class="email-auth-form active" id="emailAuthForm">
+                    <div class="form-group">
+                        <label class="form-label" for="emailInput">Email</label>
+                        <input type="email" id="emailInput" class="form-input" placeholder="your@email.com" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="passwordInput">Password</label>
+                        <input type="password" id="passwordInput" class="form-input" placeholder="••••••••" required>
+                    </div>
+                    <button class="email-sign-in-btn" id="emailSignInBtn">Sign In</button>
+                    <div class="toggle-auth-mode">
+                        <span id="authModeText">Don't have an account?</span>
+                        <a class="toggle-auth-link" id="toggleAuthMode">Sign Up</a>
+                    </div>
+                </div>
+
+                <!-- Profile Info (shown when logged in) -->
+                <div class="profile-info" id="profileInfo">
+                    <div class="profile-header">
+                        <img class="profile-photo" id="profilePhoto" src="" alt="Profile">
+                        <div class="profile-details">
+                            <div class="profile-name" id="profileName">User Name</div>
+                            <div class="profile-email" id="profileEmail">user@email.com</div>
+                        </div>
+                    </div>
+                    <button class="logout-btn" id="logoutBtn">Logout</button>
+                </div>
+            </div>
+
+            <!-- Nearby Places Section -->
+            <div class="nearby-section">
+                <div class="section-title">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                        <circle cx="12" cy="10" r="3"></circle>
+                    </svg>
+                    Nearby Places
+                </div>
+
+                <div class="nearby-categories">
+                    <button class="category-btn" data-category="TRNPMP">
+                        <span class="category-icon">⛽</span>
+                        <span class="category-label">Petrol</span>
+                    </button>
+                    <button class="category-btn" data-category="FODCOF">
+                        <span class="category-icon">🍽️</span>
+                        <span class="category-label">Restaurants</span>
+                    </button>
+                    <button class="category-btn" data-category="FINATM">
+                        <span class="category-icon">💰</span>
+                        <span class="category-label">ATMs</span>
+                    </button>
+                    <button class="category-btn" data-category="MEDHSP">
+                        <span class="category-icon">🏥</span>
+                        <span class="category-label">Hospitals</span>
+                    </button>
+                    <button class="category-btn" data-category="ACMHTL">
+                        <span class="category-icon">🏨</span>
+                        <span class="category-label">Hotels</span>
+                    </button>
+                    <button class="category-btn" data-category="FODCAF">
+                        <span class="category-icon">☕</span>
+                        <span class="category-label">Cafes</span>
+                    </button>
+                    <button class="category-btn" data-category="MEDPHR">
+                        <span class="category-icon">💊</span>
+                        <span class="category-label">Pharmacies</span>
+                    </button>
+                    <button class="category-btn" data-category="FINBNK">
+                        <span class="category-icon">🏦</span>
+                        <span class="category-label">Banks</span>
+                    </button>
+                </div>
+
+                <button class="clear-nearby-btn" id="clearNearbyBtn" style="display: none;">Clear All</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="loading">
+        <div class="spinner"></div>
+        <p>Loading Mapzy...</p>
+    </div>
+    <div id="error"></div>
+    <div id="map"></div>
+
+    <!-- Premium Search Bar - Center Bottom -->
+    <div class="search-container">
+        <div class="search-wrapper">
+            <input type="text" id="searchBox" class="search-box" placeholder="Search places, addresses, landmarks...">
+            <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.35-4.35"></path>
+            </svg>
+        </div>
+        <button class="location-btn" id="currentLocationBtn" title="Get Current Location">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+        </button>
+        <button class="location-btn" id="hazardToggleBtn" title="Toggle Hazard Markers">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z">
+                </path>
+                <line x1="12" y1="9" x2="12" y2="13"></line>
+                <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+        </button>
+    </div>
+
+
+
+
+    <!-- Navigation Panel -->
+    <div class="nav-panel">
+        <div class="nav-header">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="3 11 22 2 13 21 11 13 3 11"></polygon>
+            </svg>
+            Navigation
+        </div>
+
+        <div class="nav-body">
+            <div class="nav-input-group">
+                <div class="nav-label">
+                    <span class="location-dot from"></span>
+                    From (Starting Point)
+                </div>
+                <input type="text" id="fromInput" class="nav-input" placeholder="Your location or address...">
+            </div>
+
+            <div class="nav-input-group">
+                <div class="nav-label">
+                    <span class="location-dot to"></span>
+                    To (Destination)
+                </div>
+                <input type="text" id="toInput" class="nav-input" placeholder="Where do you want to go?">
+            </div>
+
+            <button id="getDirections" class="nav-button">
+                🚀 Get Directions
+            </button>
+
+            <button id="clearRoute" class="nav-button nav-button-secondary" style="display: none;">
+                ✕ Clear Route
+            </button>
+
+            <div id="routeInfo" class="route-info">
+                <div class="route-stat">
+                    <span class="route-stat-label">📏 Distance:</span>
+                    <span class="route-stat-value" id="routeDistance">-</span>
+                </div>
+                <div class="route-stat">
+                    <span class="route-stat-label">⏱️ Duration:</span>
+                    <span class="route-stat-value" id="routeDuration">-</span>
+                </div>
+                <div class="route-stat">
+                    <span class="route-stat-label">🚗 Via:</span>
+                    <span class="route-stat-value" id="routeVia">-</span>
+                </div>
+
+                <div id="routeSteps" class="route-steps"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Load Mappls SDK with access token from config
+        (function () {
+            const token = MAPPLS_CONFIG.accessToken;
+
+            // Load main SDK
+            const mainScript = document.createElement('script');
+            mainScript.src = `https://sdk.mappls.com/map/sdk/web?v=3.0&access_token=${token}&callback=initMap1`;
+            mainScript.defer = true;
+            mainScript.async = true;
+            document.head.appendChild(mainScript);
+
+            // Load plugins SDK (with search, direction, and safety)
+            const pluginsScript = document.createElement('script');
+            pluginsScript.src = `https://sdk.mappls.com/map/sdk/plugins?access_token=${token}&v=3.0&libraries=search,direction,safety`;
+            document.head.appendChild(pluginsScript);
+        })();
+
+        var map;
+        var currentMarker;
+        var fromMarker, toMarker;
+        var currentRoute;
+        var fromLocation, toLocation;
+
+        // This callback function is called by Mappls SDK when it's ready
+        function initMap1() {
+            console.log('initMap1 called - SDK is ready!');
+
+            try {
+                // Hide loading indicator
+                document.getElementById('loading').style.display = 'none';
+
+                // Initialize map - using array format [lat, lng]
+                map = new mappls.Map('map', {
+                    center: [28.638698, 77.276045],
+                    zoom: 13
+                });
+
+                // Initialize features when map loads
+                map.addListener('load', function () {
+                    console.log('Map loaded successfully!');
+
+                    // Initialize Firebase
+                    initializeFirebase();
+
+                    // Initialize sidebar menu
+                    initSidebar();
+
+                    // Initialize nearby places
+                    initNearbyPlaces();
+
+                    // Initialize place search plugin with autocomplete
+                    initPlaceSearch();
+
+                    // Initialize navigation
+                    initNavigation();
+
+                    // Initialize current location button
+                    initCurrentLocationBtn();
+
+                    // Initialize hazard toggle
+                    initHazardToggle();
+
+                    // Initialize map style switcher
+                    initMapStyleSwitcher();
+                });
+
+
+
+                console.log('Map initialized successfully!');
+
+            } catch (error) {
+                console.error('Error initializing map:', error);
+                const errorDiv = document.getElementById('error');
+                errorDiv.textContent = 'Error: ' + error.message;
+                errorDiv.style.display = 'block';
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        // Initialize Place Search with autocomplete
+        function initPlaceSearch() {
+            const searchBox = document.getElementById('searchBox');
+
+            // Configure place search options
+            var placeOptions = {
+                location: [28.638698, 77.276045], // Current map center as radial bias
+                width: 250,
+                height: 300,
+                clearButton: true,
+                geolocation: false, // Disable "Current Location" in search suggestions
+                blank_callback: function () {
+                    console.log('Search cleared');
+                    // Remove marker when search is cleared
+                    if (currentMarker) {
+                        currentMarker.remove();
+                        currentMarker = null;
+                    }
+                }
+            };
+
+            // Callback when place is selected
+            function searchCallback(data) {
+                console.log('Place selected (full data):', data);
+
+                // Mappls returns an ARRAY of results, not a single object
+                if (data && data.length > 0) {
+                    const selectedPlace = data[0]; // Get first result
+                    console.log('Selected place details:', selectedPlace);
+
+                    // Remove previous marker
+                    if (currentMarker) {
+                        currentMarker.remove();
+                    }
+
+                    // Get eLoc (Mappls unique location ID)
+                    const eloc = selectedPlace.eLoc;
+
+                    if (eloc) {
+                        // Use Mappls pinMarker to place marker using eLoc
+                        mappls.pinMarker({
+                            map: map,
+                            pin: eloc,
+                            popupHtml: selectedPlace.placeName + '<br>' + selectedPlace.placeAddress,
+                            popupOptions: {
+                                openPopup: true
+                            }
+                        }, function (marker) {
+                            currentMarker = marker;
+                            currentMarker.fitbounds(); // Auto-zoom to marker
+                            console.log('Marker placed at:', selectedPlace.placeName);
+                        });
+                    } else {
+                        console.error('No eLoc found in selected place');
+                    }
+                } else if (data && data.error) {
+                    console.error('Search error:', data.error);
+                } else {
+                    console.log('No results returned');
+                }
+            }
+
+            // Initialize the search plugin
+            new mappls.search(searchBox, placeOptions, searchCallback);
+
+            console.log('Place search initialized');
+        }
+
+        // Initialize Navigation
+        function initNavigation() {
+            const fromInput = document.getElementById('fromInput');
+            const toInput = document.getElementById('toInput');
+            const getDirectionsBtn = document.getElementById('getDirections');
+            const clearRouteBtn = document.getElementById('clearRoute');
+
+            // Setup autocomplete for FROM input
+            new mappls.search(fromInput, {
+                location: [28.638698, 77.276045],
+                width: 280,
+                height: 300
+            }, function (data) {
+                if (data && data.length > 0) {
+                    fromLocation = data[0];
+                    console.log('From location selected:', fromLocation);
+
+                    // Place FROM marker
+                    if (fromMarker) fromMarker.remove();
+                    mappls.pinMarker({
+                        map: map,
+                        pin: fromLocation.eLoc,
+                        popupHtml: '🟢 Start: ' + fromLocation.placeName,
+                        icon: createNavMarkerIcon('from')
+                    }, function (marker) {
+                        fromMarker = marker;
+                    });
+                }
+            });
+
+            // Setup autocomplete for TO input
+            new mappls.search(toInput, {
+                location: [28.638698, 77.276045],
+                width: 280,
+                height: 300
+            }, function (data) {
+                if (data && data.length > 0) {
+                    toLocation = data[0];
+                    console.log('To location selected:', toLocation);
+
+                    // Place TO marker
+                    if (toMarker) toMarker.remove();
+                    mappls.pinMarker({
+                        map: map,
+                        pin: toLocation.eLoc,
+                        popupHtml: '🔴 Destination: ' + toLocation.placeName,
+                        icon: createNavMarkerIcon('to')
+                    }, function (marker) {
+                        toMarker = marker;
+                    });
+                }
+            });
+
+            // Get Directions button
+            getDirectionsBtn.addEventListener('click', function () {
+                if (!fromLocation || !toLocation) {
+                    alert('Please select both FROM and TO locations');
+                    return;
+                }
+
+                getDirectionsBtn.disabled = true;
+                getDirectionsBtn.textContent = '⏳ Calculating route...';
+
+                calculateRoute();
+            });
+
+            // Clear Route button
+            clearRouteBtn.addEventListener('click', function () {
+                clearNavigation();
+            });
+
+            console.log('Navigation initialized');
+        }
+
+        // Current Location Button functionality
+        function initCurrentLocationBtn() {
+            const locationBtn = document.getElementById('currentLocationBtn');
+
+            locationBtn.addEventListener('click', function () {
+                if (!navigator.geolocation) {
+                    alert('Geolocation is not supported by your browser');
+                    return;
+                }
+
+                // Add loading state
+                locationBtn.classList.add('loading');
+                locationBtn.disabled = true;
+
+                navigator.geolocation.getCurrentPosition(
+                    function (position) {
+                        const lat = position.coords.latitude;
+                        const lng = position.coords.longitude;
+
+                        console.log('Current location:', lat, lng);
+
+                        // Center map on current location
+                        map.setCenter([lat, lng]);
+                        map.setZoom(15);
+
+                        // Remove previous current location marker
+                        if (currentMarker) {
+                            currentMarker.remove();
+                        }
+
+                        // Add marker at current location
+                        currentMarker = new mappls.Marker({
+                            map: map,
+                            position: [lat, lng],
+                            fitbounds: true,
+                            icon: {
+                                url: 'data:image/svg+xml;base64,' + btoa(`
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24">
+                                        <circle cx="12" cy="12" r="10" fill="#4CAF50" stroke="white" stroke-width="3"/>
+                                        <circle cx="12" cy="12" r="4" fill="white"/>
+                                    </svg>
+                                `),
+                                width: 32,
+                                height: 32
+                            }
+                        });
+
+                        // Add popup
+                        const popup = new mappls.Popup({ offset: [0, -15] })
+                            .setLngLat([lat, lng])
+                            .setHTML('<strong>📍 You are here</strong>')
+                            .addTo(map);
+
+                        // Remove loading state after a short delay to ensure smooth transition
+                        setTimeout(function () {
+                            locationBtn.classList.remove('loading');
+                            locationBtn.disabled = false;
+                        }, 300);
+                    },
+                    function (error) {
+                        console.error('Error getting location:', error);
+                        let errorMsg = 'Unable to get your location';
+
+                        switch (error.code) {
+                            case error.PERMISSION_DENIED:
+                                errorMsg = 'Location permission denied. Please allow location access.';
+                                break;
+                            case error.POSITION_UNAVAILABLE:
+                                errorMsg = 'Location information unavailable.';
+                                break;
+                            case error.TIMEOUT:
+                                errorMsg = 'Location request timed out.';
+                                break;
+                        }
+
+                        alert(errorMsg);
+
+                        // Remove loading state
+                        locationBtn.classList.remove('loading');
+                        locationBtn.disabled = false;
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        timeout: 10000,
+                        maximumAge: 0
+                    }
+                );
+
+                // Fallback: Always remove loading state after 5 seconds
+                setTimeout(function () {
+                    locationBtn.classList.remove('loading');
+                    locationBtn.disabled = false;
+                }, 5000);
+            });
+
+            console.log('Current location button initialized');
+        }
+
+        // Calculate and display route
+        function calculateRoute() {
+            try {
+                // Use Mappls Direction Plugin
+                const directionOptions = {
+                    map: map,
+                    start: fromLocation.eLoc,
+                    end: toLocation.eLoc,
+                    strokeColor: '#667eea',
+                    strokeWidth: 6,
+                    strokeOpacity: 0.8,
+                    fitbounds: true,
+                    divWidth: 0, // Hide default info panel
+                    divId: 'routeInfo'
+                };
+
+                currentRoute = mappls.direction(directionOptions, function (result) {
+                    console.log('Route calculated:', result);
+
+                    if (result && result.routes && result.routes.length > 0) {
+                        displayRouteInfo(result.routes[0]);
+
+                        // Update button state to show success
+                        const btn = document.getElementById('getDirections');
+                        btn.textContent = '🚀 Get Directions';
+                        btn.disabled = false;
+                        document.getElementById('clearRoute').style.display = 'block';
+                    }
+                });
+
+                // Fallback: Reset button after 3 seconds if callback doesn't fire properly
+                setTimeout(function () {
+                    const btn = document.getElementById('getDirections');
+                    if (btn.textContent === '⏳ Calculating route...') {
+                        btn.textContent = '🚀 Get Directions';
+                        btn.disabled = false;
+                    }
+                }, 3000);
+
+            } catch (error) {
+                console.error('Error calculating route:', error);
+                alert('Error calculating route: ' + error.message);
+                document.getElementById('getDirections').textContent = '🚀 Get Directions';
+                document.getElementById('getDirections').disabled = false;
+            }
+        }
+
+        // Display route information
+        function displayRouteInfo(route) {
+            const routeInfoDiv = document.getElementById('routeInfo');
+            const distanceElem = document.getElementById('routeDistance');
+            const durationElem = document.getElementById('routeDuration');
+            const viaElem = document.getElementById('routeVia');
+            const stepsDiv = document.getElementById('routeSteps');
+
+            // Convert meters to km
+            const distanceKm = (route.distance / 1000).toFixed(1);
+            distanceElem.textContent = distanceKm + ' km';
+
+            // Convert seconds to hours and minutes
+            const totalMinutes = Math.round(route.duration / 60);
+            const hours = Math.floor(totalMinutes / 60);
+            const minutes = totalMinutes % 60;
+            let durationText = '';
+            if (hours > 0) durationText += hours + 'h ';
+            durationText += minutes + 'min';
+            durationElem.textContent = durationText;
+
+            // Via route name
+            viaElem.textContent = route.summary || 'Best route';
+
+            // Display turn-by-turn steps
+            if (route.legs && route.legs[0] && route.legs[0].steps) {
+                const steps = route.legs[0].steps;
+                let stepsHTML = '';
+
+                steps.forEach(function (step, index) {
+                    const stepDistance = (step.distance / 1000).toFixed(1);
+                    const instruction = step.html_instructions || step.instruction || 'Continue';
+
+                    stepsHTML += `
+                        <div class="route-step">
+                            <strong>${index + 1}.</strong> ${instruction}
+                            <div class="route-step-distance">📍 ${stepDistance} km</div>
+                        </div>
+                    `;
+                });
+
+                stepsDiv.innerHTML = stepsHTML;
+            }
+
+            routeInfoDiv.classList.add('active');
+        }
+
+        // Clear navigation
+        function clearNavigation() {
+            // Remove markers
+            if (fromMarker) {
+                fromMarker.remove();
+                fromMarker = null;
+            }
+            if (toMarker) {
+                toMarker.remove();
+                toMarker = null;
+            }
+
+            // Remove route
+            if (currentRoute) {
+                mappls.remove({ map: map, layer: currentRoute });
+                currentRoute = null;
+            }
+
+            // Clear inputs
+            document.getElementById('fromInput').value = '';
+            document.getElementById('toInput').value = '';
+
+            // Hide route info
+            document.getElementById('routeInfo').classList.remove('active');
+            document.getElementById('clearRoute').style.display = 'none';
+            document.getElementById('getDirections').textContent = '🚀 Get Directions';
+            document.getElementById('getDirections').disabled = false;
+
+            // Reset variables
+            fromLocation = null;
+            toLocation = null;
+
+            console.log('Navigation cleared');
+        }
+
+        // Create custom marker icon for navigation
+        function createNavMarkerIcon(type) {
+            const colors = {
+                from: '#4CAF50',
+                to: '#F44336'
+            };
+
+            const svg = `
+                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10" fill="${colors[type]}" stroke="white" stroke-width="3"/>
+                </svg>
+            `;
+
+            return {
+                url: 'data:image/svg+xml;base64,' + btoa(svg),
+                width: 32,
+                height: 32,
+                offset: [0, -16]
+            };
+        }
+
+        // ==================== HAZARD OVERLAY SYSTEM ====================
+        var hazardMarkers = [];
+        var hazardsVisible = false;
+        var isLoadingHazards = false;
+
+        // Initialize hazard toggle button
+        function initHazardToggle() {
+            const hazardBtn = document.getElementById('hazardToggleBtn');
+
+            hazardBtn.addEventListener('click', function () {
+                hazardsVisible = !hazardsVisible;
+
+                if (hazardsVisible) {
+                    hazardBtn.classList.add('active');
+                    loadHazards();
+                } else {
+                    hazardBtn.classList.remove('active');
+                    clearHazards();
+                }
+            });
+
+            // Reload hazards when map moves (if visible)
+            map.addListener('moveend', function () {
+                if (hazardsVisible && !isLoadingHazards) {
+                    loadHazards();
+                }
+            });
+
+            console.log('Hazard toggle initialized');
+        }
+
+        // Load hazards from OpenStreetMap via Overpass API
+        function loadHazards() {
+            if (isLoadingHazards) return;
+            isLoadingHazards = true;
+
+            // Get current map bounds
+            const bounds = map.getBounds();
+            const south = bounds.getSouth();
+            const west = bounds.getWest();
+            const north = bounds.getNorth();
+            const east = bounds.getEast();
+            const bbox = `${south},${west},${north},${east}`;
+
+            // Overpass API query for hazards - simplified for speed
+            const query = `
+                [out:json][timeout:15];
+                (
+                    node["highway"="speed_bump"](${bbox});
+                    node["traffic_calming"](${bbox});
+                );
+                out body;
+            `;
+
+            const overpassUrl = 'https://overpass.kumi.systems/api/interpreter';
+
+            fetch(overpassUrl, {
+                method: 'POST',
+                body: query
+            })
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Hazards loaded:', data.elements.length);
+                    displayHazards(data.elements);
+                    isLoadingHazards = false;
+                })
+                .catch(error => {
+                    console.error('Error loading hazards:', error);
+                    isLoadingHazards = false;
+                });
+        }
+
+        // Display hazard markers on map
+        function displayHazards(hazards) {
+            // Clear existing hazard markers
+            clearHazards();
+
+            // Add markers for each hazard - using Mappls native format
+            hazards.forEach(hazard => {
+                if (hazard.lat && hazard.lon) {
+                    const marker = new mappls.Marker({
+                        map: map,
+                        position: [hazard.lat, hazard.lon],
+                        fitbounds: false,
+                        html: '<div style="background: #FF3333; color: white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: bold; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.3);">⚠</div>',
+                        offset: [0, -20]
+                    });
+
+                    // Create popup content
+                    let popupContent = '<strong>⚠️ Hazard</strong><br>';
+
+                    if (hazard.tags) {
+                        if (hazard.tags.hazard) popupContent += `Type: ${hazard.tags.hazard}<br>`;
+                        if (hazard.tags.traffic_calming) popupContent += `Traffic Calming: ${hazard.tags.traffic_calming}<br>`;
+                        if (hazard.tags.barrier) popupContent += `Barrier: ${hazard.tags.barrier}<br>`;
+                        if (hazard.tags.highway === 'speed_bump') popupContent += 'Type: Speed Bump<br>';
+                        if (hazard.tags.name) popupContent += `Name: ${hazard.tags.name}<br>`;
+                        if (hazard.tags.description) popupContent += `${hazard.tags.description}`;
+                    }
+
+                    // Add popup to marker
+                    marker.on('click', function () {
+                        new mappls.Popup({ offset: [0, -15] })
+                            .setLngLat([hazard.lon, hazard.lat])
+                            .setHTML(popupContent)
+                            .addTo(map);
+                    });
+
+                    hazardMarkers.push(marker);
+                }
+            });
+
+            console.log(`Displayed ${hazardMarkers.length} hazard markers`);
+        }
+
+        // Clear all hazard markers
+        function clearHazards() {
+            hazardMarkers.forEach(marker => marker.remove());
+            hazardMarkers = [];
+        }
+
+        // Initialize Map Style Switcher
+        function initMapStyleSwitcher() {
+            const toggleBtn = document.getElementById('styleToggleBtn');
+            const dropdown = document.getElementById('styleDropdown');
+            const styleOptions = document.querySelectorAll('.style-option');
+            const currentStyleName = document.getElementById('currentStyleName');
+
+            // Map style names to Mappls style identifiers
+            const styleMap = {
+                'standard': 'standard',
+                'hybrid': 'hybrid',
+                'satellite': 'satellite',
+                'terrain': 'terrain',
+                'night': 'standard-night'
+            };
+
+            // Toggle dropdown
+            toggleBtn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                dropdown.classList.toggle('active');
+            });
+
+            // Close dropdown when clicking outside
+            document.addEventListener('click', function (e) {
+                if (!toggleBtn.contains(e.target) && !dropdown.contains(e.target)) {
+                    dropdown.classList.remove('active');
+                }
+            });
+
+            // Handle style selection
+            styleOptions.forEach(option => {
+                option.addEventListener('click', function () {
+                    const styleName = this.getAttribute('data-style');
+                    const styleDisplayName = this.querySelector('span').textContent;
+
+                    // Remove selected class from all options
+                    styleOptions.forEach(opt => opt.classList.remove('selected'));
+
+                    // Add selected class to clicked option
+                    this.classList.add('selected');
+
+                    // Update button text
+                    currentStyleName.textContent = styleDisplayName;
+
+                    // Close dropdown
+                    dropdown.classList.remove('active');
+
+                    // Change map style
+                    changeMapStyle(styleName);
+                });
+            });
+
+            console.log('Map style switcher initialized');
+        }
+
+        // Change map style
+        function changeMapStyle(styleName) {
+            const styleMap = {
+                'standard': 'standard',
+                'hybrid': 'hybrid',
+                'satellite': 'satellite',
+                'terrain': 'terrain',
+                'night': 'standard-night'
+            };
+
+            const mapplsStyleName = styleMap[styleName] || 'standard';
+
+            try {
+                // Use Mappls setStyle method
+                if (map && typeof map.setStyle === 'function') {
+                    map.setStyle(mapplsStyleName);
+                    console.log(`Map style changed to: ${mapplsStyleName}`);
+                } else {
+                    console.warn('Map setStyle method not available');
+                }
+            } catch (error) {
+                console.error('Error changing map style:', error);
+            }
+        }
+
+        // Initialize Sidebar Menu
+        function initSidebar() {
+            const hamburgerMenu = document.getElementById('hamburgerMenu');
+            const sidebar = document.getElementById('sidebar');
+            const sidebarOverlay = document.getElementById('sidebarOverlay');
+            const sidebarClose = document.getElementById('sidebarClose');
+            const signInBtn = document.getElementById('signInBtn');
+            const logoutBtn = document.getElementById('logoutBtn');
+
+            // Toggle sidebar with hamburger menu
+            hamburgerMenu.addEventListener('click', function () {
+                sidebar.classList.toggle('open');
+                sidebarOverlay.classList.toggle('active');
+            });
+
+            // Close sidebar
+            function closeSidebarMenu() {
+                sidebar.classList.remove('open');
+                sidebarOverlay.classList.remove('active');
+            }
+
+            // Close sidebar with X button
+            sidebarClose.addEventListener('click', closeSidebarMenu);
+
+            // Close sidebar when clicking overlay
+            sidebarOverlay.addEventListener('click', closeSidebarMenu);
+
+            // Sign in button
+            signInBtn.addEventListener('click', function () {
+                signInWithGoogle();
+            });
+
+            // Logout button
+            logoutBtn.addEventListener('click', function () {
+                if (confirm('Are you sure you want to logout?')) {
+                    signOut();
+                }
+            });
+
+            // Email/Password Authentication
+            const emailInput = document.getElementById('emailInput');
+            const passwordInput = document.getElementById('passwordInput');
+            const emailSignInBtn = document.getElementById('emailSignInBtn');
+            const toggleAuthMode = document.getElementById('toggleAuthMode');
+            const authModeText = document.getElementById('authModeText');
+
+            let isSignUpMode = false;
+
+            // Email sign in/up button
+            emailSignInBtn.addEventListener('click', function () {
+                const email = emailInput.value.trim();
+                const password = passwordInput.value;
+
+                if (!email || !password) {
+                    alert('Please enter both email and password');
+                    return;
+                }
+
+                if (isSignUpMode) {
+                    // Sign up mode
+                    signUpWithEmail(email, password);
+                } else {
+                    // Sign in mode
+                    signInWithEmail(email, password);
+                }
+            });
+
+            // Toggle between sign in and sign up
+            toggleAuthMode.addEventListener('click', function () {
+                isSignUpMode = !isSignUpMode;
+
+                if (isSignUpMode) {
+                    emailSignInBtn.textContent = 'Sign Up';
+                    authModeText.textContent = 'Already have an account?';
+                    toggleAuthMode.textContent = 'Sign In';
+                } else {
+                    emailSignInBtn.textContent = 'Sign In';
+                    authModeText.textContent = "Don't have an account?";
+                    toggleAuthMode.textContent = 'Sign Up';
+                }
+            });
+
+            // Allow Enter key to submit
+            passwordInput.addEventListener('keypress', function (e) {
+                if (e.key === 'Enter') {
+                    emailSignInBtn.click();
+                }
+            });
+
+            // Make closeSidebar available globally for firebase-config.js
+            window.closeSidebar = closeSidebarMenu;
+
+            console.log('Sidebar initialized');
+        }
+
+        // Nearby Places Functionality
+        let nearbyMarkers = [];
+        let activeCategory = null;
+
+        function initNearbyPlaces() {
+            const categoryBtns = document.querySelectorAll('.category-btn');
+            const clearNearbyBtn = document.getElementById('clearNearbyBtn');
+
+            categoryBtns.forEach(btn => {
+                btn.addEventListener('click', function () {
+                    const category = this.getAttribute('data-category');
+
+                    // Toggle category
+                    if (activeCategory === category) {
+                        // Deactivate if clicking same category
+                        clearNearbyPlaces();
+                    } else {
+                        // Activate new category
+                        searchNearbyPlaces(category, this);
+                    }
+                });
+            });
+
+            clearNearbyBtn.addEventListener('click', clearNearbyPlaces);
+        }
+
+        function searchNearbyPlaces(category, btnElement) {
+            // Clear previous markers
+            clearNearbyMarkers();
+
+            // Update active state
+            document.querySelectorAll('.category-btn').forEach(btn => btn.classList.remove('active'));
+            btnElement.classList.add('active');
+            activeCategory = category;
+
+            // Get map center
+            const center = map.getCenter();
+            const lat = center.lat;
+            const lng = center.lng;
+
+            console.log(`Searching for ${category} near ${lat}, ${lng}`);
+
+            // Show clear button
+            document.getElementById('clearNearbyBtn').style.display = 'block';
+
+            // Map category codes to simple keywords
+            const keywordMap = {
+                'TRNPMP': 'petrol pump',
+                'FODCOF': 'restaurant',
+                'FINATM': 'atm',
+                'MEDHSP': 'hospital',
+                'ACMHTL': 'hotel',
+                'FODCAF': 'cafe',
+                'MEDPHR': 'pharmacy',
+                'FINBNK': 'bank'
+            };
+
+            const keyword = keywordMap[category] || category;
+
+            // Use Mappls nearby plugin with simple keyword
+            try {
+                const nearbyPlugin = new mappls.nearby({
+                    map: map,
+                    keywords: keyword,
+                    refLocation: `${lat},${lng}`,
+                    radius: 5000,
+                    page: 1,
+                    fitbounds: true,
+                    geolocation: false,
+                    icon: {
+                        url: getMarkerIcon(category),
+                        width: 30,
+                        height: 40
+                    },
+                    click_callback: function (data) {
+                        console.log('Marker clicked:', data);
+
+                        // Create popup content
+                        const popupHTML = `
+                            <div style="padding: 10px; min-width: 200px;">
+                                <h4 style="margin: 0 0 8px 0; color: #1e293b; font-size: 14px;">
+                                    ${data.placeName || 'Unknown Place'}
+                                </h4>
+                                <p style="margin: 0 0 6px 0; color: #64748b; font-size: 12px;">
+                                    📍 ${data.placeAddress || 'Address not available'}
+                                </p>
+                                ${data.distance ? `<p style="margin: 0; color: #3b82f6; font-size: 11px;">📏 ${data.distance} km away</p>` : ''}
+                            </div>
+                        `;
+
+                        // Show popup
+                        new mappls.Popup({ offset: { 'bottom': [0, -20] } })
+                            .setLngLat([data.longitude, data.latitude])
+                            .setHTML(popupHTML)
+                            .addTo(map);
+                    },
+                    callback: function (data) {
+                        console.log('Nearby search response:', data);
+
+                        if (data && data.data && data.data.length > 0) {
+                            console.log(`✓ Found ${data.data.length} ${keyword} places`);
+                            nearbyMarkers.push(nearbyPlugin);
+                        } else {
+                            console.log(`✗ No ${keyword} found nearby`);
+                            alert(`No ${keyword} found in this area. Try moving the map to a different location in India.`);
+                            clearNearbyPlaces();
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Nearby search error:', error);
+                alert('Error searching nearby places. Please try again.');
+                clearNearbyPlaces();
+            }
+        }
+
+        function getMarkerIcon(category) {
+            // Return different colored markers for different categories
+            const icons = {
+                'TRNPMP': 'https://apis.mapmyindia.com/map_v3/1.png',      // Petrol
+                'FODCOF': 'https://apis.mapmyindia.com/map_v3/2.png',      // Restaurants
+                'FINATM': 'https://apis.mapmyindia.com/map_v3/3.png',      // ATMs
+                'MEDHSP': 'https://apis.mapmyindia.com/map_v3/4.png',      // Hospitals
+                'ACMHTL': 'https://apis.mapmyindia.com/map_v3/5.png',      // Hotels
+                'FODCAF': 'https://apis.mapmyindia.com/map_v3/6.png',      // Cafes
+                'MEDPHR': 'https://apis.mapmyindia.com/map_v3/7.png',      // Pharmacies
+                'FINBNK': 'https://apis.mapmyindia.com/map_v3/8.png'       // Banks
+            };
+            return icons[category] || 'https://apis.mapmyindia.com/map_v3/1.png';
+        }
+
+        function clearNearbyMarkers() {
+            nearbyMarkers.forEach(marker => {
+                if (marker && marker.remove) {
+                    marker.remove();
+                }
+            });
+            nearbyMarkers = [];
+        }
+
+        function clearNearbyPlaces() {
+            clearNearbyMarkers();
+            document.querySelectorAll('.category-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('clearNearbyBtn').style.display = 'none';
+            activeCategory = null;
+        }
+
+        // Enhance place search to save history
+        const originalInitPlaceSearch = initPlaceSearch;
+        initPlaceSearch = function () {
+            const searchBox = document.getElementById('searchBox');
+
+            // Configure place search options
+            var placeOptions = {
+                location: [28.638698, 77.276045],
+                width: 250,
+                height: 300,
+                clearButton: true,
+                geolocation: false,
+                blank_callback: function () {
+                    console.log('Search cleared');
+                    if (currentMarker) {
+                        currentMarker.remove();
+                        currentMarker = null;
+                    }
+                }
+            };
+
+            // Callback when place is selected
+            function searchCallback(data) {
+                console.log('Place selected (full data):', data);
+
+                if (data && data.length > 0) {
+                    const selectedPlace = data[0];
+                    console.log('Selected place details:', selectedPlace);
+
+                    // Save to search history if user is logged in
+                    if (window.currentUser) {
+                        saveSearchToHistory({
+                            query: searchBox.value,
+                            placeName: selectedPlace.placeName,
+                            eLoc: selectedPlace.eLoc,
+                            placeAddress: selectedPlace.placeAddress
+                        });
+                    }
+
+                    // Remove previous marker
+                    if (currentMarker) {
+                        currentMarker.remove();
+                    }
+
+                    const eloc = selectedPlace.eLoc;
+
+                    if (eloc) {
+                        mappls.pinMarker({
+                            map: map,
+                            pin: eloc,
+                            popupHtml: selectedPlace.placeName + '<br>' + selectedPlace.placeAddress,
+                            fitbounds: true
+                        }, function (marker) {
+                            currentMarker = marker;
+                        });
+                    }
+                }
+            }
+
+            new mappls.search(searchBox, placeOptions, searchCallback);
+
+            console.log('Place search initialized with history tracking');
+        };
+
+    </script>
+</body>
+
+</html>
