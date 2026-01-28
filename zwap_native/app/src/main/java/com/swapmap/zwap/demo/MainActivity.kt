@@ -693,15 +693,21 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
             override fun afterTextChanged(s: Editable?) {
-                val query = s.toString()
+                val query = s.toString().trim()
                 if (query.isEmpty()) {
+                    // Show history and dashboard, hide results
                     dashboard.visibility = View.VISIBLE
+                    rvHistory.visibility = View.VISIBLE
                     rvResults.visibility = View.GONE
+                    Log.d("Zwap", "Query cleared, showing history")
                     fetchHistory()
                     btnClear.setImageResource(android.R.drawable.ic_btn_speak_now)
                 } else {
+                    // Hide history and dashboard, show results
                     dashboard.visibility = View.GONE
+                    rvHistory.visibility = View.GONE
                     rvResults.visibility = View.VISIBLE
+                    Log.d("Zwap", "Query entered: '$query', searching")
                     performLiveSearch(query)
                     btnClear.setImageResource(android.R.drawable.ic_menu_close_clear_cancel)
                 }
@@ -728,19 +734,26 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         val etInput = findViewById<EditText>(R.id.et_search_input)
         val dashboard = findViewById<View>(R.id.search_dashboard)
         val rvResults = findViewById<RecyclerView>(R.id.rv_search_results)
+        val rvHistory = findViewById<RecyclerView>(R.id.rv_history)
         
         overlay.visibility = View.VISIBLE
         etInput.requestFocus()
         
         if (query.isNullOrEmpty()) {
+            // Show history on open
+            rvHistory.visibility = View.VISIBLE
             dashboard.visibility = View.VISIBLE
             rvResults.visibility = View.GONE
+            Log.d("Zwap", "Showing search overlay with history")
             fetchHistory()
         } else {
+            // Show search results for non-empty query
+            rvHistory.visibility = View.GONE
             dashboard.visibility = View.GONE
             rvResults.visibility = View.VISIBLE
             etInput.setText(query)
             etInput.setSelection(query.length)
+            Log.d("Zwap", "Showing search overlay with results for query: $query")
             performLiveSearch(query)
         }
         
@@ -749,94 +762,60 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     }
 
     private fun saveToHistory(location: ELocation) {
-        try {
-            val auth = com.google.firebase.auth.FirebaseAuth.getInstance()
-            val currentUser = auth.currentUser
-            
-            if (currentUser == null) {
-                Log.d("Zwap", "User not authenticated, signing in...")
-                auth.signInAnonymously()
-                    .addOnSuccessListener {
-                        Log.d("Zwap", "Signed in, saving history")
-                        saveHistoryToFirestore(location)
-                    }
-                    .addOnFailureListener { e -> 
-                        Log.e("Zwap", "Auth failed, cannot save history", e) 
-                    }
-            } else {
-                saveHistoryToFirestore(location)
-            }
-        } catch (e: Exception) {
-            Log.e("Zwap", "Firebase error", e)
-        }
+        saveHistoryToFirestore(location)
     }
     
     private fun saveHistoryToFirestore(location: ELocation) {
         try {
             val historyItem = hashMapOf(
-                "placeName" to (location.placeName ?: ""),
+                "placeName" to (location.placeName ?: "Unknown"),
                 "placeAddress" to (location.placeAddress ?: ""),
                 "mapplsPin" to (location.mapplsPin ?: ""),
                 "timestamp" to System.currentTimeMillis()
             )
             
-            Log.d("Zwap", "Saving to Firestore History collection: place=${location.placeName}")
+            Log.d("Zwap", "💾 Saving to Firebase: ${location.placeName}")
             
-            // Add to History collection (creates auto-generated ID like 4On7lPFUZOEWALv9ZV1G)
+            // Add to History collection in Firebase
             db.collection("History")
                 .add(historyItem)
                 .addOnSuccessListener { documentReference ->
-                    Log.d("Zwap", "History saved successfully with ID: ${documentReference.id}")
+                    Log.d("Zwap", "✅ Firebase saved successfully: ${documentReference.id}")
                 }
                 .addOnFailureListener { e ->
-                    Log.e("Zwap", "Error saving history to Firestore", e)
+                    Log.e("Zwap", "❌ Firebase save error: ${e.message}", e)
+                    Toast.makeText(this@MainActivity, "❌ Firebase error: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
         } catch (e: Exception) {
-            Log.e("Zwap", "Firestore save error", e)
+            Log.e("Zwap", "❌ Error saving history: ${e.message}", e)
+            Toast.makeText(this@MainActivity, "❌ Error: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
+    
+
 
     private fun fetchHistory() {
-        try {
-            val auth = com.google.firebase.auth.FirebaseAuth.getInstance()
-            val currentUser = auth.currentUser
-            
-            if (currentUser == null) {
-                Log.d("Zwap", "User not authenticated for fetch, signing in...")
-                auth.signInAnonymously()
-                    .addOnSuccessListener {
-                        Log.d("Zwap", "Signed in, fetching history")
-                        fetchHistoryFromFirestore()
-                    }
-                    .addOnFailureListener { e -> 
-                        Log.e("Zwap", "Auth failed, cannot fetch history", e) 
-                    }
-            } else {
-                fetchHistoryFromFirestore()
-            }
-        } catch (e: Exception) {
-            Log.e("Zwap", "Firebase error", e)
-        }
+        fetchHistoryFromFirestore()
     }
     
     private fun fetchHistoryFromFirestore(limit: Long = 5) {
         try {
-            Log.d("Zwap", "Fetching history from Firestore History collection (limit: $limit)")
+            Log.d("Zwap", "📱 Fetching history from Firebase (limit: $limit)")
             
-            // Query History collection, order by timestamp descending, with configurable limit
+            // Query History collection, order by timestamp descending
             db.collection("History")
                 .orderBy("timestamp", Query.Direction.DESCENDING)
                 .limit(limit)
                 .get()
                 .addOnSuccessListener { documents ->
-                    Log.d("Zwap", "Fetched ${documents.size()} history items from Firestore")
+                    Log.d("Zwap", "✅ Firebase: Fetched ${documents.size()} history items")
                     val historyList = mutableListOf<ELocation>()
                     
                     for (document in documents) {
                         try {
-                            val placeName = document.getString("placeName")
-                            val placeAddress = document.getString("placeAddress")
-                            val mapplsPin = document.getString("mapplsPin")
+                            val placeName = document.getString("placeName") ?: "Unknown"
+                            val placeAddress = document.getString("placeAddress") ?: ""
+                            val mapplsPin = document.getString("mapplsPin") ?: ""
                             
                             val loc = ELocation()
                             loc.placeName = placeName
@@ -844,20 +823,50 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                             loc.mapplsPin = mapplsPin
                             historyList.add(loc)
                             
-                            Log.d("Zwap", "History item: $placeName (ID: ${document.id})")
+                            Log.d("Zwap", "📍 History item: $placeName")
                         } catch (e: Exception) {
                             Log.e("Zwap", "Parse error for document ${document.id}", e)
                         }
                     }
-                    historyAdapter.submitList(historyList)
+                    
+                    // Update adapter on main thread
+                    runOnUiThread {
+                        if (::historyAdapter.isInitialized) {
+                            historyAdapter.submitList(historyList)
+                            Log.d("Zwap", "✅ Adapter updated with ${historyList.size} Firebase items")
+                        } else {
+                            Log.e("Zwap", "❌ History adapter not initialized!")
+                        }
+                    }
                 }
                 .addOnFailureListener { e ->
-                    Log.e("Zwap", "History fetch failed from Firestore: ${e.message}", e)
+                    Log.e("Zwap", "❌ Firebase fetch failed: ${e.message}", e)
+                    
+                    // Show error to user
+                    runOnUiThread {
+                        Log.d("Zwap", "Firebase error: ${e.message}")
+                        Toast.makeText(this@MainActivity, "❌ Firebase error: ${e.message}", Toast.LENGTH_SHORT).show()
+                        
+                        // Clear the list and show error
+                        if (::historyAdapter.isInitialized) {
+                            historyAdapter.submitList(emptyList())
+                        }
+                    }
                 }
         } catch (e: Exception) {
-            Log.e("Zwap", "Firestore fetch error", e)
+            Log.e("Zwap", "❌ Firebase fetch error: ${e.message}", e)
+            runOnUiThread {
+                Toast.makeText(this@MainActivity, "❌ Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                if (::historyAdapter.isInitialized) {
+                    historyAdapter.submitList(emptyList())
+                }
+            }
         }
     }
+    
+
+    
+
 
     private fun performLiveSearch(query: String) {
         if (query.isEmpty()) {
