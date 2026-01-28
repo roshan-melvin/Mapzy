@@ -37,3 +37,4 @@ zwap_native/local.properties
 zwap_native/google-services.json
 zwap_native/*.hprof
 java_pid*.hprof
+zwap_native/full_log.txt
