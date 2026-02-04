@@ -51,6 +51,7 @@ import android.speech.RecognizerIntent
 import android.widget.EditText
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
+import com.google.firebase.auth.FirebaseAuth
 import java.util.HashMap
 import com.mappls.sdk.services.api.directions.DirectionsCriteria
 import com.mappls.sdk.services.api.directions.MapplsDirectionManager
@@ -81,7 +82,7 @@ import java.util.*
 class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnInitListener {
 
     private var mapView: MapView? = null
-    private var mapplsMap: MapplsMap? = null
+    var mapplsMap: MapplsMap? = null
     private var selectedELoc: String? = null
     
     // Firestore Database
@@ -107,9 +108,16 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     private var osmOverlayEnabled = false
     private var lastOSMFetchLocation: Location? = null
     private var lastZoomLevel: Double = 0.0
+    private lateinit var auth: FirebaseAuth
+    private var currentUserId: String? = null
+    private lateinit var communityManager: com.swapmap.zwap.demo.community.CommunityManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // Initialize Firebase Auth
+        auth = FirebaseAuth.getInstance()
+        communityManager = com.swapmap.zwap.demo.community.CommunityManager(this)
         
         // Ensure keys are set before inflation
         Mappls.getInstance(this)
@@ -121,18 +129,101 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         mapView?.getMapAsync(this)
 
         tts = TextToSpeech(this, this)
-        if (com.google.firebase.auth.FirebaseAuth.getInstance().currentUser == null) {
-            com.google.firebase.auth.FirebaseAuth.getInstance().signInAnonymously()
-                .addOnSuccessListener { Log.d("Zwap", "Signed in anonymously") }
-                .addOnFailureListener { e -> Log.e("Zwap", "Anon auth failed", e) }
+        
+        // Check if user is already logged in
+        if (auth.currentUser != null) {
+            currentUserId = auth.currentUser!!.uid
+            Log.d("Zwap", "User already logged in: $currentUserId")
+            setupUI()
+        } else {
+            // Show login/signup dialog
+            showAuthDialog()
         }
-        setupUI()
     }
     
     private val nearbyMarkerIds = mutableListOf<Long>()
     private val osmHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var osmRunnable: Runnable? = null
 
+    
+    private fun showAuthDialog() {
+        val builder = androidx.appcompat.app.AlertDialog.Builder(this)
+        builder.setTitle("Sign In / Sign Up")
+        builder.setMessage("Enter your email and password")
+        
+        val layout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(50, 40, 50, 40)
+        }
+        
+        val emailInput = EditText(this).apply {
+            hint = "Email"
+            inputType = android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = 20 }
+        }
+        
+        val passwordInput = EditText(this).apply {
+            hint = "Password (min 6 chars)"
+            inputType = android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        }
+        
+        layout.addView(emailInput)
+        layout.addView(passwordInput)
+        
+        builder.setView(layout)
+        builder.setPositiveButton("Sign Up / Sign In") { _, _ ->
+            val email = emailInput.text.toString().trim()
+            val password = passwordInput.text.toString().trim()
+            
+            if (email.isEmpty() || password.isEmpty()) {
+                Toast.makeText(this, "Email and password required", Toast.LENGTH_SHORT).show()
+                showAuthDialog()
+                return@setPositiveButton
+            }
+            
+            if (password.length < 6) {
+                Toast.makeText(this, "Password must be at least 6 characters", Toast.LENGTH_SHORT).show()
+                showAuthDialog()
+                return@setPositiveButton
+            }
+            
+            // Try to sign in first, if fails then create new account
+            auth.signInWithEmailAndPassword(email, password)
+                .addOnSuccessListener {
+                    currentUserId = auth.currentUser!!.uid
+                    Log.d("Zwap", "✅ Signed in: $currentUserId")
+                    Toast.makeText(this@MainActivity, "Welcome back!", Toast.LENGTH_SHORT).show()
+                    setupUI()
+                }
+                .addOnFailureListener { signInException ->
+                    Log.d("Zwap", "Sign in failed, trying to create account...")
+                    // If sign in fails, try to create new account
+                    auth.createUserWithEmailAndPassword(email, password)
+                        .addOnSuccessListener {
+                            currentUserId = auth.currentUser!!.uid
+                            Log.d("Zwap", "✅ Account created: $currentUserId")
+                            Toast.makeText(this@MainActivity, "Account created successfully!", Toast.LENGTH_SHORT).show()
+                            setupUI()
+                        }
+                        .addOnFailureListener { signUpException ->
+                            Log.e("Zwap", "Sign up failed: ${signUpException.message}")
+                            Toast.makeText(this@MainActivity, "Error: ${signUpException.message}", Toast.LENGTH_SHORT).show()
+                            showAuthDialog()
+                        }
+                }
+        }
+        
+        builder.setCancelable(false)
+        builder.show()
+    }
+    
     private fun setupUI() {
         findViewById<View>(R.id.search_trigger).setOnClickListener { showSearchOverlay(null) }
         findViewById<View>(R.id.btn_voice_search).setOnClickListener { performVoiceSearch() }
@@ -172,7 +263,146 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             Log.e("Zwap", "Error setting up hazard button", e)
         }
         
+        // Setup Bottom Navigation
+        setupBottomNavigation()
+        
         setupSearchOverlay()
+    }
+    
+    fun showReportDialog() {
+        val reportFragment = com.swapmap.zwap.demo.community.ReportSubmissionFragment()
+        reportFragment.setOnReportSelectedListener { reportType, imageUri ->
+            submitReport(reportType, imageUri)
+        }
+        reportFragment.show(supportFragmentManager, "ReportSubmissionFragment")
+    }
+    
+    fun showChannelReportDialog(channelName: String = "unknown") {
+        val channelReportFragment = com.swapmap.zwap.demo.community.ChannelReportFragment()
+        channelReportFragment.setChannelContext(channelName)
+        channelReportFragment.setOnReportSubmittedListener { category, description, hashtags, imageUri ->
+            submitChannelReport(category, description, hashtags, imageUri)
+        }
+        channelReportFragment.show(supportFragmentManager, "ChannelReportFragment")
+    }
+    
+    fun submitChannelReport(category: String, description: String, hashtags: String, imageUri: android.net.Uri? = null) {
+        val location = mapplsMap?.cameraPosition?.target
+        if (location == null) {
+            Toast.makeText(this, "Could not determine location", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        Toast.makeText(this, "Channel Report: $category\n$description\n$hashtags", Toast.LENGTH_LONG).show()
+        // TODO: Submit to backend with description, hashtags, and image
+    }
+    
+    fun submitReport(reportType: String, imageUri: android.net.Uri? = null) {
+        val location = mapplsMap?.cameraPosition?.target
+        if (location == null) {
+            Toast.makeText(this, "Could not determine location", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        val point = com.mappls.sdk.geojson.Point.fromLngLat(location.longitude, location.latitude)
+        
+        // Map simplified string types to enum
+        val (category, hazardType) = when (reportType) {
+            "Hazard" -> Pair(com.swapmap.zwap.demo.community.models.ReportCategory.HAZARD, com.swapmap.zwap.demo.community.models.HazardType.ACCIDENT)
+            "Speed Camera" -> Pair(com.swapmap.zwap.demo.community.models.ReportCategory.SPEED_CAMERA, null)
+            "Police" -> Pair(com.swapmap.zwap.demo.community.models.ReportCategory.POLICE, null)
+            "Traffic" -> Pair(com.swapmap.zwap.demo.community.models.ReportCategory.TRAFFIC, null)
+            "Map Issue" -> Pair(com.swapmap.zwap.demo.community.models.ReportCategory.MAP_ISSUE, null)
+            else -> Pair(com.swapmap.zwap.demo.community.models.ReportCategory.HAZARD, com.swapmap.zwap.demo.community.models.HazardType.OTHER)
+        }
+        
+        lifecycleScope.launch {
+            try {
+                Toast.makeText(this@MainActivity, "Submitting report ${if (imageUri != null) "with photo" else ""}...", Toast.LENGTH_SHORT).show()
+                val result = communityManager.submitReport(
+                    category = category,
+                    hazardType = hazardType,
+                    location = point
+                    // imageUri can be added to communityManager later
+                )
+                
+                result.onSuccess {
+                    Toast.makeText(this@MainActivity, "$reportType reported successfully!", Toast.LENGTH_LONG).show()
+                }.onFailure { e ->
+                    Log.e("Zwap", "Error submitting report", e)
+                    Toast.makeText(this@MainActivity, "Failed to submit report: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Log.e("Zwap", "Error in submission", e)
+                Toast.makeText(this@MainActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+    
+    private fun setupBottomNavigation() {
+        val bottomNav = findViewById<com.google.android.material.bottomnavigation.BottomNavigationView>(R.id.bottom_navigation)
+        val mapView = findViewById<View>(R.id.map_view)
+        val hudPanel = findViewById<View>(R.id.speed_limit_widget)
+        val fabStack = findViewById<View>(R.id.fab_stack_container)
+        val searchCard = findViewById<View>(R.id.search_card)
+        val fragmentContainer = findViewById<View>(R.id.fragment_container)
+        
+        bottomNav?.setOnItemSelectedListener { item ->
+            when (item.itemId) {
+                R.id.nav_explore -> {
+                    // Show Map UI
+                    mapView?.visibility = View.VISIBLE
+                    hudPanel?.visibility = View.VISIBLE
+                    fabStack?.visibility = View.VISIBLE
+                    searchCard?.visibility = View.VISIBLE
+                    fragmentContainer?.visibility = View.GONE
+                    true
+                }
+                R.id.nav_profile -> {
+                    // Show Profile Fragment
+                    fragmentContainer?.visibility = View.VISIBLE
+                    mapView?.visibility = View.GONE
+                    hudPanel?.visibility = View.GONE
+                    searchCard?.visibility = View.GONE
+                    fabStack?.visibility = View.GONE
+
+                    supportFragmentManager.beginTransaction()
+                        .replace(R.id.fragment_container, com.swapmap.zwap.demo.profile.ProfileFragment())
+                        .commit()
+                    true
+                }
+                R.id.nav_contribute -> {
+                    // Show Community Fragment
+                    fragmentContainer?.visibility = View.VISIBLE
+                    mapView?.visibility = View.GONE
+                    hudPanel?.visibility = View.GONE
+                    searchCard?.visibility = View.GONE
+                    fabStack?.visibility = View.GONE
+                    
+                    supportFragmentManager.beginTransaction()
+                        .replace(R.id.fragment_container, com.swapmap.zwap.demo.community.CommunityFragment())
+                        .commit()
+                    true
+                }
+                R.id.nav_chat -> {
+                    // Show Chat Fragment
+                    fragmentContainer?.visibility = View.VISIBLE
+                    mapView?.visibility = View.GONE
+                    hudPanel?.visibility = View.GONE
+                    searchCard?.visibility = View.GONE
+                    fabStack?.visibility = View.GONE
+                    
+                    supportFragmentManager.beginTransaction()
+                        .replace(R.id.fragment_container, com.swapmap.zwap.demo.chat.ChatFragment())
+                        .commit()
+                    true
+                }
+                else -> false
+            }
+        }
+        
+        // Set Explore as default
+        bottomNav?.selectedItemId = R.id.nav_explore
     }
     
     private fun performVoiceSearch() {
@@ -766,6 +996,12 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     }
     
     private fun saveHistoryToFirestore(location: ELocation) {
+        if (currentUserId == null) {
+            Log.e("Zwap", "❌ User not authenticated, cannot save history")
+            Toast.makeText(this@MainActivity, "Please log in to save history", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
         try {
             val historyItem = hashMapOf(
                 "placeName" to (location.placeName ?: "Unknown"),
@@ -774,10 +1010,12 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                 "timestamp" to System.currentTimeMillis()
             )
             
-            Log.d("Zwap", "💾 Saving to Firebase: ${location.placeName}")
+            Log.d("Zwap", "💾 Saving to Firebase for user: $currentUserId - ${location.placeName}")
             
-            // Add to History collection in Firebase
-            db.collection("History")
+            // Save to user-specific path: users/{userId}/searchHistory/{docId}
+            db.collection("users")
+                .document(currentUserId!!)
+                .collection("searchHistory")
                 .add(historyItem)
                 .addOnSuccessListener { documentReference ->
                     Log.d("Zwap", "✅ Firebase saved successfully: ${documentReference.id}")
@@ -799,16 +1037,26 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     }
     
     private fun fetchHistoryFromFirestore(limit: Long = 5) {
+        if (currentUserId == null) {
+            Log.e("Zwap", "❌ User not authenticated, cannot fetch history")
+            if (::historyAdapter.isInitialized) {
+                historyAdapter.submitList(emptyList())
+            }
+            return
+        }
+        
         try {
-            Log.d("Zwap", "📱 Fetching history from Firebase (limit: $limit)")
+            Log.d("Zwap", "📱 Fetching history from Firebase for user: $currentUserId (limit: $limit)")
             
-            // Query History collection, order by timestamp descending
-            db.collection("History")
+            // Query user-specific path: users/{userId}/searchHistory
+            db.collection("users")
+                .document(currentUserId!!)
+                .collection("searchHistory")
                 .orderBy("timestamp", Query.Direction.DESCENDING)
                 .limit(limit)
                 .get()
                 .addOnSuccessListener { documents ->
-                    Log.d("Zwap", "✅ Firebase: Fetched ${documents.size()} history items")
+                    Log.d("Zwap", "✅ Firebase: Fetched ${documents.size()} history items for user: $currentUserId")
                     val historyList = mutableListOf<ELocation>()
                     
                     for (document in documents) {

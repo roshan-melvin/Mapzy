@@ -70,8 +70,7 @@ class AuthActivity : AppCompatActivity() {
                 auth.signInWithEmailAndPassword(email, password)
                     .addOnCompleteListener(this) { task ->
                         if (task.isSuccessful) {
-                            startActivity(Intent(this, MainActivity::class.java))
-                            finish()
+                            createUserProfile(auth.currentUser)
                         } else {
                             Toast.makeText(this, "Authentication failed: ${task.exception?.message}", Toast.LENGTH_SHORT).show()
                         }
@@ -80,8 +79,7 @@ class AuthActivity : AppCompatActivity() {
                 auth.createUserWithEmailAndPassword(email, password)
                     .addOnCompleteListener(this) { task ->
                         if (task.isSuccessful) {
-                            startActivity(Intent(this, MainActivity::class.java))
-                            finish()
+                            createUserProfile(auth.currentUser)
                         } else {
                             Toast.makeText(this, "Sign up failed: ${task.exception?.message}", Toast.LENGTH_SHORT).show()
                         }
@@ -125,12 +123,50 @@ class AuthActivity : AppCompatActivity() {
         auth.signInWithCredential(credential)
             .addOnCompleteListener(this) { task ->
                 if (task.isSuccessful) {
-                    startActivity(Intent(this, MainActivity::class.java))
-                    finish()
+                    createUserProfile(auth.currentUser)
                 } else {
                     Toast.makeText(this, "Google Auth failed: ${task.exception?.message}", Toast.LENGTH_SHORT).show()
                 }
             }
+    }
+    
+    private fun createUserProfile(user: com.google.firebase.auth.FirebaseUser?) {
+        if (user == null) return
+
+        val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+        val userRef = db.collection("users").document(user.uid)
+
+        userRef.get().addOnSuccessListener { document ->
+            if (!document.exists()) {
+                val userData = hashMapOf(
+                    "name" to (user.displayName ?: "User"),
+                    "email" to (user.email ?: ""),
+                    "photoURL" to (user.photoUrl?.toString() ?: ""),
+                    "createdAt" to com.google.firebase.Timestamp.now(),
+                    "lastLogin" to com.google.firebase.Timestamp.now(),
+                    "chat_regions" to emptyList<String>(),
+                    "fcmToken" to ""
+                )
+
+                userRef.set(userData)
+                    .addOnSuccessListener {
+                        startActivity(Intent(this, MainActivity::class.java))
+                        finish()
+                    }
+                    .addOnFailureListener {
+                        Toast.makeText(this, "Failed to create profile", Toast.LENGTH_SHORT).show()
+                    }
+            } else {
+                // Update last login
+                userRef.update("lastLogin", com.google.firebase.Timestamp.now())
+                startActivity(Intent(this, MainActivity::class.java))
+                finish()
+            }
+        }.addOnFailureListener {
+            // If get fails (e.g. offline), just proceed
+            startActivity(Intent(this, MainActivity::class.java))
+            finish()
+        }
     }
     
     public override fun onStart() {
@@ -139,6 +175,8 @@ class AuthActivity : AppCompatActivity() {
             if (this::auth.isInitialized) {
                 val currentUser = auth.currentUser
                 if (currentUser != null) {
+                    // Temporarily just start main activity to avoid blocking if network fails
+                    // In real app, we might want to ensure profile exists here too
                     startActivity(Intent(this, MainActivity::class.java))
                     finish()
                 }
