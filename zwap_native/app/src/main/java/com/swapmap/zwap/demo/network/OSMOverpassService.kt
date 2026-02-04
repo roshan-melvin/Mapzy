@@ -36,4 +36,12 @@ object OSMOverpassService {
             out body;
         """.trimIndent()
     }
+
+    fun buildSpeedLimitQuery(lat: Double, lon: Double, radius: Int = 50): String {
+        return """
+            [out:json][timeout:10];
+            way(around:$radius,$lat,$lon)["maxspeed"];
+            out tags;
+        """.trimIndent()
+    }
 }

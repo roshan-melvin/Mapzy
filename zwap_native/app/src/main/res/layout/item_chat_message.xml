@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="8dp"
+    android:layout_marginHorizontal="8dp"
+    android:layout_marginTop="4dp"
+    app:cardBackgroundColor="#36393F"
+    app:cardCornerRadius="8dp"
+    app:cardElevation="2dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="12dp">
+
+        <!-- Header: User & Time -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="4dp">
+
+            <ImageView
+                android:id="@+id/iv_user_avatar"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:src="@android:drawable/sym_def_app_icon"
+                android:background="@drawable/circle_bg"
+                android:padding="4dp"
+                android:contentDescription="Avatar"/>
+
+            <TextView
+                android:id="@+id/tv_username"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Username"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold"
+                android:layout_marginStart="8dp"/>
+
+            <TextView
+                android:id="@+id/tv_timestamp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Today at 5:00 PM"
+                android:textColor="#B9BBBE"
+                android:textSize="12sp"
+                android:layout_marginStart="8dp"/>
+        </LinearLayout>
+
+        <!-- Message Content -->
+        <TextView
+            android:id="@+id/tv_message_text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="This is a message content."
+            android:textColor="#DCDDDE"
+            android:textSize="14sp"
+            android:layout_marginBottom="4dp"
+            android:paddingStart="40dp"/>
+
+        <!-- Optional Image Attachment -->
+        <ImageView
+            android:id="@+id/iv_message_image"
+            android:layout_width="match_parent"
+            android:layout_height="150dp"
+            android:background="#202225"
+            android:scaleType="centerCrop"
+            android:visibility="gone"
+            android:layout_marginStart="40dp"
+            android:layout_marginTop="4dp"
+            app:shapeAppearanceOverlay="@style/RoundedImageView"/>
+
+    </LinearLayout>
+</androidx.cardview.widget.CardView>
