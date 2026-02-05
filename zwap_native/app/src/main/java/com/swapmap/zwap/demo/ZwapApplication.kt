@@ -5,8 +5,14 @@ import com.mappls.sdk.maps.Mappls
 import com.mappls.sdk.services.account.MapplsAccountManager
 
 class ZwapApplication : Application() {
+    companion object {
+        lateinit var instance: ZwapApplication
+            private set
+    }
+
     override fun onCreate() {
         super.onCreate()
+        instance = this
         
         val key = "4f5f56254fc624e2a817b1b2d2de4020"
         MapplsAccountManager.getInstance().restAPIKey = key

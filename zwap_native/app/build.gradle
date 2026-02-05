@@ -2,6 +2,7 @@ plugins {
     id 'com.android.application'
     id 'kotlin-android'
     id 'com.google.gms.google-services'
+    id 'org.jetbrains.kotlin.plugin.serialization' version '2.1.0'
 }
 
 android {
@@ -62,4 +63,10 @@ dependencies {
 
     // Glide
     implementation 'com.github.bumptech.glide:glide:4.15.1'
+
+    // Supabase (Postgrest)
+    implementation 'io.github.jan-tennert.supabase:postgrest-kt:2.5.0'
+    implementation 'io.github.jan-tennert.supabase:gotrue-kt:2.5.0'
+    implementation 'io.ktor:ktor-client-android:2.3.12'
+    implementation 'org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0'
 }

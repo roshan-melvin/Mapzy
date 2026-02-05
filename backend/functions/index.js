@@ -12,7 +12,7 @@ const pool = new Pool({
     host: functions.config().db.host,
     database: functions.config().db.name,
     password: functions.config().db.pass,
-    port: 5432,
+    port: functions.config().db.port || 5432,
 });
 
 /**
