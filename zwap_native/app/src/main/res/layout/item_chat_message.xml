@@ -63,17 +63,68 @@
             android:layout_marginBottom="4dp"
             android:paddingStart="40dp"/>
 
-        <!-- Optional Image Attachment -->
-        <ImageView
-            android:id="@+id/iv_message_image"
+        <!-- Media Container (FrameLayout for Z-ordering) -->
+        <FrameLayout
             android:layout_width="match_parent"
-            android:layout_height="150dp"
-            android:background="#202225"
-            android:scaleType="centerCrop"
-            android:visibility="gone"
+            android:layout_height="wrap_content"
             android:layout_marginStart="40dp"
-            android:layout_marginTop="4dp"
-            app:shapeAppearanceOverlay="@style/RoundedImageView"/>
+            android:layout_marginTop="4dp">
+            
+            <VideoView
+                android:id="@+id/vv_message_video"
+                android:layout_width="match_parent"
+                android:layout_height="200dp"
+                android:visibility="gone"/>
+
+            <!-- Image View (Serves as Image Attachment OR Video Thumbnail) -->
+            <ImageView
+                android:id="@+id/iv_message_image"
+                android:layout_width="match_parent"
+                android:layout_height="200dp"
+                android:background="#202225"
+                android:scaleType="centerCrop"
+                android:visibility="gone"
+                app:shapeAppearanceOverlay="@style/RoundedImageView"/>
+                
+            <!-- Play Icon Overlay -->
+            <ImageView
+                android:id="@+id/iv_play_icon"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="center"
+                android:src="@android:drawable/ic_media_play"
+                android:tint="#FFFFFF"
+                android:visibility="gone"/>
+
+            <!-- Upload Overlay -->
+            <FrameLayout
+                android:id="@+id/upload_overlay"
+                android:layout_width="match_parent"
+                android:layout_height="200dp"
+                android:background="#80000000"
+                android:visibility="gone">
+                
+                <ProgressBar
+                    android:id="@+id/pb_upload_progress"
+                    style="?android:attr/progressBarStyleHorizontal"
+                    android:layout_width="60dp"
+                    android:layout_height="60dp"
+                    android:layout_gravity="center"
+                    android:progressDrawable="@drawable/circular_progress"
+                    android:indeterminate="false"
+                    android:max="100" />
+                    
+                 <TextView
+                     android:id="@+id/tv_upload_percent"
+                     android:layout_width="wrap_content"
+                     android:layout_height="wrap_content"
+                     android:layout_gravity="center"
+                     android:text="0%"
+                     android:textColor="#FFFFFF"
+                     android:textSize="12sp"
+                     android:textStyle="bold"/>
+            </FrameLayout>
+        </FrameLayout>
 
     </LinearLayout>
 </androidx.cardview.widget.CardView>

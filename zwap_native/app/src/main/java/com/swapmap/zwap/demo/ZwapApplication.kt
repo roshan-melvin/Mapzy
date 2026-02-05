@@ -15,5 +15,8 @@ class ZwapApplication : Application() {
         MapplsAccountManager.getInstance().atlasClientSecret = "lrFxI-iSEg-JlQ2tDZ-tuTMRtniiUG6rX0JZsAnxSrnuOU1U0v3f8OJqeZ9b_14NjptQRzVmBSOiaNUfrdtCAM2gvc_E3-o5"
         
         Mappls.getInstance(this)
+        
+        // Initialize Cloudinary
+        com.swapmap.zwap.demo.network.CloudinaryManager.init(this)
     }
 }
