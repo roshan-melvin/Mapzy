@@ -1,96 +1,84 @@
 # Contribution & Reporting Architecture
 
-## 1. Database Structure (Schema)
+This document details the end-to-end architecture for the Contribution system, from user submission to AI verification via PostgreSQL.
 
-Since the app currently uses Firebase, we will store the raw reports in a `reports` collection.
-*To support "SQL analysis" later, we structure the data flatly and consistently, making it easy to export to BigQuery or a SQL server.*
+## 1. User Interface (Contribution Page)
+The **Contribution Fragment** serves as the user's personal dashboard for their activity.
+*   **List View**: Displays a real-time feed of the user's submitted reports.
+*   **Status Indicators**:
+    *   🟡 **Pending**: Report submitted, waiting for AI verification.
+    *   🟢 **Verified**: AI/Admin has confirmed the hazard. (+Points)
+    *   🔴 **Rejected**: Report marked as invalid or spam. (-Points)
+*   **Data Source**: Reads directly from Firestore `reports` collection (filtered by `user_id`).
 
-### Table/Collection: `reports` (Firestore)
-| Field Name | Type | Description |
-| :--- | :--- | :--- |
-| `report_id` | String (UUID) | Unique Primary Key |
-| `user_id` | String | Foreign Key (Link to User) |
-| `incident_type` | String | e.g. "Accident", "Pothole", "Traffic" |
-| `description` | String | User's detailed text |
-| `severity` | Integer | 1 (Low) to 5 (Critical) |
-| `latitude` | Double | GPS Lat |
-| `longitude` | Double | GPS Lng |
-| `image_url` | String | Proof (Cloudinary URL) |
-| `status` | String | "Pending", "Verified", "Rejected" |
-| `points_awarded` | Integer | Points (initially 0, updated by Sync) |
-| `created_at` | Timestamp | When it happened |
+## 2. Database Schema
 
-### SQL Schema (PostgreSQL Analysis DB)
-*This table mirrors the Firestore data for analytical queries.*
+### A. Firestore (Client Database)
+*Optimized for mobile read/write speeds.*
+*   **Path**: `reports/{channel_id}/threads/{report_id}`
+*   **Fields**:
+    *   `report_id`: UUID
+    *   `user_id`: Link to User
+    *   `incident_type`: e.g. "Pothole"
+    *   `image_url`: Cloudinary Link
+    *   `location`: { lat, lng }
+    *   `status`: "Pending" (Default)
+    *   `points_awarded`: 0
 
-```sql
-CREATE TABLE reports_analysis (
-    report_id VARCHAR(64) PRIMARY KEY, -- Matches Firestore ID
-    user_id VARCHAR(64) NOT NULL,
-    incident_type VARCHAR(50),
-    description TEXT,
-    severity INT,
-    geo_location GEOMETRY(Point, 4326), -- PostGIS for spatial analysis
-    image_url TEXT,
-    status VARCHAR(20) DEFAULT 'Pending',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-```
-
-### Data Mapping (Firestore -> SQL)
-| Firestore Field | SQL Column | Notes |
-| :--- | :--- | :--- |
-| `report_id` | `report_id` | Direct Copy |
-| `user_id` | `user_id` | Direct Copy |
-| `incident_type` | `incident_type` | Direct Copy |
-| `latitude`, `longitude` | `geo_location` | Converted to PostGIS Point(lng, lat) |
-| `status` | `status` | Syncs both ways |
-| `created_at` | `created_at` | Converted to SQL Timestamp |
+### B. PostgreSQL (Analysis Database)
+*Optimized for AI processing and complex queries.*
+*   **Table**: `reports_analysis`
+    *   `report_id` (Primary Key)
+    *   `user_id`
+    *   `incident_type`
+    *   `description`
+    *   `image_url`
+    *   `verification_confidence` (Decimal, 0-1.0)
+    *   `ai_reasoning` (Text)
+    *   `status`
+    *   `points`
 
 ---
 
-## 2. Process Flowchart
+## 3. The "Sync & Verify" Process Flow
 
 ```mermaid
 sequenceDiagram
     participant User
     participant App
-    participant Firestore as Firestore (Client DB)
-    participant Sync as Cloud Function / Sync
-    participant SQL as PostgreSQL (Analysis DB)
-    participant Admin as Admin/AI Analysis
+    participant Firestore as Firestore (App DB)
+    participant CloudFunc as Firebase Cloud Function
+    participant Postgres as PostgreSQL (Analysis DB)
+    participant AI as AI Worker (Python/Gemini)
 
-    Note over User, App: 1. Submission (Media Handling)
-    User->>App: Fills Form & Selects Media (Image/Video)
-    App->>Cloudinary: Upload Media (Unsigned)
-    Cloudinary-->>App: Return Secure URL (e4d...mp4)
-    App->>App: Link URL to Report Object
+    Note over User, App: 1. Submission
+    User->>App: Submits Report (Photo + Loc)
+    App->>Firestore: WRITE Report (Status: Pending)
+    Firestore-->>App: Success ACK
+    App-->>User: Show "Pending" on Contribution Page
+
+    Note over Firestore, Postgres: 2. Async Replication
+    Firestore->>CloudFunc: onCreate Trigger invokes Function
+    CloudFunc->>Postgres: INSERT into reports_analysis
     
-    Note over App, Firestore: 2. Storage
-    App->>Firestore: INSERT /reports (with image_url)
-    Firestore-->>App: Success
-    App->>User: Shows "Report Submitted"
-    
-    Note over Firestore, SQL: 2. Data Replication (Async)
-    Firestore->>Sync: OnCreate Trigger
-    Sync->>SQL: INSERT INTO reports_table (Copy Data)
-    Note over App, User: User sees "Pending" (Waiting for Analysis...)
-    
-    Note over SQL, Admin: 3. Analysis Phase (Hours/Days)
-    Admin->>SQL: FETCH Pending Reports
-    Admin->>SQL: UPDATE Status ("Verified"/"Rejected") & Points
-    
-    Note over SQL, Firestore: 4. Status Sync Back
-    SQL->>Sync: OnUpdate Trigger / Polling
-    Sync->>Firestore: UPDATE /reports/{id} (Set Status=Verified, Points=50)
-    
-    Note over Firestore, App: 5. Client Update
-    Firestore-->>App: Real-time Update (Status Changes to Verified)
-    App->>User: Notification: "Report Verified! +50 Points"
+    Note over Postgres, AI: 3. AI Verification Loop
+    loop Every Minute
+        AI->>Postgres: POOL Select * WHERE status='Pending'
+        AI->>AI: Analyze Image & Description
+        AI->>Postgres: UPDATE Status='Verified', Score=0.95, Points=50
+    end
+
+    Note over Postgres, Firestore: 4. Sync Back Results
+    Postgres->>CloudFunc: (Or Webhook) Notify Update
+    CloudFunc->>Firestore: UPDATE Report (Status: Verified, Points: 50)
+
+    Note over Firestore, App: 5. User Feedback
+    Firestore-->>App: Real-time Listener fires
+    App-->>User: Update Status to 🟢 Verified
+    App-->>User: Push Notification "+50 Points!"
 ```
 
-## 3. Implementation Steps
-1.  **Create "Contribution" Screen**: A list showing *User's* past reports.
-2.  **Create "Add Report" Form**: Inputs for Type, Location, Image.
-3.  **Backend Logic**: Save to Firestore `reports` collection.
-4.  **Privacy**: Ensure query uses `whereEqualTo("user_id", uid)`.
+## 4. Why This Architecture?
+1.  **Speed**: The mobile app NEVER talks to PostgreSQL or the AI directly. It only talks to Firestore, so the UI is instant.
+2.  **Scalability**: The heavy AI processing happens in the background. If 10,000 users submit reports at once, the queue builds up in Postgres, but the app doesn't crash.
+3.  **Cost**: Syncing is cheap. You only run expensive AI processing on the backend, not on the user's device.
