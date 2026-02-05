@@ -27,6 +27,61 @@ class ChatFragment : Fragment() {
     private lateinit var titleView: TextView
     
     private var userRegions: List<String> = emptyList()
+    private var currentRegionId: String = ""
+    private var currentChannelId: String = "general"
+
+    private val getContent = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri: android.net.Uri? ->
+        if (uri != null) {
+            val type = if (activity?.contentResolver?.getType(uri)?.startsWith("video") == true) "video" else "image"
+            
+            // 1. Add Temporary Local Message
+            val tempId = "temp_${System.currentTimeMillis()}"
+            val tempMessage = com.swapmap.zwap.demo.model.ChatMessage(
+                id = tempId,
+                channel_id = currentChannelId,
+                user_id = auth.currentUser?.uid ?: "",
+                username = auth.currentUser?.displayName ?: "Me",
+                text = "Uploading...",
+                type = type,
+                image_url = uri.toString(), // Use Local URI for display
+                created_at = com.google.firebase.Timestamp.now()
+            ).apply {
+                this.localUri = uri
+                this.isUploading = true
+                this.uploadProgress = 0
+            }
+            
+            val adapter = rvMessages.adapter as? MessageAdapter
+            adapter?.addLocalMessage(tempMessage)
+            rvMessages.scrollToPosition((adapter?.itemCount ?: 1) - 1)
+
+            // 2. Start Upload
+            com.swapmap.zwap.demo.network.CloudinaryManager.uploadImage(uri, 
+                onProgress = { progress ->
+                    // 3. Update Progress
+                    activity?.runOnUiThread {
+                        adapter?.updateUploadProgress(tempId, progress)
+                    }
+                }
+            ) { url ->
+                if (url != null) {
+                    val finalType = if (url.endsWith(".mp4") || url.endsWith(".mov") || url.endsWith(".avi")) "video" else "image"
+                    activity?.runOnUiThread {
+                        // 4. Send Message (Firestore listener will replace temp message eventually)
+                        sendMessage(currentChannelId, "Attachment", finalType, url)
+                        
+                        // Remove temp message locally as Firestore will sync the real one
+                        adapter?.removeLocalMessage(tempId)
+                    }
+                } else {
+                    activity?.runOnUiThread {
+                        Toast.makeText(context, "Upload failed", Toast.LENGTH_SHORT).show()
+                        adapter?.removeLocalMessage(tempId)
+                    }
+                }
+            }
+        }
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -57,6 +112,22 @@ class ChatFragment : Fragment() {
         
         view.findViewById<View>(R.id.btn_empty_join).setOnClickListener {
             showRegionSelector()
+        }
+
+        // Attachment Button
+        view.findViewById<View>(R.id.btn_attach_image)?.setOnClickListener {
+            getContent.launch(arrayOf("image/*", "video/*"))
+        }
+        
+        // ... (Send button logic unchanged) ...
+        
+        view.findViewById<View>(R.id.btn_send_message)?.setOnClickListener {
+            val etMessage = view?.findViewById<android.widget.EditText>(R.id.et_message_input)
+            val text = etMessage?.text.toString()
+            if (text.isNotEmpty()) {
+                sendMessage(currentChannelId, text)
+                etMessage?.text?.clear()
+            }
         }
 
         checkUserRegions()
@@ -116,8 +187,6 @@ class ChatFragment : Fragment() {
         rvRegions.adapter = adapter
     }
 
-    private var currentRegionId: String = ""
-
     private fun loadChannels(regionId: String) {
         currentRegionId = regionId
         
@@ -146,23 +215,12 @@ class ChatFragment : Fragment() {
     }
 
     private fun loadMessages(channel: com.swapmap.zwap.demo.model.Channel) {
+        currentChannelId = channel.id
         rvChannels.visibility = View.GONE
         val msgContainer = view?.findViewById<View>(R.id.message_container)
         msgContainer?.visibility = View.VISIBLE
         
         titleView.text = "# ${channel.name}"
-        
-        // Setup send button
-        val etMessage = view?.findViewById<android.widget.EditText>(R.id.et_message_input)
-        
-        // Remove previous listeners to avoid duplicates if any (though setOnClickListener replaces)
-        view?.findViewById<View>(R.id.btn_send_message)?.setOnClickListener {
-            val text = etMessage?.text.toString()
-            if (text.isNotEmpty()) {
-                sendMessage(channel.id, text)
-                etMessage?.text?.clear()
-            }
-        }
         
         // Listen for messages in: chat/{regionId}/threads/{threadId}/messages
         if (currentRegionId.isNotEmpty()) {
@@ -192,7 +250,7 @@ class ChatFragment : Fragment() {
         }
     }
 
-    private fun sendMessage(channelName: String, text: String) {
+    private fun sendMessage(channelName: String, text: String, type: String = "text", imageUrl: String? = null) {
         val user = auth.currentUser ?: return
         if (currentRegionId.isEmpty()) return
         
@@ -201,7 +259,8 @@ class ChatFragment : Fragment() {
             "username" to (user.displayName ?: "User"),
             "user_avatar" to (user.photoUrl?.toString() ?: ""),
             "text" to text,
-            "type" to "text",
+            "type" to type,
+            "image_url" to imageUrl,
             "created_at" to com.google.firebase.Timestamp.now()
         )
         

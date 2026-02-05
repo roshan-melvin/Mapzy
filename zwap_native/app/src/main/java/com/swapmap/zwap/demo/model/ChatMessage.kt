@@ -11,5 +11,10 @@ data class ChatMessage(
     val text: String = "",
     val image_url: String? = null,
     val type: String = "text",
-    val created_at: Timestamp? = null
+    val created_at: Timestamp? = null,
+    
+    // Local Upload State (Not stored in Firestore)
+    @get:com.google.firebase.firestore.Exclude var localUri: android.net.Uri? = null,
+    @get:com.google.firebase.firestore.Exclude var isUploading: Boolean = false,
+    @get:com.google.firebase.firestore.Exclude var uploadProgress: Int = 0
 )

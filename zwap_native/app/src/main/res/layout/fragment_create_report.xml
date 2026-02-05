@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#202225"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Report an Issue"
+            android:textColor="#FFFFFF"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="24dp"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Channel (use # to select)"
+            android:textColor="#B9BBBE"
+            android:layout_marginBottom="8dp"/>
+
+        <AutoCompleteTextView
+            android:id="@+id/et_hashtag_channel"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="@drawable/rounded_dark_edittext"
+            android:padding="12dp"
+            android:hint="#accident, #construction, etc."
+            android:text="#"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#72767D"
+            android:inputType="text"
+            android:completionThreshold="1"
+            android:dropDownHeight="wrap_content"
+            android:layout_marginBottom="16dp"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Description"
+            android:textColor="#B9BBBE"
+            android:layout_marginBottom="8dp"/>
+
+        <EditText
+            android:id="@+id/et_description"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/rounded_dark_edittext"
+            android:minHeight="100dp"
+            android:padding="12dp"
+            android:gravity="top|start"
+            android:hint="Describe what happened..."
+            android:textColor="#FFFFFF"
+            android:textColorHint="#72767D"
+            android:inputType="textMultiLine"
+            android:layout_marginBottom="16dp"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Location"
+            android:textColor="#B9BBBE"
+            android:layout_marginBottom="8dp"/>
+
+        <!-- Map Preview -->
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="200dp"
+            android:layout_marginBottom="16dp"
+            android:background="@drawable/rounded_border_bg">
+
+            <com.mappls.sdk.maps.MapView
+                android:id="@+id/map_pick_location"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"/>
+
+            <!-- Center Pinpoint Marker -->
+            <ImageView
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_gravity="center"
+                android:src="@android:drawable/ic_menu_mylocation"
+                android:tint="#F44336"
+                android:layout_marginBottom="20dp"/>
+
+            <!-- Coordinate Display Overlay -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="bottom"
+                android:background="#CC000000"
+                android:orientation="vertical"
+                android:padding="8dp">
+
+                <TextView
+                    android:id="@+id/tv_location_preview"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Lat: 0.000000, Lng: 0.000000"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:fontFamily="monospace"/>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Drag map to position pinpoint"
+                    android:textColor="#AAAAAA"
+                    android:textSize="10sp"
+                    android:layout_marginTop="2dp"/>
+            </LinearLayout>
+        </FrameLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Proof (Photo/Video)"
+            android:textColor="#B9BBBE"
+            android:layout_marginBottom="8dp"/>
+        
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+            
+            <ImageView
+                android:id="@+id/iv_media_preview"
+                android:layout_width="match_parent"
+                android:layout_height="200dp"
+                android:background="#2f3136"
+                android:scaleType="centerCrop"
+                android:src="@android:drawable/ic_menu_camera"/>
+                
+            <VideoView
+                android:id="@+id/vv_media_preview"
+                android:layout_width="match_parent"
+                android:layout_height="200dp"
+                android:visibility="gone"/>
+                
+            <ImageView
+                 android:id="@+id/iv_play_preview"
+                 android:layout_width="48dp"
+                 android:layout_height="48dp"
+                 android:src="@android:drawable/ic_media_play"
+                 android:layout_gravity="center"
+                 android:visibility="gone"/>
+        </FrameLayout>
+
+        <Button
+            android:id="@+id/btn_upload_media"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Attach Media"
+            android:backgroundTint="#5865F2"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="24dp"/>
+
+        <Button
+            android:id="@+id/btn_submit_report"
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
+            android:text="Submit Report"
+            android:backgroundTint="#43B581"/>
+            
+        <ProgressBar
+            android:id="@+id/pb_uploading"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:visibility="gone"
+            android:layout_marginTop="16dp"/>
+
+    </LinearLayout>
+</ScrollView>

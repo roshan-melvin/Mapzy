@@ -41,12 +41,21 @@
 
             <TextView
                 android:id="@+id/tv_server_name"
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_weight="1"
                 android:text="Community Hub"
                 android:textColor="#FFFFFF"
                 android:textStyle="bold"
                 android:textSize="18sp"/>
+
+            <ImageView
+                android:id="@+id/btn_community_options"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@android:drawable/ic_menu_more"
+                android:visibility="gone"
+                app:tint="#B9BBBE"/>
         </LinearLayout>
         
         <!-- Channels List -->
@@ -70,31 +79,17 @@
             android:visibility="gone"
             android:background="#2F3136"/>
 
-        <!-- Report Button for Feed (Initially Hidden) -->
-        <LinearLayout
-            android:id="@+id/feed_input_area"
-            android:layout_width="match_parent"
+        <TextView
+            android:id="@+id/tv_empty_feed"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_gravity="bottom"
-            android:padding="12dp"
-            android:background="#36393F"
-            android:orientation="horizontal"
-            android:gravity="center"
-            android:visibility="gone">
+            android:layout_gravity="center"
+            android:text="No reports in this channel yet."
+            android:textColor="#72767D"
+            android:visibility="gone"/>
 
-            <Button
-                android:id="@+id/btn_create_channel_report"
-                android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:text="+ Report Incident"
-                android:textColor="#FFFFFF"
-                android:textStyle="bold"
-                android:backgroundTint="#5865F2"
-                android:drawableStart="@android:drawable/ic_menu_camera"
-                android:drawableTint="#FFFFFF"
-                android:drawablePadding="8dp"
-                android:paddingHorizontal="16dp"/>
-        </LinearLayout>
+        <!-- REMOVED: Feed Input Area with Report Incident Button -->
+        <!-- Users should use the + button in sidebar instead -->
 
         <!-- Thread View (Initially Hidden) -->
         <include
