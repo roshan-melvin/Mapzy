@@ -42,3 +42,19 @@ zwap_native/full_log.txt
 # Node dependencies
 node_modules/
 package-lock.json
+
+# Secrets
+serviceAccountKey.json
+**/serviceAccountKey.json
+# Note: google-services.json usually contains keys, ignore if public repo
+# google-services.json 
+
+# Python
+zwap/
+venv/
+__pycache__/
+*.pyc
+
+# IDE
+.idea/
+.vscode/
