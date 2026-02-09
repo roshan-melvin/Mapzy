@@ -96,7 +96,7 @@
                 android:tint="#FFFFFF"
                 android:visibility="gone"/>
 
-            <!-- Upload Overlay -->
+            <!-- Upload Overlay (for uploading state) -->
             <FrameLayout
                 android:id="@+id/upload_overlay"
                 android:layout_width="match_parent"
@@ -123,6 +123,29 @@
                      android:textColor="#FFFFFF"
                      android:textSize="12sp"
                      android:textStyle="bold"/>
+            </FrameLayout>
+            
+            <!-- Retry Overlay (WhatsApp-style, for failed uploads) -->
+            <FrameLayout
+                android:id="@+id/retry_overlay"
+                android:layout_width="match_parent"
+                android:layout_height="200dp"
+                android:background="#80000000"
+                android:visibility="gone"
+                android:clickable="true">
+                
+                <!-- Retry Icon Button -->
+                <ImageView
+                    android:id="@+id/iv_retry"
+                    android:layout_width="56dp"
+                    android:layout_height="56dp"
+                    android:layout_gravity="center"
+                    android:src="@android:drawable/stat_notify_sync"
+                    android:background="@android:drawable/btn_default"
+                    android:backgroundTint="#F44336"
+                    android:padding="12dp"
+                    android:tint="#FFFFFF"
+                    android:clickable="true"/>
             </FrameLayout>
         </FrameLayout>
 

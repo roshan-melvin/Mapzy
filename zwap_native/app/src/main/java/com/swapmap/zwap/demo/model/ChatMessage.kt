@@ -16,5 +16,6 @@ data class ChatMessage(
     // Local Upload State (Not stored in Firestore)
     @get:com.google.firebase.firestore.Exclude var localUri: android.net.Uri? = null,
     @get:com.google.firebase.firestore.Exclude var isUploading: Boolean = false,
-    @get:com.google.firebase.firestore.Exclude var uploadProgress: Int = 0
+    @get:com.google.firebase.firestore.Exclude var uploadProgress: Int = 0,
+    @get:com.google.firebase.firestore.Exclude var localStatus: String? = null // "Pending", "Failed"
 )

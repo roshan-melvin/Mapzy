@@ -20,6 +20,7 @@ class ContributionAdapter(
         val tvDesc: TextView = view.findViewById(R.id.tv_description)
         val tvDate: TextView = view.findViewById(R.id.tv_date)
         val tvPoints: TextView = view.findViewById(R.id.tv_points)
+        val uploadOverlay: View = view.findViewById(R.id.upload_overlay)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ReportViewHolder {
@@ -57,6 +58,20 @@ class ContributionAdapter(
             holder.tvDate.text = sdf.format(report.createdAt.toDate())
         } else {
             holder.tvDate.text = "Just now"
+        }
+        
+        // Upload Overlay (WhatsApp-style)
+        when (report.status) {
+            "Pending", "Uploading" -> {
+                holder.uploadOverlay.visibility = View.VISIBLE
+            }
+            "Failed" -> {
+                holder.uploadOverlay.visibility = View.GONE
+                // Could add a retry button here later
+            }
+            else -> {
+                holder.uploadOverlay.visibility = View.GONE
+            }
         }
     }
 

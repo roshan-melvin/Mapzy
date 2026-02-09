@@ -13,6 +13,17 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.swapmap.zwap.R
+import androidx.work.OneTimeWorkRequest
+import androidx.work.WorkManager
+import androidx.work.workDataOf
+import com.swapmap.zwap.demo.workers.ChatUploadWorker
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import com.swapmap.zwap.demo.db.AppDatabase
+import com.swapmap.zwap.demo.db.PendingMessage
+import java.util.UUID
 
 class ChatFragment : Fragment() {
 
@@ -30,56 +41,55 @@ class ChatFragment : Fragment() {
     private var currentRegionId: String = ""
     private var currentChannelId: String = "general"
 
+    private var pendingMessages: List<PendingMessage> = emptyList()
+    private var firestoreMessages: List<com.swapmap.zwap.demo.model.ChatMessage> = emptyList()
+
     private val getContent = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri: android.net.Uri? ->
         if (uri != null) {
-            val type = if (activity?.contentResolver?.getType(uri)?.startsWith("video") == true) "video" else "image"
+            val context = context ?: return@registerForActivityResult
+            val type = if (context.contentResolver.getType(uri)?.startsWith("video") == true) "video" else "image"
             
-            // 1. Add Temporary Local Message
-            val tempId = "temp_${System.currentTimeMillis()}"
-            val tempMessage = com.swapmap.zwap.demo.model.ChatMessage(
-                id = tempId,
-                channel_id = currentChannelId,
-                user_id = auth.currentUser?.uid ?: "",
-                username = auth.currentUser?.displayName ?: "Me",
-                text = "Uploading...",
-                type = type,
-                image_url = uri.toString(), // Use Local URI for display
-                created_at = com.google.firebase.Timestamp.now()
-            ).apply {
-                this.localUri = uri
-                this.isUploading = true
-                this.uploadProgress = 0
-            }
-            
-            val adapter = rvMessages.adapter as? MessageAdapter
-            adapter?.addLocalMessage(tempMessage)
-            rvMessages.scrollToPosition((adapter?.itemCount ?: 1) - 1)
-
-            // 2. Start Upload
-            com.swapmap.zwap.demo.network.CloudinaryManager.uploadImage(uri, 
-                onProgress = { progress ->
-                    // 3. Update Progress
-                    activity?.runOnUiThread {
-                        adapter?.updateUploadProgress(tempId, progress)
-                    }
-                }
-            ) { url ->
-                if (url != null) {
-                    val finalType = if (url.endsWith(".mp4") || url.endsWith(".mov") || url.endsWith(".avi")) "video" else "image"
-                    activity?.runOnUiThread {
-                        // 4. Send Message (Firestore listener will replace temp message eventually)
-                        sendMessage(currentChannelId, "Attachment", finalType, url)
-                        
-                        // Remove temp message locally as Firestore will sync the real one
-                        adapter?.removeLocalMessage(tempId)
+            // Copy to cache immediately to ensure access survives app close
+            // Running in background to avoid blocking UI, then calling sendMessage
+            lifecycleScope.launch(Dispatchers.IO) {
+                val cachedPath = copyUriToCache(context, uri)
+                if (cachedPath != null) {
+                    withContext(Dispatchers.Main) {
+                        sendMessage(currentChannelId, "Attachment", type, "file://$cachedPath")
                     }
                 } else {
-                    activity?.runOnUiThread {
-                        Toast.makeText(context, "Upload failed", Toast.LENGTH_SHORT).show()
-                        adapter?.removeLocalMessage(tempId)
-                    }
+                     withContext(Dispatchers.Main) {
+                         Toast.makeText(context, "Failed to process file", Toast.LENGTH_SHORT).show()
+                     }
                 }
             }
+        }
+    }
+    
+    private fun copyUriToCache(context: android.content.Context, uri: android.net.Uri): String? {
+        return try {
+            val contentResolver = context.contentResolver
+            val extension = if (contentResolver.getType(uri)?.startsWith("video") == true) ".mp4" else ".jpg"
+            val fileName = "chat_media_${System.currentTimeMillis()}$extension"
+            val file = java.io.File(context.cacheDir, fileName)
+            
+            android.util.Log.d("ChatFragment", "Copying URI to cache: $uri")
+            android.util.Log.d("ChatFragment", "Target file: ${file.absolutePath}")
+            
+            contentResolver.openInputStream(uri)?.use { input ->
+                java.io.FileOutputStream(file).use { output ->
+                    input.copyTo(output)
+                }
+            }
+            
+            android.util.Log.d("ChatFragment", "File copied successfully. Size: ${file.length()} bytes")
+            android.util.Log.d("ChatFragment", "File exists: ${file.exists()}")
+            
+            file.absolutePath
+        } catch (e: Exception) {
+            android.util.Log.e("ChatFragment", "Failed to copy file to cache", e)
+            e.printStackTrace()
+            null
         }
     }
 
@@ -221,32 +231,107 @@ class ChatFragment : Fragment() {
         msgContainer?.visibility = View.VISIBLE
         
         titleView.text = "# ${channel.name}"
+
+        // 1. Observe Pending Messages from Room DB
+        val dao = AppDatabase.getDatabase(requireContext()).pendingMessageDao()
+        lifecycleScope.launch {
+            dao.getPendingMessages(currentRegionId, currentChannelId).collect { pending ->
+                pendingMessages = pending
+                updateMessageList()
+            }
+        }
         
-        // Listen for messages in: chat/{regionId}/threads/{threadId}/messages
+        // 2. Listen for messages in Firestore
         if (currentRegionId.isNotEmpty()) {
             db.collection("chat").document(currentRegionId)
                 .collection("threads").document(channel.id)
                 .collection("messages")
                 .orderBy("created_at", com.google.firebase.firestore.Query.Direction.ASCENDING)
                 .addSnapshotListener { snapshots, e ->
-                    if (e != null) {
-                        return@addSnapshotListener
-                    }
-
+                    if (e != null) return@addSnapshotListener
+                    
                     val messages = mutableListOf<com.swapmap.zwap.demo.model.ChatMessage>()
                     if (snapshots != null) {
                         for (doc in snapshots) {
                             messages.add(doc.toObject(com.swapmap.zwap.demo.model.ChatMessage::class.java).copy(id = doc.id))
                         }
                     }
-                    
-                    val currentUid = auth.currentUser?.uid ?: ""
-                    val adapter = MessageAdapter(messages, currentUid)
-                    rvMessages.adapter = adapter
-                    if (messages.isNotEmpty()) {
-                        rvMessages.scrollToPosition(messages.size - 1)
-                    }
+                    firestoreMessages = messages
+                    updateMessageList()
                 }
+        }
+    }
+
+    private fun updateMessageList() {
+        // Convert pending messages to ChatMessage format
+        val convertedPending = pendingMessages.map { p ->
+            com.swapmap.zwap.demo.model.ChatMessage(
+                id = p.id,
+                channel_id = p.threadId,
+                user_id = p.userId,
+                username = p.userName,
+                text = p.messageText,
+                image_url = p.imageUri,
+                type = p.messageType,
+                created_at = com.google.firebase.Timestamp(p.createdAt / 1000, 0)
+            ).apply {
+                this.localUri = if (p.imageUri != null) android.net.Uri.parse(p.imageUri) else null
+                this.isUploading = (p.status == "Sending" || p.status == "Pending")
+                this.localStatus = p.status
+            }
+        }
+        
+        // Deduplicate: If message is already in Firestore (upload complete), don't show pending version
+        val firestoreIds = firestoreMessages.map { it.id }.toSet()
+        val uniquePending = convertedPending.filter { !firestoreIds.contains(it.id) }
+        
+        // Ensure Firestore messages have NO local state (defensive programming)
+        val cleanFirestoreMessages = firestoreMessages.map { it.copy().apply {
+            localStatus = null
+            isUploading = false
+            uploadProgress = 0
+            localUri = null
+        }}
+        
+        val allMessages = cleanFirestoreMessages + uniquePending
+        val sorted = allMessages.sortedBy { it.created_at?.seconds ?: 0L }
+        
+        val currentUid = auth.currentUser?.uid ?: ""
+        val adapter = MessageAdapter(sorted, currentUid) { message ->
+            retryMessage(message)
+        }
+        rvMessages.adapter = adapter
+        if (sorted.isNotEmpty()) {
+            rvMessages.scrollToPosition(sorted.size - 1)
+        }
+    }
+    
+    private fun retryMessage(message: com.swapmap.zwap.demo.model.ChatMessage) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val dao = AppDatabase.getDatabase(requireContext()).pendingMessageDao()
+            val pending = dao.getMessageById(message.id)
+            if (pending != null) {
+                // Reset status
+                dao.update(pending.copy(status = "Pending"))
+                
+                // Re-enqueue
+                val inputData = workDataOf(
+                    "channelId" to pending.channelId,
+                    "threadId" to pending.threadId,
+                    "userId" to pending.userId,
+                    "userName" to pending.userName,
+                    "messageText" to pending.messageText,
+                    "imageUri" to pending.imageUri,
+                    "messageType" to pending.messageType,
+                    "messageId" to pending.id
+                )
+
+                val uploadWork = OneTimeWorkRequest.Builder(ChatUploadWorker::class.java)
+                    .setInputData(inputData)
+                    .build()
+                    
+                WorkManager.getInstance(requireContext()).enqueue(uploadWork)
+            }
         }
     }
 
@@ -254,20 +339,41 @@ class ChatFragment : Fragment() {
         val user = auth.currentUser ?: return
         if (currentRegionId.isEmpty()) return
         
-        val message = hashMapOf(
-            "user_id" to user.uid,
-            "username" to (user.displayName ?: "User"),
-            "user_avatar" to (user.photoUrl?.toString() ?: ""),
-            "text" to text,
-            "type" to type,
-            "image_url" to imageUrl,
-            "created_at" to com.google.firebase.Timestamp.now()
-        )
+        val msgId = UUID.randomUUID().toString()
         
-        db.collection("chat").document(currentRegionId)
-            .collection("threads").document(channelName)
-            .collection("messages")
-            .add(message)
+        // 1. Insert into Local DB (Optimistic)
+        lifecycleScope.launch(Dispatchers.IO) {
+            val pending = PendingMessage(
+                id = msgId,
+                channelId = currentRegionId,
+                threadId = channelName,
+                userId = user.uid,
+                userName = user.displayName ?: "User",
+                messageText = text,
+                messageType = type,
+                imageUri = imageUrl,
+                status = "Pending"
+            )
+            AppDatabase.getDatabase(requireContext()).pendingMessageDao().insert(pending)
+            
+            // 2. Schedule Background Upload (Main thread NOT required for workmanager enqueue, safe to do here)
+            val inputData = workDataOf(
+                "channelId" to currentRegionId,
+                "threadId" to channelName,
+                "userId" to user.uid,
+                "userName" to (user.displayName ?: "User"),
+                "messageText" to text,
+                "imageUri" to imageUrl,
+                "messageType" to type,
+                "messageId" to msgId
+            )
+
+            val uploadWork = OneTimeWorkRequest.Builder(ChatUploadWorker::class.java)
+                .setInputData(inputData)
+                .build()
+                
+            WorkManager.getInstance(requireContext()).enqueue(uploadWork)
+        }
     }
 
     private fun showRegionSelector() {

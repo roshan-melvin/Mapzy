@@ -3,6 +3,7 @@ plugins {
     id 'kotlin-android'
     id 'com.google.gms.google-services'
     id 'org.jetbrains.kotlin.plugin.serialization' version '2.1.0'
+    id 'com.google.devtools.ksp'
 }
 
 android {
@@ -69,4 +70,12 @@ dependencies {
     implementation 'io.github.jan-tennert.supabase:gotrue-kt:2.5.0'
     implementation 'io.ktor:ktor-client-android:2.3.12'
     implementation 'org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0'
+
+    // WorkManager
+    implementation 'androidx.work:work-runtime-ktx:2.9.0'
+
+    // Room
+    implementation 'androidx.room:room-runtime:2.6.1'
+    implementation 'androidx.room:room-ktx:2.6.1'
+    ksp 'androidx.room:room-compiler:2.6.1'
 }
