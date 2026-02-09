@@ -12,9 +12,9 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 
 class MessageAdapter(
-    // private val messages: List<ChatMessage>, // Changed to MutableList below
     messagesIn: List<ChatMessage>,
-    private val currentUserId: String
+    private val currentUserId: String,
+    private val onRetry: (ChatMessage) -> Unit = {}
 ) : RecyclerView.Adapter<MessageAdapter.MessageViewHolder>() {
 
     private val messages = messagesIn.toMutableList()
@@ -30,6 +30,8 @@ class MessageAdapter(
         val uploadOverlay: View = view.findViewById(R.id.upload_overlay)
         val progressBar: android.widget.ProgressBar = view.findViewById(R.id.pb_upload_progress)
         val tvPercent: TextView = view.findViewById(R.id.tv_upload_percent)
+        val retryOverlay: View = view.findViewById(R.id.retry_overlay)
+        val ivRetry: ImageView = view.findViewById(R.id.iv_retry)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MessageViewHolder {
@@ -48,15 +50,29 @@ class MessageAdapter(
         holder.vvVideo.visibility = View.GONE
         holder.tvText.visibility = View.GONE
         holder.ivPlayIcon.visibility = View.GONE
+        holder.uploadOverlay.visibility = View.GONE
+        holder.retryOverlay.visibility = View.GONE
         
-        // Handle Local Upload State
+        // Handle Local Upload State (uploading)
         if (message.isUploading) {
              holder.uploadOverlay.visibility = View.VISIBLE
              holder.progressBar.progress = message.uploadProgress
              holder.tvPercent.text = "${message.uploadProgress}%"
-        } else {
-             holder.uploadOverlay.visibility = View.GONE
         }
+        
+        // Handle Failed State (only for media messages)
+        val isMediaMessage = message.type == "image" || message.type == "video"
+        if (message.localStatus == "Failed" && isMediaMessage) {
+            holder.retryOverlay.visibility = View.VISIBLE
+            holder.retryOverlay.setOnClickListener {
+                onRetry(message)
+            }
+            holder.ivRetry.setOnClickListener {
+                onRetry(message)
+            }
+        }
+        
+        // ... rest of binding ...
         
         // Determine Media Source (Local URI or Remote URL)
         val mediaUri = message.localUri?.toString() ?: message.image_url

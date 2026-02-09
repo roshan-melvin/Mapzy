@@ -78,12 +78,19 @@ import android.graphics.Paint
 import android.widget.Button
 import java.lang.ref.WeakReference
 import java.util.*
+import com.google.android.material.bottomnavigation.BottomNavigationView
+import com.swapmap.zwap.demo.profile.ProfileFragment
+import com.swapmap.zwap.demo.community.CommunityFragment
+import com.swapmap.zwap.demo.chat.ChatFragment
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody.Companion.toRequestBody
 
 class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnInitListener {
 
     private var mapView: MapView? = null
-    var mapplsMap: MapplsMap? = null
+    internal var mapplsMap: MapplsMap? = null  // internal for fragment access
     private var selectedELoc: String? = null
+    private var selectedPlace: ELocation? = null  // Store full place details
     
     // Firestore Database
     private val db = FirebaseFirestore.getInstance()
@@ -108,16 +115,23 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     private var osmOverlayEnabled = false
     private var lastOSMFetchLocation: Location? = null
     private var lastZoomLevel: Double = 0.0
+    
+    // Route hazard markers (separate from regular OSM markers)
+    private val routeHazardMarkerIds = mutableListOf<Long>()
+    private var isNavigating = false
+    private var currentRoutePoints: List<Point> = emptyList()  // Store route points for progressive fetching
+    private var currentHazardFetchIndex = 0  // Track which chunk we're fetching
+    private var hazardFetchJob: kotlinx.coroutines.Job? = null  // Job to cancel if route changes
+    private var totalRouteDistanceMeters = 0.0  // Total route distance for progress calculation
+    
     private lateinit var auth: FirebaseAuth
     private var currentUserId: String? = null
-    private lateinit var communityManager: com.swapmap.zwap.demo.community.CommunityManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
         // Initialize Firebase Auth
         auth = FirebaseAuth.getInstance()
-        communityManager = com.swapmap.zwap.demo.community.CommunityManager(this)
         
         // Ensure keys are set before inflation
         Mappls.getInstance(this)
@@ -263,146 +277,65 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             Log.e("Zwap", "Error setting up hazard button", e)
         }
         
-        // Setup Bottom Navigation
         setupBottomNavigation()
-        
         setupSearchOverlay()
     }
     
-    fun showReportDialog() {
-        val reportFragment = com.swapmap.zwap.demo.community.ReportSubmissionFragment()
-        reportFragment.setOnReportSelectedListener { reportType, imageUri ->
-            submitReport(reportType, imageUri)
-        }
-        reportFragment.show(supportFragmentManager, "ReportSubmissionFragment")
-    }
-    
-    fun showChannelReportDialog(channelName: String = "unknown") {
-        val channelReportFragment = com.swapmap.zwap.demo.community.ChannelReportFragment()
-        channelReportFragment.setChannelContext(channelName)
-        channelReportFragment.setOnReportSubmittedListener { category, description, hashtags, imageUri ->
-            submitChannelReport(category, description, hashtags, imageUri)
-        }
-        channelReportFragment.show(supportFragmentManager, "ChannelReportFragment")
-    }
-    
-    fun submitChannelReport(category: String, description: String, hashtags: String, imageUri: android.net.Uri? = null) {
-        val location = mapplsMap?.cameraPosition?.target
-        if (location == null) {
-            Toast.makeText(this, "Could not determine location", Toast.LENGTH_SHORT).show()
-            return
-        }
-        
-        Toast.makeText(this, "Channel Report: $category\n$description\n$hashtags", Toast.LENGTH_LONG).show()
-        // TODO: Submit to backend with description, hashtags, and image
-    }
-    
-    fun submitReport(reportType: String, imageUri: android.net.Uri? = null) {
-        val location = mapplsMap?.cameraPosition?.target
-        if (location == null) {
-            Toast.makeText(this, "Could not determine location", Toast.LENGTH_SHORT).show()
-            return
-        }
-        
-        val point = com.mappls.sdk.geojson.Point.fromLngLat(location.longitude, location.latitude)
-        
-        // Map simplified string types to enum
-        val (category, hazardType) = when (reportType) {
-            "Hazard" -> Pair(com.swapmap.zwap.demo.community.models.ReportCategory.HAZARD, com.swapmap.zwap.demo.community.models.HazardType.ACCIDENT)
-            "Speed Camera" -> Pair(com.swapmap.zwap.demo.community.models.ReportCategory.SPEED_CAMERA, null)
-            "Police" -> Pair(com.swapmap.zwap.demo.community.models.ReportCategory.POLICE, null)
-            "Traffic" -> Pair(com.swapmap.zwap.demo.community.models.ReportCategory.TRAFFIC, null)
-            "Map Issue" -> Pair(com.swapmap.zwap.demo.community.models.ReportCategory.MAP_ISSUE, null)
-            else -> Pair(com.swapmap.zwap.demo.community.models.ReportCategory.HAZARD, com.swapmap.zwap.demo.community.models.HazardType.OTHER)
-        }
-        
-        lifecycleScope.launch {
-            try {
-                Toast.makeText(this@MainActivity, "Submitting report ${if (imageUri != null) "with photo" else ""}...", Toast.LENGTH_SHORT).show()
-                val result = communityManager.submitReport(
-                    category = category,
-                    hazardType = hazardType,
-                    location = point
-                    // imageUri can be added to communityManager later
-                )
-                
-                result.onSuccess {
-                    Toast.makeText(this@MainActivity, "$reportType reported successfully!", Toast.LENGTH_LONG).show()
-                }.onFailure { e ->
-                    Log.e("Zwap", "Error submitting report", e)
-                    Toast.makeText(this@MainActivity, "Failed to submit report: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
-            } catch (e: Exception) {
-                Log.e("Zwap", "Error in submission", e)
-                Toast.makeText(this@MainActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-    
     private fun setupBottomNavigation() {
-        val bottomNav = findViewById<com.google.android.material.bottomnavigation.BottomNavigationView>(R.id.bottom_navigation)
-        val mapView = findViewById<View>(R.id.map_view)
-        val hudPanel = findViewById<View>(R.id.speed_limit_widget)
-        val fabStack = findViewById<View>(R.id.fab_stack_container)
-        val searchCard = findViewById<View>(R.id.search_card)
+        val bottomNav = findViewById<BottomNavigationView>(R.id.bottom_navigation)
         val fragmentContainer = findViewById<View>(R.id.fragment_container)
         
-        bottomNav?.setOnItemSelectedListener { item ->
+        bottomNav.setOnItemSelectedListener { item ->
             when (item.itemId) {
                 R.id.nav_explore -> {
-                    // Show Map UI
+                    // Show map, hide fragment container
+                    fragmentContainer.visibility = View.GONE
                     mapView?.visibility = View.VISIBLE
-                    hudPanel?.visibility = View.VISIBLE
-                    fabStack?.visibility = View.VISIBLE
-                    searchCard?.visibility = View.VISIBLE
-                    fragmentContainer?.visibility = View.GONE
+                    findViewById<View>(R.id.search_card)?.visibility = View.VISIBLE
+                    findViewById<View>(R.id.fab_recenter)?.visibility = View.VISIBLE
+                    findViewById<View>(R.id.fab_compass)?.visibility = View.VISIBLE
+                    Log.d("Zwap", "Switched to Explore tab")
                     true
                 }
                 R.id.nav_profile -> {
-                    // Show Profile Fragment
-                    fragmentContainer?.visibility = View.VISIBLE
-                    mapView?.visibility = View.GONE
-                    hudPanel?.visibility = View.GONE
-                    searchCard?.visibility = View.GONE
-                    fabStack?.visibility = View.GONE
-
-                    supportFragmentManager.beginTransaction()
-                        .replace(R.id.fragment_container, com.swapmap.zwap.demo.profile.ProfileFragment())
-                        .commit()
+                    // Show Profile fragment
+                    showFragment(ProfileFragment(), "You")
                     true
                 }
                 R.id.nav_contribute -> {
-                    // Show Community Fragment
-                    fragmentContainer?.visibility = View.VISIBLE
-                    mapView?.visibility = View.GONE
-                    hudPanel?.visibility = View.GONE
-                    searchCard?.visibility = View.GONE
-                    fabStack?.visibility = View.GONE
-                    
-                    supportFragmentManager.beginTransaction()
-                        .replace(R.id.fragment_container, com.swapmap.zwap.demo.community.CommunityFragment())
-                        .commit()
+                    // Show Community fragment (Discord-like contribute page)
+                    showFragment(CommunityFragment(), "Contribute")
                     true
                 }
                 R.id.nav_chat -> {
-                    // Show Chat Fragment
-                    fragmentContainer?.visibility = View.VISIBLE
-                    mapView?.visibility = View.GONE
-                    hudPanel?.visibility = View.GONE
-                    searchCard?.visibility = View.GONE
-                    fabStack?.visibility = View.GONE
-                    
-                    supportFragmentManager.beginTransaction()
-                        .replace(R.id.fragment_container, com.swapmap.zwap.demo.chat.ChatFragment())
-                        .commit()
+                    // Show Chat fragment
+                    showFragment(ChatFragment(), "Chat")
                     true
                 }
                 else -> false
             }
         }
+    }
+    
+    private fun showFragment(fragment: androidx.fragment.app.Fragment, tag: String) {
+        val fragmentContainer = findViewById<View>(R.id.fragment_container)
         
-        // Set Explore as default
-        bottomNav?.selectedItemId = R.id.nav_explore
+        // Hide map-related views
+        mapView?.visibility = View.GONE
+        findViewById<View>(R.id.search_card)?.visibility = View.GONE
+        findViewById<View>(R.id.fab_recenter)?.visibility = View.GONE
+        findViewById<View>(R.id.fab_compass)?.visibility = View.GONE
+        findViewById<View>(R.id.search_overlay)?.visibility = View.GONE
+        
+        // Show fragment container
+        fragmentContainer.visibility = View.VISIBLE
+        
+        // Replace fragment
+        supportFragmentManager.beginTransaction()
+            .replace(R.id.fragment_container, fragment, tag)
+            .commit()
+        
+        Log.d("Zwap", "Switched to $tag tab")
     }
     
     private fun performVoiceSearch() {
@@ -860,6 +793,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         val onLocationSelected: (ELocation) -> Unit = { location ->
             saveToHistory(location)
             selectedELoc = location.mapplsPin
+            selectedPlace = location  // Store full place details
             findViewById<TextView>(R.id.search_trigger).text = location.placeName
             findViewById<View>(R.id.btn_directions).visibility = View.VISIBLE
             
@@ -870,6 +804,9 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             overlay.visibility = View.GONE
             val imm = getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
             imm.hideSoftInputFromWindow(etInput.windowToken, 0)
+            
+            // Show place details bottom sheet like Google Maps
+            showPlaceDetailsBottomSheet(location)
         }
 
         searchAdapter = SearchAdapter(onLocationSelected)
@@ -1002,6 +939,39 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             return
         }
         
+        val mapplsPin = location.mapplsPin ?: ""
+        
+        // Check if this place already exists in history (prevent duplicates)
+        db.collection("users")
+            .document(currentUserId!!)
+            .collection("searchHistory")
+            .whereEqualTo("mapplsPin", mapplsPin)
+            .limit(1)
+            .get()
+            .addOnSuccessListener { documents ->
+                if (documents.isEmpty) {
+                    // Place doesn't exist, add it
+                    addNewHistoryItem(location)
+                } else {
+                    // Place exists, update timestamp to move it to top
+                    val existingDoc = documents.documents[0]
+                    existingDoc.reference.update("timestamp", System.currentTimeMillis())
+                        .addOnSuccessListener {
+                            Log.d("Zwap", "✅ Updated existing history item: ${location.placeName}")
+                        }
+                        .addOnFailureListener { e ->
+                            Log.e("Zwap", "❌ Error updating history: ${e.message}", e)
+                        }
+                }
+            }
+            .addOnFailureListener { e ->
+                Log.e("Zwap", "❌ Error checking duplicates: ${e.message}", e)
+                // If check fails, just add the item anyway
+                addNewHistoryItem(location)
+            }
+    }
+    
+    private fun addNewHistoryItem(location: ELocation) {
         try {
             val historyItem = hashMapOf(
                 "placeName" to (location.placeName ?: "Unknown"),
@@ -1312,8 +1282,23 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     }
 
     private fun getDirections() {
-        val lastLocation = mapplsMap?.locationComponent?.lastKnownLocation ?: return
+        // Check if destination is selected
+        if (selectedELoc.isNullOrEmpty()) {
+            Toast.makeText(this, "Please select a destination first", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        val lastLocation = mapplsMap?.locationComponent?.lastKnownLocation
+        if (lastLocation == null) {
+            Toast.makeText(this, "Getting your location...", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        Toast.makeText(this, "Calculating route...", Toast.LENGTH_SHORT).show()
+        
         val origin = Point.fromLngLat(lastLocation.longitude, lastLocation.latitude)
+        
+        Log.d("Zwap", "Getting directions from (${lastLocation.latitude}, ${lastLocation.longitude}) to $selectedELoc")
         
         val builder = MapplsDirections.builder()
             .origin(origin)
@@ -1327,58 +1312,739 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             
         MapplsDirectionManager.newInstance(builder).call(object : OnResponseCallback<DirectionsResponse> {
             override fun onSuccess(response: DirectionsResponse?) {
-                if (response != null && response.routes().size > 0) {
+                if (response != null && response.routes().isNotEmpty()) {
                     currentRoute = response
                     val route = response.routes()[0]
                     
-
+                    Log.d("Zwap", "Route found: ${route.distance()}m, ${route.duration()}s")
                     
                     drawRoute(route.geometry())
                     extractHazardsFromRoute(route.legs()?.get(0)?.steps())
                     
-                    findViewById<View>(R.id.route_info_layout).visibility = View.VISIBLE
-                    findViewById<TextView>(R.id.tv_distance).text = "%.1f km".format(route.distance()!! / 1000.0)
-                    findViewById<TextView>(R.id.tv_duration).text = "${(route.duration()!! / 60.0).toInt()} min"
+                    // Show directions UI (Google Maps style)
+                    showDirectionsUI(route.distance()!!, route.duration()!!)
                     
                     enableFollowMode()
+                    
+                    Toast.makeText(this@MainActivity, "Route ready!", Toast.LENGTH_SHORT).show()
+                } else {
+                    Log.e("Zwap", "No routes found in response")
+                    Toast.makeText(this@MainActivity, "No route found", Toast.LENGTH_SHORT).show()
                 }
             }
-            override fun onError(p0: Int, p1: String?) {
-                Toast.makeText(this@MainActivity, "Directions Error: \$p1", Toast.LENGTH_SHORT).show()
+            override fun onError(code: Int, message: String?) {
+                Log.e("Zwap", "Directions Error: $code - $message")
+                Toast.makeText(this@MainActivity, "Directions Error: $message", Toast.LENGTH_SHORT).show()
             }
         })
+    }
+    
+    private fun showDirectionsUI(distance: Double, duration: Double) {
+        // Hide search bar
+        findViewById<View>(R.id.search_card).visibility = View.GONE
+        
+        // Show directions header card
+        findViewById<View>(R.id.directions_header_card).visibility = View.VISIBLE
+        findViewById<TextView>(R.id.tv_origin_name).text = "Your location"
+        findViewById<TextView>(R.id.tv_destination_name).text = selectedPlace?.placeName ?: "Destination"
+        
+        // Setup swap locations button
+        findViewById<View>(R.id.btn_swap_locations).setOnClickListener {
+            Toast.makeText(this, "Swap not available - route starts from your location", Toast.LENGTH_SHORT).show()
+        }
+        
+        // Setup menu button
+        findViewById<View>(R.id.btn_directions_menu).setOnClickListener {
+            val popup = android.widget.PopupMenu(this, it)
+            popup.menu.add("Route options")
+            popup.menu.add("Add stop")
+            popup.menu.add("Set departure time")
+            popup.setOnMenuItemClickListener { item ->
+                Toast.makeText(this, "${item.title} - Coming soon", Toast.LENGTH_SHORT).show()
+                true
+            }
+            popup.show()
+        }
+        
+        // Show directions bottom panel
+        findViewById<View>(R.id.directions_bottom_panel).visibility = View.VISIBLE
+        
+        val durationMin = (duration / 60.0).toInt()
+        val durationText = if (durationMin >= 60) {
+            "${durationMin / 60} hr ${durationMin % 60} min"
+        } else {
+            "$durationMin min"
+        }
+        findViewById<TextView>(R.id.tv_route_duration).text = durationText
+        findViewById<TextView>(R.id.tv_route_distance).text = "%.1f km".format(distance / 1000.0)
+        
+        // Setup close button
+        findViewById<View>(R.id.btn_close_directions).setOnClickListener {
+            closeDirectionsUI()
+        }
+        
+        // Setup start navigation button
+        findViewById<View>(R.id.btn_start_navigation).setOnClickListener {
+            Toast.makeText(this, "Starting navigation...", Toast.LENGTH_SHORT).show()
+            // TODO: Start turn-by-turn navigation
+        }
+        
+        // Setup share button
+        findViewById<View>(R.id.btn_share_route)?.setOnClickListener {
+            val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(android.content.Intent.EXTRA_TEXT, "Check out this route to ${selectedPlace?.placeName ?: "destination"}")
+            }
+            startActivity(android.content.Intent.createChooser(shareIntent, "Share route"))
+        }
+        
+        // Setup options button
+        findViewById<View>(R.id.btn_route_options)?.setOnClickListener {
+            Toast.makeText(this, "Route options - Coming soon", Toast.LENGTH_SHORT).show()
+        }
+        
+        // Hide old route info layout
+        findViewById<View>(R.id.route_info_layout).visibility = View.GONE
+    }
+    
+    private fun closeDirectionsUI() {
+        // Show search bar
+        findViewById<View>(R.id.search_card).visibility = View.VISIBLE
+        
+        // Hide directions panels
+        findViewById<View>(R.id.directions_header_card).visibility = View.GONE
+        findViewById<View>(R.id.directions_bottom_panel).visibility = View.GONE
+        
+        // Clear route
+        lineManager?.clearAll()
+        mapplsMap?.clear()
+        clearRouteHazards()
+        
+        // Reset state
+        currentRoute = null
+        isNavigating = false
+    }
+    
+    private fun showPlaceDetailsBottomSheet(location: ELocation) {
+        val dialog = com.google.android.material.bottomsheet.BottomSheetDialog(this)
+        
+        val layout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(48, 32, 48, 48)
+            layoutParams = android.view.ViewGroup.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            setBackgroundColor(Color.parseColor("#1E1E1E"))
+        }
+        
+        // Drag handle
+        val dragHandle = View(this).apply {
+            layoutParams = android.widget.LinearLayout.LayoutParams(80, 10).apply {
+                gravity = android.view.Gravity.CENTER_HORIZONTAL
+                bottomMargin = 32
+            }
+            setBackgroundColor(Color.parseColor("#666666"))
+        }
+        layout.addView(dragHandle)
+        
+        // Place name (large title)
+        val titleView = TextView(this).apply {
+            text = location.placeName ?: "Unknown Place"
+            textSize = 24f
+            setTextColor(Color.WHITE)
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = 8 }
+        }
+        layout.addView(titleView)
+        
+        // Place type/category
+        val typeView = TextView(this).apply {
+            text = location.orderIndex?.toString() ?: location.type ?: "Location"
+            textSize = 14f
+            setTextColor(Color.parseColor("#AAAAAA"))
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = 16 }
+        }
+        layout.addView(typeView)
+        
+        // Address
+        val addressView = TextView(this).apply {
+            text = "📍 ${location.placeAddress ?: "Address not available"}"
+            textSize = 14f
+            setTextColor(Color.parseColor("#CCCCCC"))
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = 8 }
+        }
+        layout.addView(addressView)
+        
+        // Distance (if available)
+        location.distance?.let { dist ->
+            val distanceView = TextView(this).apply {
+                text = "📏 ${dist.toInt()}m away"
+                textSize = 14f
+                setTextColor(Color.parseColor("#CCCCCC"))
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = 24 }
+            }
+            layout.addView(distanceView)
+        }
+        
+        // Action buttons row
+        val buttonsLayout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = 16 }
+        }
+        
+        // Directions button
+        val directionsBtn = com.google.android.material.button.MaterialButton(this).apply {
+            text = "Directions"
+            setIconResource(android.R.drawable.ic_menu_directions)
+            setBackgroundColor(Color.parseColor("#00BFA5"))
+            setTextColor(Color.WHITE)
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f
+            ).apply { marginEnd = 8 }
+            setOnClickListener {
+                dialog.dismiss()
+                getDirections()
+            }
+        }
+        buttonsLayout.addView(directionsBtn)
+        
+        // Start button
+        val startBtn = com.google.android.material.button.MaterialButton(this).apply {
+            text = "Start"
+            setIconResource(android.R.drawable.ic_media_play)
+            setBackgroundColor(Color.parseColor("#4FC3F7"))
+            setTextColor(Color.WHITE)
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f
+            ).apply { marginStart = 8; marginEnd = 8 }
+            setOnClickListener {
+                dialog.dismiss()
+                getDirections()
+                // Start navigation after getting directions
+                Toast.makeText(this@MainActivity, "Starting navigation...", Toast.LENGTH_SHORT).show()
+            }
+        }
+        buttonsLayout.addView(startBtn)
+        
+        // Save button
+        val saveBtn = com.google.android.material.button.MaterialButton(this).apply {
+            text = "Save"
+            setIconResource(android.R.drawable.ic_menu_save)
+            setBackgroundColor(Color.parseColor("#333333"))
+            setTextColor(Color.WHITE)
+            strokeColor = android.content.res.ColorStateList.valueOf(Color.parseColor("#666666"))
+            strokeWidth = 2
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f
+            ).apply { marginStart = 8 }
+            setOnClickListener {
+                Toast.makeText(this@MainActivity, "Place saved!", Toast.LENGTH_SHORT).show()
+            }
+        }
+        buttonsLayout.addView(saveBtn)
+        
+        layout.addView(buttonsLayout)
+        
+        dialog.setContentView(layout)
+        dialog.show()
     }
 
     private fun extractHazardsFromRoute(steps: List<LegStep>?) {
         routeHazards.clear()
         symbolManager?.clearAll()
+        // Only store hazard points for alerts, don't add markers for every step
         steps?.forEach { step ->
             step.maneuver()?.location()?.let { location ->
                 routeHazards.add(Pair(location.latitude(), location.longitude()))
-                
-                // Add visible marker for route guidance points
-                val symbolOptions = SymbolOptions()
-                    .geometry(Point.fromLngLat(location.longitude(), location.latitude()))
-                    .textField(step.maneuver()?.instruction() ?: "")
-                    .textSize(10f)
-                symbolManager?.create(symbolOptions)
             }
         }
-        Log.d("Zwap", "Extracted \${routeHazards.size} potential hazard points from route")
+        Log.d("Zwap", "Extracted ${routeHazards.size} potential hazard points from route")
     }
 
     private fun drawRoute(geometry: String?) {
         if (geometry == null) return
         
         lineManager?.clearAll()
+        symbolManager?.clearAll()
+        clearRouteHazards()  // Clear previous route hazards
+        isNavigating = true  // Mark navigation as active
         
         val points = PolylineUtils.decode(geometry, Constants.PRECISION_6)
         val latLngs = points.map { com.mappls.sdk.maps.geometry.LatLng(it.latitude(), it.longitude()) }
+        
+        // Draw smooth route line with rounded caps
         val lineOptions = LineOptions()
             .points(latLngs)
-            .lineColor("#3498db")
-            .lineWidth(7f)
+            .lineColor("#2196F3")  // Google Maps blue
+            .lineWidth(8f)
+            .lineOpacity(0.9f)
         lineManager?.create(lineOptions)
+        
+        // Add only DESTINATION marker (red pin) - no start marker since current location is already shown
+        if (latLngs.size > 1) {
+            val endPoint = latLngs.last()
+            val endMarker = MarkerOptions()
+                .position(endPoint)
+                .title("Destination")
+                .icon(com.mappls.sdk.maps.annotations.IconFactory.getInstance(this)
+                    .fromBitmap(createRouteMarkerBitmap(false)))
+            mapplsMap?.addMarker(endMarker)
+        }
+        
+        // Fetch hazards along the route progressively (50km chunks)
+        fetchHazardsAlongRouteProgressive(points)
+    }
+    
+    private fun fetchHazardsAlongRouteProgressive(routePoints: List<Point>) {
+        if (routePoints.isEmpty()) {
+            Log.d("Zwap", "No route points to fetch hazards for")
+            return
+        }
+        
+        // Cancel any existing fetch job
+        hazardFetchJob?.cancel()
+        currentRoutePoints = routePoints
+        currentHazardFetchIndex = 0
+        
+        // Calculate total route distance
+        totalRouteDistanceMeters = 0.0
+        for (i in 0 until routePoints.size - 1) {
+            totalRouteDistanceMeters += calculateDistance(
+                routePoints[i].latitude(), routePoints[i].longitude(),
+                routePoints[i + 1].latitude(), routePoints[i + 1].longitude()
+            )
+        }
+        
+        Log.d("Zwap", "Total route distance: ${(totalRouteDistanceMeters / 1000).toInt()} km, starting progressive fetch...")
+        
+        // Show progress indicator
+        runOnUiThread {
+            findViewById<View>(R.id.hazard_scan_progress_container)?.visibility = View.VISIBLE
+            updateHazardScanProgress(0)
+        }
+        
+        // Start fetching in 50km chunks
+        hazardFetchJob = lifecycleScope.launch(Dispatchers.IO) {
+            fetchNextHazardChunk()
+        }
+    }
+    
+    private fun updateHazardScanProgress(percent: Int) {
+        findViewById<android.widget.ProgressBar>(R.id.hazard_scan_progress)?.progress = percent
+        findViewById<TextView>(R.id.tv_hazard_scan_percent)?.text = "$percent%"
+    }
+    
+    private fun hideHazardScanProgress() {
+        findViewById<View>(R.id.hazard_scan_progress_container)?.visibility = View.GONE
+    }
+    
+    private suspend fun fetchNextHazardChunk() {
+        if (!isNavigating || currentRoutePoints.isEmpty()) {
+            Log.d("Zwap", "Navigation stopped or no route points, stopping hazard fetch")
+            withContext(Dispatchers.Main) { hideHazardScanProgress() }
+            return
+        }
+        
+        val CHUNK_DISTANCE_METERS = 50000.0  // 50 km per chunk
+        val startIndex = currentHazardFetchIndex
+        var accumulatedDistance = 0.0
+        var endIndex = startIndex
+        
+        // Find the end index for this 50km chunk
+        for (i in startIndex until currentRoutePoints.size - 1) {
+            val dist = calculateDistance(
+                currentRoutePoints[i].latitude(), currentRoutePoints[i].longitude(),
+                currentRoutePoints[i + 1].latitude(), currentRoutePoints[i + 1].longitude()
+            )
+            accumulatedDistance += dist
+            endIndex = i + 1
+            
+            if (accumulatedDistance >= CHUNK_DISTANCE_METERS) {
+                break
+            }
+        }
+        
+        // If we've reached the end
+        if (startIndex >= currentRoutePoints.size - 1) {
+            Log.d("Zwap", "All hazard chunks fetched!")
+            withContext(Dispatchers.Main) {
+                updateHazardScanProgress(100)
+                // Hide after a brief delay to show 100%
+                kotlinx.coroutines.MainScope().launch {
+                    kotlinx.coroutines.delay(1500)
+                    hideHazardScanProgress()
+                }
+            }
+            return
+        }
+        
+        // Get the chunk of points
+        val chunkPoints = currentRoutePoints.subList(startIndex, minOf(endIndex + 1, currentRoutePoints.size))
+        val chunkEndKm = getDistanceToIndex(endIndex)
+        
+        // Calculate and update progress percentage
+        val progressPercent = if (totalRouteDistanceMeters > 0) {
+            ((chunkEndKm / totalRouteDistanceMeters) * 100).toInt().coerceIn(0, 100)
+        } else 0
+        
+        Log.d("Zwap", "Fetching hazards: ${progressPercent}% complete")
+        
+        withContext(Dispatchers.Main) {
+            updateHazardScanProgress(progressPercent)
+        }
+        
+        // Retry logic for failed requests
+        var retryCount = 0
+        val maxRetries = 2
+        var success = false
+        
+        while (!success && retryCount <= maxRetries && isNavigating) {
+            try {
+                // Build bounding box for this chunk
+                var minLat = Double.MAX_VALUE
+                var maxLat = Double.MIN_VALUE
+                var minLon = Double.MAX_VALUE
+                var maxLon = Double.MIN_VALUE
+                
+                chunkPoints.forEach { point ->
+                    minLat = minOf(minLat, point.latitude())
+                    maxLat = maxOf(maxLat, point.latitude())
+                    minLon = minOf(minLon, point.longitude())
+                    maxLon = maxOf(maxLon, point.longitude())
+                }
+                
+                // Add padding (500m buffer)
+                val padding = 0.005
+                minLat -= padding
+                maxLat += padding
+                minLon -= padding
+                maxLon += padding
+                
+                // OSM Overpass query - full hazard types with longer timeout
+                val query = """
+                    [out:json][timeout:30];
+                    (
+                      node["highway"="speed_camera"]($minLat,$minLon,$maxLat,$maxLon);
+                      node["enforcement"="speed"]($minLat,$minLon,$maxLat,$maxLon);
+                      node["hazard"]($minLat,$minLon,$maxLat,$maxLon);
+                      node["traffic_calming"]($minLat,$minLon,$maxLat,$maxLon);
+                      node["barrier"="toll_booth"]($minLat,$minLon,$maxLat,$maxLon);
+                    );
+                    out body;
+                """.trimIndent()
+                
+                val client = okhttp3.OkHttpClient.Builder()
+                    .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                    .build()
+                
+                val requestBody = query.toRequestBody("text/plain".toMediaTypeOrNull())
+                
+                val request = okhttp3.Request.Builder()
+                    .url("https://overpass-api.de/api/interpreter")
+                    .post(requestBody)
+                    .build()
+                
+                val response = client.newCall(request).execute()
+                val responseBody = response.body?.string()
+                
+                if (response.isSuccessful && responseBody != null) {
+                    val hazards = parseOSMHazards(responseBody, chunkPoints)
+                    Log.d("Zwap", "Found ${hazards.size} hazards in chunk (${progressPercent}%)")
+                    
+                    withContext(Dispatchers.Main) {
+                        if (isNavigating) {
+                            displayRouteHazards(hazards)
+                        }
+                    }
+                    success = true
+                } else if (response.code == 504 || response.code == 429) {
+                    // Server timeout or rate limit - wait and retry
+                    Log.w("Zwap", "OSM server busy (${response.code}), retry ${retryCount + 1}/$maxRetries")
+                    retryCount++
+                    if (retryCount <= maxRetries) {
+                        kotlinx.coroutines.delay(2000L * retryCount) // Exponential backoff
+                    }
+                } else {
+                    Log.e("Zwap", "OSM request failed: code=${response.code}")
+                    success = true // Don't retry for other errors
+                }
+            } catch (e: Exception) {
+                Log.e("Zwap", "Error fetching chunk hazards: ${e.message}")
+                retryCount++
+                if (retryCount <= maxRetries) {
+                    kotlinx.coroutines.delay(2000L * retryCount)
+                }
+            }
+        }
+        
+        // Update index for next chunk and continue
+        currentHazardFetchIndex = endIndex
+        
+        // Longer delay between chunks to avoid API rate limiting
+        kotlinx.coroutines.delay(1500)
+        
+        // Fetch next chunk if still navigating
+        if (isNavigating && currentHazardFetchIndex < currentRoutePoints.size - 1) {
+            fetchNextHazardChunk()
+        } else if (isNavigating) {
+            // Completed scanning
+            withContext(Dispatchers.Main) {
+                updateHazardScanProgress(100)
+                kotlinx.coroutines.MainScope().launch {
+                    kotlinx.coroutines.delay(1500)
+                    hideHazardScanProgress()
+                }
+            }
+        }
+    }
+    
+    private fun getDistanceToIndex(index: Int): Double {
+        var distance = 0.0
+        for (i in 0 until minOf(index, currentRoutePoints.size - 1)) {
+            distance += calculateDistance(
+                currentRoutePoints[i].latitude(), currentRoutePoints[i].longitude(),
+                currentRoutePoints[i + 1].latitude(), currentRoutePoints[i + 1].longitude()
+            )
+        }
+        return distance
+    }
+    
+    // Keep old function for compatibility but redirect to progressive
+    private fun fetchHazardsAlongRoute(routePoints: List<Point>) {
+        fetchHazardsAlongRouteProgressive(routePoints)
+    }
+    
+    private fun parseOSMHazards(json: String, routePoints: List<Point>): List<RouteHazard> {
+        val hazards = mutableListOf<RouteHazard>()
+        try {
+            val jsonObject = org.json.JSONObject(json)
+            val elements = jsonObject.getJSONArray("elements")
+            
+            for (i in 0 until elements.length()) {
+                val element = elements.getJSONObject(i)
+                val lat = element.getDouble("lat")
+                val lon = element.getDouble("lon")
+                
+                // Check if hazard is within 500m of the route (increased for highway routes)
+                val isNearRoute = isPointNearRoute(lat, lon, routePoints, 500.0)
+                
+                if (isNearRoute) {
+                    val tags = element.optJSONObject("tags")
+                    val type = when {
+                        tags?.has("highway") == true && tags.getString("highway") == "speed_camera" -> HazardType.SPEED_CAMERA
+                        tags?.has("enforcement") == true -> HazardType.SPEED_CAMERA
+                        tags?.has("barrier") == true && tags.getString("barrier") == "toll_booth" -> HazardType.TOLL
+                        tags?.has("hazard") == true -> HazardType.HAZARD
+                        tags?.has("traffic_calming") == true -> HazardType.TRAFFIC_CALMING
+                        else -> HazardType.OTHER
+                    }
+                    
+                    hazards.add(RouteHazard(lat, lon, type, tags?.optString("name") ?: ""))
+                }
+            }
+            
+            Log.d("Zwap", "Found ${hazards.size} hazards near route")
+        } catch (e: Exception) {
+            Log.e("Zwap", "Error parsing OSM hazards: ${e.message}")
+        }
+        return hazards
+    }
+    
+    private fun isPointNearRoute(lat: Double, lon: Double, routePoints: List<Point>, maxDistanceMeters: Double): Boolean {
+        for (point in routePoints) {
+            val distance = calculateDistance(lat, lon, point.latitude(), point.longitude())
+            if (distance <= maxDistanceMeters) {
+                return true
+            }
+        }
+        return false
+    }
+    
+    private fun calculateDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val R = 6371000.0 // Earth's radius in meters
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLon = Math.toRadians(lon2 - lon1)
+        val a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2)
+        val c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+        return R * c
+    }
+    
+    private fun displayRouteHazards(hazards: List<RouteHazard>) {
+        if (!isNavigating) return
+        
+        hazards.forEach { hazard ->
+            try {
+                // Use MapplsMap markers for route hazards
+                val marker = mapplsMap?.addMarker(
+                    MarkerOptions()
+                        .position(com.mappls.sdk.maps.geometry.LatLng(hazard.lat, hazard.lon))
+                        .title(hazard.name.ifEmpty { hazard.type.name })
+                        .icon(com.mappls.sdk.maps.annotations.IconFactory.getInstance(this@MainActivity)
+                            .fromBitmap(createHazardMarkerBitmap(hazard.type)))
+                )
+                
+                marker?.let { routeHazardMarkerIds.add(it.id) }
+                
+                Log.d("Zwap", "Added ${hazard.type} marker at (${hazard.lat}, ${hazard.lon})")
+            } catch (e: Exception) {
+                Log.e("Zwap", "Error adding hazard marker: ${e.message}")
+            }
+        }
+    }
+    
+    private fun createHazardMarkerBitmap(type: HazardType): Bitmap {
+        val size = 64
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        
+        val bgColor = when (type) {
+            HazardType.SPEED_CAMERA -> Color.parseColor("#2196F3")  // Blue
+            HazardType.HAZARD -> Color.parseColor("#FF9800")        // Orange
+            HazardType.TOLL -> Color.parseColor("#9C27B0")          // Purple
+            HazardType.TRAFFIC_CALMING -> Color.parseColor("#FFC107") // Yellow
+            else -> Color.parseColor("#F44336")                      // Red
+        }
+        
+        // Draw background circle
+        val bgPaint = Paint().apply {
+            color = bgColor
+            style = Paint.Style.FILL
+            isAntiAlias = true
+        }
+        canvas.drawCircle(size / 2f, size / 2f, size / 2f - 4, bgPaint)
+        
+        // Draw white border
+        val borderPaint = Paint().apply {
+            color = Color.WHITE
+            style = Paint.Style.STROKE
+            strokeWidth = 4f
+            isAntiAlias = true
+        }
+        canvas.drawCircle(size / 2f, size / 2f, size / 2f - 4, borderPaint)
+        
+        // Draw icon
+        val iconPaint = Paint().apply {
+            color = Color.WHITE
+            textSize = size * 0.45f
+            textAlign = Paint.Align.CENTER
+            isAntiAlias = true
+        }
+        val icon = when (type) {
+            HazardType.SPEED_CAMERA -> "📷"
+            HazardType.HAZARD -> "⚠"
+            HazardType.TOLL -> "💰"
+            HazardType.TRAFFIC_CALMING -> "⏬"
+            else -> "!"
+        }
+        val yPos = (size / 2f) - ((iconPaint.descent() + iconPaint.ascent()) / 2)
+        canvas.drawText(icon, size / 2f, yPos, iconPaint)
+        
+        return bitmap
+    }
+    
+    private fun clearRouteHazards() {
+        // Cancel ongoing hazard fetch
+        hazardFetchJob?.cancel()
+        hazardFetchJob = null
+        currentHazardFetchIndex = 0
+        currentRoutePoints = emptyList()
+        totalRouteDistanceMeters = 0.0
+        
+        // Hide progress indicator
+        hideHazardScanProgress()
+        
+        mapplsMap?.let { map ->
+            map.markers.filter { routeHazardMarkerIds.contains(it.id) }.forEach { 
+                map.removeMarker(it) 
+            }
+        }
+        routeHazardMarkerIds.clear()
+        isNavigating = false
+    }
+    
+    // Data classes for route hazards
+    data class RouteHazard(val lat: Double, val lon: Double, val type: HazardType, val name: String)
+    
+    enum class HazardType {
+        SPEED_CAMERA, HAZARD, TOLL, TRAFFIC_CALMING, OTHER
+    }
+    
+    private fun createRouteMarkerBitmap(isStart: Boolean): Bitmap {
+        val width = 60
+        val height = 80
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        
+        val mainColor = if (isStart) Color.parseColor("#4CAF50") else Color.parseColor("#F44336")
+        
+        // Draw pin shadow
+        val shadowPaint = Paint().apply {
+            color = Color.parseColor("#40000000")
+            style = Paint.Style.FILL
+            isAntiAlias = true
+        }
+        canvas.drawOval(10f, height - 12f, width - 10f, height.toFloat(), shadowPaint)
+        
+        // Draw pin body (teardrop shape)
+        val pinPaint = Paint().apply {
+            color = mainColor
+            style = Paint.Style.FILL
+            isAntiAlias = true
+        }
+        
+        // Draw the pin using path for teardrop shape
+        val path = android.graphics.Path()
+        val centerX = width / 2f
+        val radius = width / 2f - 6
+        
+        // Top circle part
+        path.addCircle(centerX, radius + 4, radius, android.graphics.Path.Direction.CW)
+        
+        // Bottom point
+        path.moveTo(centerX - radius, radius + 4)
+        path.lineTo(centerX, height - 15f)
+        path.lineTo(centerX + radius, radius + 4)
+        path.close()
+        
+        canvas.drawPath(path, pinPaint)
+        
+        // Draw white border
+        val borderPaint = Paint().apply {
+            color = Color.WHITE
+            style = Paint.Style.STROKE
+            strokeWidth = 3f
+            isAntiAlias = true
+        }
+        canvas.drawPath(path, borderPaint)
+        
+        // Draw inner white circle
+        val innerPaint = Paint().apply {
+            color = Color.WHITE
+            style = Paint.Style.FILL
+            isAntiAlias = true
+        }
+        canvas.drawCircle(centerX, radius + 4, radius * 0.4f, innerPaint)
+        
+        return bitmap
     }
 
     override fun onInit(status: Int) {
