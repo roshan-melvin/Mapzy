@@ -16,7 +16,7 @@ import com.swapmap.zwap.R
 import androidx.work.OneTimeWorkRequest
 import androidx.work.WorkManager
 import androidx.work.workDataOf
-import com.swapmap.zwap.demo.workers.ChatUploadWorker
+import com.swapmap.zwap.demo.chat.ChatUploadWorker
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
