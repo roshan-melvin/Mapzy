@@ -7,13 +7,16 @@ from firebase_admin import firestore
 import google.generativeai as genai
 
 # ================= CONFIGURATION =================
+# Get the directory where this script is located
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # 1. Supabase Setup
 SUPABASE_URL = "https://mjsylrqiyjupixopbdez.supabase.co"
 SUPABASE_KEY = "sb_publishable_pPnGYcgWm5HlRZFARW2kHA_QsrXLtv8" # TODO: Use SERVICE_ROLE key for production!
 
 # 2. Firebase Setup
 # You need to download this from Firebase Console -> Project Settings -> Service Accounts
-FIREBASE_CREDENTIAL_PATH = "serviceAccountKey.json" 
+FIREBASE_CREDENTIAL_PATH = os.path.join(SCRIPT_DIR, "serviceAccountKey.json") 
 
 # 3. Gemini AI Setup
 GEMINI_API_KEY = "YOUR_GEMINI_API_KEY"
@@ -22,10 +25,19 @@ GEMINI_API_KEY = "YOUR_GEMINI_API_KEY"
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Initialize Firebase
+db = None
+print(f"📂 Looking for credentials at: {FIREBASE_CREDENTIAL_PATH}")
+print(f"   File exists: {os.path.exists(FIREBASE_CREDENTIAL_PATH)}")
+
 try:
-    cred = credentials.Certificate(FIREBASE_CREDENTIAL_PATH)
-    firebase_admin.initialize_app(cred)
-    db = firestore.client()
+    # Check if already initialized (for re-runs)
+    if firebase_admin._apps:
+        print("🔄 Firebase already initialized, reusing...")
+        db = firestore.client()
+    else:
+        cred = credentials.Certificate(FIREBASE_CREDENTIAL_PATH)
+        firebase_admin.initialize_app(cred)
+        db = firestore.client()
     print("✅ Firebase Connected")
 except Exception as e:
     print(f"⚠️ Firebase Connection Failed: {e}")
@@ -72,6 +84,10 @@ def process_pending_reports():
         }).eq("report_id", report_id).execute()
 
         # 3. Update Firestore (The Critical Step for the App!)
+        if db is None:
+            print("      ⚠️ Skipping Firestore sync (not connected)")
+            continue
+            
         try:
             # Note: channel name is incident_type without '#'
             channel_name = incident_type.replace("#", "")

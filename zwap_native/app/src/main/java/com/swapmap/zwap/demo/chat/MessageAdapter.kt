@@ -56,8 +56,9 @@ class MessageAdapter(
         // Handle Local Upload State (uploading)
         if (message.isUploading) {
              holder.uploadOverlay.visibility = View.VISIBLE
-             holder.progressBar.progress = message.uploadProgress
-             holder.tvPercent.text = "${message.uploadProgress}%"
+             val safeProgress = message.uploadProgress.coerceIn(0, 100)
+             holder.progressBar.progress = safeProgress
+             holder.tvPercent.text = "${safeProgress}%"
         }
         
         // Handle Failed State (only for media messages)

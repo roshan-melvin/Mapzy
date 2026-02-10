@@ -104,13 +104,20 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     private var currentRoute: DirectionsResponse? = null
     private val routeHazards = mutableListOf<Pair<Double, Double>>()
     private var lastAlertTime: Long = 0
-    private val ALERT_COOLDOWN = 10000L // 10 seconds
+    private val ALERT_COOLDOWN = 3000L  // 3 seconds
+    private val HAZARD_ALERT_DISTANCE = 300.0  // 300 meters
+    private val alertedHazardIds = mutableSetOf<Long>()
+    private var hazardAlertAdapter: HazardAlertAdapter? = null
+    private var isHazardPanelExpanded = true
+    private val activeHazards = mutableListOf<HazardAlert>()
+    private val HAZARD_CROSSED_DISTANCE = 30.0  // Consider crossed when within 30m // 10 seconds
     
     private var symbolManager: SymbolManager? = null
     private var lineManager: LineManager? = null
     
     // OSM Overlay features
-    private val osmFeatures = mutableListOf<OSMFeature>()
+    private val osmFeatures = java.util.concurrent.CopyOnWriteArrayList<OSMFeature>()
+    private val testMarkerIds = mutableListOf<Long>()
     private val osmMarkerIds = mutableListOf<Long>()
     private var osmOverlayEnabled = false
     private var lastOSMFetchLocation: Location? = null
@@ -239,6 +246,8 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     }
     
     private fun setupUI() {
+        // Setup hazard alert panel
+        setupHazardAlertPanel()
         findViewById<View>(R.id.search_trigger).setOnClickListener { showSearchOverlay(null) }
         findViewById<View>(R.id.btn_voice_search).setOnClickListener { performVoiceSearch() }
         findViewById<View>(R.id.btn_directions).setOnClickListener { getDirections() }
@@ -557,6 +566,30 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             }.start()
             Log.d("Zwap", "Hazards overlay enabled, fetching features...")
             Toast.makeText(this, "Hazards ON", Toast.LENGTH_SHORT).show()
+            
+            // TEST HAZARDS
+            Log.d("Zwap", "ADDING_TEST_MARKERS")
+            mapplsMap?.cameraPosition?.target?.let { ctr ->
+                val lat = ctr.latitude
+                val lon = ctr.longitude
+                Log.d("Zwap", "Center: lat=$lat, lon=$lon")
+                listOf(
+                    Triple(lat + 0.001, lon, "TestN"),
+                    Triple(lat - 0.001, lon, "TestS"),
+                    Triple(lat, lon + 0.001, "TestE"),
+                    Triple(lat, lon - 0.001, "TestW")
+                ).forEachIndexed { i, (mlat, mlon, t) ->
+                    mapplsMap?.addMarker(MarkerOptions().position(com.mappls.sdk.maps.geometry.LatLng(mlat, mlon)).title(t))?.let { m ->
+                        testMarkerIds.add(m.id)
+                        Log.d("Zwap", "Marker $i added")
+                        val ft = when(i) { 0 -> FeatureType.SPEED_CAMERA; 1 -> FeatureType.TRAFFIC_CALMING; 2 -> FeatureType.STOP_SIGN; else -> FeatureType.GIVE_WAY }
+                        osmFeatures.add(OSMFeature(id = -1001L - i, lat = mlat, lon = mlon, type = ft, name = t))
+                    }
+                }
+                Toast.makeText(this, "4 TEST hazards added!", Toast.LENGTH_LONG).show()
+                // Immediate proximity check
+                checkHazardProximity(lat, lon)
+            }
             fetchAndDisplayOSMFeatures()
         } else {
             // Inactive state - white background
@@ -616,7 +649,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                     
                     // Clear existing markers first
                     runOnUiThread {
-                        osmFeatures.clear()
+                        osmFeatures.removeIf { it.id >= 0 }  // Keep test markers (negative IDs)
                         clearOSMMarkers()
                     }
                     
@@ -1238,6 +1271,11 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         findViewById<TextView>(R.id.tv_speed).text = "$speedKmh"
         findViewById<TextView>(R.id.tv_speed).setTextColor(if (speedKmh > 50) Color.RED else Color.WHITE)
         
+        // Check hazard proximity
+        if (osmOverlayEnabled) {
+            checkHazardProximity(location.latitude, location.longitude)
+        }
+
         // Refresh OSM data if enabled and moved > 1km
         if (osmOverlayEnabled) {
             if (lastOSMFetchLocation == null || location.distanceTo(lastOSMFetchLocation!!) > 1000) {
@@ -1255,9 +1293,106 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         
         lastAlertTime = currentTime
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
-        tts?.speak(message, TextToSpeech.QUEUE_FLUSH, null, null)
+        tts?.speak(message, TextToSpeech.QUEUE_ADD, null, null)
     }
 
+    private fun checkHazardProximity(userLat: Double, userLon: Double) {
+        osmFeatures.forEach { feature ->
+            if (alertedHazardIds.contains(feature.id)) return@forEach
+            val results = FloatArray(1)
+            android.location.Location.distanceBetween(userLat, userLon, feature.lat, feature.lon, results)
+            val distance = results[0].toDouble()
+            Log.d("Zwap", "Distance to ${feature.type}: ${distance.toInt()}m")
+            if (distance < HAZARD_ALERT_DISTANCE) {
+                alertedHazardIds.add(feature.id)
+                val msg = when (feature.type) {
+                    FeatureType.SPEED_CAMERA -> "Speed camera ahead in ${distance.toInt()} meters"
+                    FeatureType.TRAFFIC_CALMING -> "Speed bump ahead in ${distance.toInt()} meters"
+                    FeatureType.STOP_SIGN -> "Stop sign ahead in ${distance.toInt()} meters"
+                    FeatureType.GIVE_WAY -> "Give way sign ahead in ${distance.toInt()} meters"
+                    else -> "Hazard ahead in ${distance.toInt()} meters"
+                }
+                Log.d("Zwap", "HAZARD ALERT: $msg")
+                Toast.makeText(this, msg, Toast.LENGTH_SHORT).show(); tts?.speak(msg, TextToSpeech.QUEUE_ADD, null, null)
+                // Add to visual panel
+                addHazardToPanel(feature, distance.toInt())
+            }
+        }
+        // Update panel with current distances and remove crossed hazards
+        updateHazardPanel(userLat, userLon)
+    }
+
+    private fun setupHazardAlertPanel() {
+        val recyclerView = findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.rv_hazard_alerts)
+        recyclerView?.layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this)
+        hazardAlertAdapter = HazardAlertAdapter(activeHazards) { hazard ->
+            Log.d("Zwap", "Hazard crossed: \${hazard.type}")
+        }
+        recyclerView?.adapter = hazardAlertAdapter
+        
+        // Setup collapse/expand header click
+        findViewById<View>(R.id.hazard_panel_header)?.setOnClickListener {
+            toggleHazardPanel()
+        }
+    }
+
+    private fun toggleHazardPanel() {
+        isHazardPanelExpanded = !isHazardPanelExpanded
+        val recyclerView = findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.rv_hazard_alerts)
+        val expandArrow = findViewById<android.widget.ImageView>(R.id.iv_hazard_expand)
+        
+        if (isHazardPanelExpanded) {
+            recyclerView?.visibility = View.VISIBLE
+            expandArrow?.animate()?.rotation(180f)?.setDuration(200)?.start()
+        } else {
+            recyclerView?.visibility = View.GONE
+            expandArrow?.animate()?.rotation(0f)?.setDuration(200)?.start()
+        }
+    }
+
+    private fun updateHazardPanel(userLat: Double, userLon: Double) {
+        val panel = findViewById<View>(R.id.hazard_alert_panel)
+        val countView = findViewById<TextView>(R.id.tv_hazard_count)
+        val toRemove = mutableListOf<Long>()
+        activeHazards.forEach { hazard ->
+            val feature = osmFeatures.find { it.id == hazard.id }
+            if (feature != null) {
+                val results = FloatArray(1)
+                android.location.Location.distanceBetween(userLat, userLon, feature.lat, feature.lon, results)
+                val newDistance = results[0].toInt()
+                if (newDistance < HAZARD_CROSSED_DISTANCE) {
+                    toRemove.add(hazard.id)
+                    Log.d("Zwap", "CROSSED hazard: \${hazard.type} at \${newDistance}m")
+                } else {
+                    hazardAlertAdapter?.updateHazard(hazard.id, newDistance)
+                }
+            }
+        }
+        toRemove.forEach { id ->
+            hazardAlertAdapter?.removeHazard(id)
+            activeHazards.removeIf { it.id == id }
+        }
+        countView?.text = activeHazards.size.toString()
+        panel?.visibility = if (activeHazards.isNotEmpty()) View.VISIBLE else View.GONE
+    }
+
+    private fun addHazardToPanel(feature: OSMFeature, distance: Int) {
+        val hazard = HazardAlert(
+            id = feature.id,
+            type = feature.type,
+            name = feature.name ?: feature.type.name,
+            distance = distance
+        )
+        if (activeHazards.none { it.id == hazard.id }) {
+            activeHazards.add(hazard)
+            activeHazards.sortBy { it.distance }
+            hazardAlertAdapter?.notifyDataSetChanged()
+            val panel = findViewById<View>(R.id.hazard_alert_panel)
+            val countView = findViewById<TextView>(R.id.tv_hazard_count)
+            panel?.visibility = View.VISIBLE
+            countView?.text = activeHazards.size.toString()
+        }
+    }
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == 101 && resultCode == RESULT_OK) {

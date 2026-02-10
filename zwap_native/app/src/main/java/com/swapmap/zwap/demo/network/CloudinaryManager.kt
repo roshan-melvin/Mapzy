@@ -47,7 +47,9 @@ object CloudinaryManager {
                 }
 
                 override fun onProgress(requestId: String, bytes: Long, totalBytes: Long) {
-                    val progress = (bytes.toDouble() / totalBytes * 100).toInt()
+                    val progress = if (totalBytes > 0) {
+                        ((bytes.toDouble() / totalBytes.toDouble()) * 100.0).toInt().coerceIn(0, 100)
+                    } else 0
                     onProgress?.invoke(progress)
                 }
 
