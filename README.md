@@ -2,7 +2,8 @@
 
 > Transform your smartphone GPS into instant safety analytics for drivers
 
-[![Live Demo](https://img.shields.io/badge/Demo-Live-success)](https://yourusername.github.io/mapzy)
+[![Live Demo](https://img.shields.io/badge/Demo-Live-success)](https://mapzy-sigma.vercel.app/)
+[![Video]](https://drive.google.com/drive/folders/19NsxZvnwm3R7bOVyOWV3sTi2Zs3RL2Kt?usp=sharing)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
 ---
@@ -140,7 +141,7 @@ This project demonstrates:
 ## 🚀 Quick Start
 
 ### For Users
-Visit: [Live Demo](https://yourusername.github.io/mapzy)
+Visit: [Live Demo](https://mapzy-sigma.vercel.app/)
 
 ### For Developers
 ```bash
