@@ -25,3 +25,15 @@ zwap/.pub/
 zwap/android/.gradle
 zwap/android/local.properties
 zwap/android/key.properties
+
+# ==========================================
+# ANDROID NATIVE APP (zwap_native/)
+# ==========================================
+.gradle/
+zwap_native/.gradle/
+zwap_native/build/
+zwap_native/app/build/
+zwap_native/local.properties
+zwap_native/google-services.json
+zwap_native/*.hprof
+java_pid*.hprof

@@ -1,0 +1,501 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#121212">
+
+    <com.mappls.sdk.maps.MapView
+        android:id="@+id/map_view"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- Top Search Header -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_margin="16dp"
+        android:background="@android:color/white"
+        android:elevation="8dp"
+        android:orientation="horizontal"
+        android:padding="4dp">
+
+        <ImageView
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:padding="12dp"
+            android:src="@android:drawable/ic_menu_search"
+            app:tint="@color/primary_blue" />
+
+        <TextView
+            android:id="@+id/search_trigger"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:gravity="center_vertical"
+            android:paddingStart="8dp"
+            android:text="Search destination..."
+            android:textColor="#757575"
+            android:textSize="16sp" />
+
+        <ImageView
+            android:id="@+id/btn_voice_search"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:padding="12dp"
+            android:src="@android:drawable/ic_btn_speak_now"
+            app:tint="#757575"
+            android:clickable="true"
+            android:focusable="true"/>
+
+        <com.google.android.material.floatingactionbutton.FloatingActionButton
+            android:id="@+id/btn_show_nearby"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_margin="4dp"
+            app:fabSize="mini"
+            app:backgroundTint="#FFFFFF"
+            app:elevation="0dp"
+            android:src="@android:drawable/ic_dialog_map"
+            app:tint="#e67e22"
+            android:visibility="visible"/>
+    </LinearLayout>
+
+    <!-- Navigation HUD (Glassmorphism inspired) -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/hud_panel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:layout_margin="16dp"
+        app:cardBackgroundColor="#CC000000"
+        app:cardCornerRadius="24dp"
+        app:cardElevation="10dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="SPEED"
+                        android:textColor="#AAAAAA"
+                        android:textSize="10sp"
+                        android:letterSpacing="0.2" />
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:baselineAligned="false">
+
+                        <TextView
+                            android:id="@+id/tv_speed"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="0"
+                            android:textColor="#FFFFFF"
+                            android:textSize="42sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="4dp"
+                            android:layout_alignBaseline="@id/tv_speed"
+                            android:text="km/h"
+                            android:textColor="#888888"
+                            android:textSize="14sp" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <View
+                    android:layout_width="1dp"
+                    android:layout_height="40dp"
+                    android:background="#33FFFFFF" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="LIMIT"
+                        android:textColor="#AAAAAA"
+                        android:textSize="10sp"
+                        android:letterSpacing="0.2" />
+
+                    <TextView
+                        android:id="@+id/tv_limit"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="--"
+                        android:textColor="#FFFFFF"
+                        android:textSize="42sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- Route Details (Hidden by default) -->
+            <LinearLayout
+                android:id="@+id/route_info_layout"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:gravity="center"
+                android:orientation="horizontal"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/tv_distance"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0.0 km"
+                    android:textColor="@color/primary_blue"
+                    android:textStyle="bold" />
+
+                <View
+                    android:layout_width="4dp"
+                    android:layout_height="4dp"
+                    android:layout_marginHorizontal="8dp"
+                    android:background="@android:color/darker_gray" />
+
+                <TextView
+                    android:id="@+id/tv_duration"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0 min"
+                    android:textColor="@color/primary_blue"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_directions"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:layout_marginTop="12dp"
+                android:text="Start Navigation"
+                android:textAllCaps="false"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:visibility="gone"
+                app:backgroundTint="@color/primary_blue"
+                app:cornerRadius="28dp"
+                app:icon="@drawable/ic_directions"
+                app:iconGravity="textStart"
+                app:iconPadding="8dp"
+                app:iconTint="@color/white"
+                android:elevation="4dp" />
+
+        </LinearLayout>
+    </androidx.cardview.widget.CardView>
+
+    <!-- Floating Action Buttons -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_above="@id/hud_panel"
+        android:layout_alignParentEnd="true"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="16dp"
+        android:orientation="vertical"
+        android:gravity="center">
+
+        <!-- Hazard Toggle Button with Icon -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_toggle_osm"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:layout_marginBottom="12dp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:padding="0dp"
+            app:backgroundTint="@color/white"
+            app:cornerRadius="28dp"
+            app:icon="@drawable/ic_hazard"
+            app:iconGravity="textStart"
+            app:iconPadding="0dp"
+            app:iconSize="28dp"
+            app:iconTint="@null"
+            android:elevation="6dp"
+            app:strokeWidth="1dp"
+            app:strokeColor="#E0E0E0" />
+
+        <!-- Compass Button -->
+        <com.google.android.material.floatingactionbutton.FloatingActionButton
+            android:id="@+id/fab_compass"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            app:backgroundTint="@color/white"
+            android:src="@drawable/ic_compass"
+            app:tint="@null"
+            app:borderWidth="0dp"
+            android:elevation="6dp" />
+
+        <!-- Re-center Location Button -->
+        <com.google.android.material.floatingactionbutton.FloatingActionButton
+            android:id="@+id/fab_recenter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            app:backgroundTint="@color/primary_blue"
+            android:src="@android:drawable/ic_menu_mylocation"
+            app:tint="@color/white"
+            app:borderWidth="0dp"
+            android:elevation="6dp" />
+
+    </LinearLayout>
+
+    <!-- Full-screen Search Overlay -->
+    <FrameLayout
+        android:id="@+id/search_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/overlay_background"
+        android:visibility="gone"
+        android:clickable="true"
+        android:focusable="true"
+        android:elevation="50dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:background="@color/overlay_background">
+
+            <!-- Search Header -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:padding="12dp"
+                android:background="@color/white"
+                android:elevation="4dp">
+
+                <ImageView
+                    android:id="@+id/btn_search_back"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:src="@android:drawable/ic_menu_revert"
+                    android:scaleX="-1"
+                    app:tint="@color/dark_gray" />
+
+                <EditText
+                    android:id="@+id/et_search_input"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginHorizontal="12dp"
+                    android:background="@null"
+                    android:hint="Search"
+                    android:textColor="@color/text_dark"
+                    android:textColorHint="@color/dark_gray"
+                    android:textSize="18sp"
+                    android:maxLines="1"
+                    android:inputType="text"
+                    android:imeOptions="actionSearch" />
+
+                <ImageView
+                    android:id="@+id/btn_search_clear"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:src="@android:drawable/ic_btn_speak_now"
+                    app:tint="@color/dark_gray" />
+            </LinearLayout>
+
+            <!-- Dashboard (Visible when input empty) -->
+            <ScrollView
+                android:id="@+id/search_dashboard"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clipToPadding="false"
+                android:padding="12dp"
+                android:visibility="visible">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <!-- Recent History -->
+                    <androidx.cardview.widget.CardView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        app:cardBackgroundColor="@color/history_item_background"
+                        app:cardCornerRadius="12dp"
+                        app:cardElevation="2dp">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:padding="8dp">
+
+                            <androidx.recyclerview.widget.RecyclerView
+                                android:id="@+id/rv_history"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:nestedScrollingEnabled="false" />
+
+                            <TextView
+                                android:id="@+id/btn_more_history"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:text="More From Recent History"
+                                android:textColor="@color/primary_blue"
+                                android:textStyle="bold"
+                                android:gravity="center"
+                                android:padding="12dp"
+                                android:clickable="true"
+                                android:focusable="true" />
+                        </LinearLayout>
+                    </androidx.cardview.widget.CardView>
+
+                    <!-- Home/Work Shortcuts -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:layout_marginTop="12dp"
+                        android:baselineAligned="false">
+
+                        <androidx.cardview.widget.CardView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:layout_marginEnd="6dp"
+                            app:cardBackgroundColor="#FFFFFF"
+                            app:cardCornerRadius="12dp"
+                            app:cardElevation="2dp">
+                            <LinearLayout
+                                android:id="@+id/layout_home"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:orientation="horizontal"
+                                android:gravity="center_vertical"
+                                android:padding="12dp"
+                                android:clickable="true"
+                                android:focusable="true">
+                                <ImageView
+                                    android:layout_width="32dp"
+                                    android:layout_height="32dp"
+                                    android:background="@drawable/circle_bg"
+                                    android:padding="8dp"
+                                    android:src="@android:drawable/ic_menu_my_calendar"
+                                    app:tint="@color/primary_blue" />
+                                <LinearLayout
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:orientation="vertical"
+                                    android:layout_marginStart="12dp">
+                                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Home" android:textColor="#000000" android:textStyle="bold"/>
+                                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Set Address" android:textColor="#00C853" android:textSize="10sp"/>
+                                </LinearLayout>
+                            </LinearLayout>
+                        </androidx.cardview.widget.CardView>
+
+                        <androidx.cardview.widget.CardView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:layout_marginStart="6dp"
+                            app:cardBackgroundColor="#FFFFFF"
+                            app:cardCornerRadius="12dp"
+                            app:cardElevation="2dp">
+                            <LinearLayout
+                                android:id="@+id/layout_work"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:orientation="horizontal"
+                                android:gravity="center_vertical"
+                                android:padding="12dp"
+                                android:clickable="true"
+                                android:focusable="true">
+                                <ImageView
+                                    android:layout_width="32dp"
+                                    android:layout_height="32dp"
+                                    android:background="@drawable/circle_bg"
+                                    android:padding="8dp"
+                                    android:src="@android:drawable/ic_lock_lock"
+                                    app:tint="@color/primary_blue" />
+                                <LinearLayout
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:orientation="vertical"
+                                    android:layout_marginStart="12dp">
+                                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Work" android:textColor="#000000" android:textStyle="bold"/>
+                                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Set Address" android:textColor="@color/primary_blue" android:textSize="10sp"/>
+                                </LinearLayout>
+                            </LinearLayout>
+                        </androidx.cardview.widget.CardView>
+                    </LinearLayout>
+
+                    <!-- Categories -->
+                    <androidx.cardview.widget.CardView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        app:cardBackgroundColor="#FFFFFF"
+                        app:cardCornerRadius="12dp"
+                        app:cardElevation="2dp">
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:padding="16dp"
+                            android:weightSum="4">
+                            
+                            <LinearLayout android:id="@+id/btn_cat_rest" android:clickable="true" android:focusable="true" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:orientation="vertical" android:gravity="center">
+                                <ImageView android:layout_width="48dp" android:layout_height="48dp" android:src="@android:drawable/ic_menu_rotate" app:tint="@color/primary_blue" android:background="@drawable/circle_bg" android:padding="12dp"/>
+                                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Restaurant" android:textColor="#000000" android:textSize="12sp" android:layout_marginTop="8dp" android:gravity="center"/>
+                            </LinearLayout>
+                            <LinearLayout android:id="@+id/btn_cat_petrol" android:clickable="true" android:focusable="true" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:orientation="vertical" android:gravity="center">
+                                <ImageView android:layout_width="48dp" android:layout_height="48dp" android:src="@android:drawable/ic_menu_call" app:tint="@color/primary_blue" android:background="@drawable/circle_bg" android:padding="12dp"/>
+                                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Petrol" android:textColor="#000000" android:textSize="12sp" android:layout_marginTop="8dp" android:gravity="center"/>
+                            </LinearLayout>
+                            <LinearLayout android:id="@+id/btn_cat_ev" android:clickable="true" android:focusable="true" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:orientation="vertical" android:gravity="center">
+                                <ImageView android:layout_width="48dp" android:layout_height="48dp" android:src="@android:drawable/ic_menu_camera" app:tint="@color/primary_blue" android:background="@drawable/circle_bg" android:padding="12dp"/>
+                                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="EV" android:textColor="#000000" android:textSize="12sp" android:layout_marginTop="8dp" android:gravity="center"/>
+                            </LinearLayout>
+                            <LinearLayout android:id="@+id/btn_cat_more" android:clickable="true" android:focusable="true" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:orientation="vertical" android:gravity="center">
+                                <ImageView android:layout_width="48dp" android:layout_height="48dp" android:src="@android:drawable/ic_menu_more" app:tint="@color/primary_blue" android:background="@drawable/circle_bg" android:padding="12dp"/>
+                                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="More" android:textColor="#000000" android:textSize="12sp" android:layout_marginTop="8dp" android:gravity="center"/>
+                            </LinearLayout>
+
+                        </LinearLayout>
+                    </androidx.cardview.widget.CardView>
+                </LinearLayout>
+            </ScrollView>
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rv_search_results"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@color/white"
+                android:visibility="gone" />
+            
+        </LinearLayout>
+    </FrameLayout>
+</RelativeLayout>
