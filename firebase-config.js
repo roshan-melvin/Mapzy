@@ -19,12 +19,15 @@ let currentUser = null;
 
 // Gamification State - Single source of truth
 let userStats = {
-    rewardPoints: 7980,
-    totalReports: 161,
+    rewardPoints: 0,
+    totalReports: 0,
     reportBreakdown: {
-        hazard: 25,
-        speedCamera: 25,
-        others: 40
+        accident: 0,
+        construction: 0,
+        roadblock: 0,
+        waterlogging: 0,
+        fallenTree: 0,
+        speedCamera: 0
     }
 };
 
@@ -334,7 +337,14 @@ async function loadUserStats() {
         userStats = {
             rewardPoints: 0,
             totalReports: 0,
-            reportBreakdown: { hazard: 0, speedCamera: 0, others: 0 }
+            reportBreakdown: {
+                accident: 0,
+                construction: 0,
+                roadblock: 0,
+                waterlogging: 0,
+                fallenTree: 0,
+                speedCamera: 0
+            }
         };
         return;
     }
@@ -347,20 +357,35 @@ async function loadUserStats() {
             userStats = {
                 rewardPoints: data.rewardPoints || 0,
                 totalReports: data.totalReports || 0,
-                reportBreakdown: data.reportBreakdown || { hazard: 0, speedCamera: 0, others: 0 }
+                reportBreakdown: data.reportBreakdown || {
+                    accident: 0,
+                    construction: 0,
+                    roadblock: 0,
+                    waterlogging: 0,
+                    fallenTree: 0,
+                    speedCamera: 0
+                }
             };
         } else {
             // Initialize for new user
             userStats = {
                 rewardPoints: 0,
                 totalReports: 0,
-                reportBreakdown: { hazard: 0, speedCamera: 0, others: 0 }
+                reportBreakdown: {
+                    accident: 0,
+                    construction: 0,
+                    roadblock: 0,
+                    waterlogging: 0,
+                    fallenTree: 0,
+                    speedCamera: 0
+                }
             };
             await saveUserStats();
         }
 
         console.log('User stats loaded:', userStats);
         updateRewardPointsUI();
+        updateStatsOverlayUI(); // Ensure overlay is also updated
 
     } catch (error) {
         console.error('Error loading user stats:', error);
@@ -384,26 +409,41 @@ async function saveUserStats() {
     }
 }
 
-// Submit a report
-async function submitReport(type, location) {
+// Submit a report to global collection
+async function submitReport(type, hazardType, location, imageUrl = null) {
     if (!currentUser) {
         alert('Please sign in to submit reports');
         return false;
     }
 
     try {
-        // Add report to Firestore
-        await db.collection('users').doc(currentUser.uid)
-            .collection('reports')
-            .add({
-                type: type,
-                location: location,
-                timestamp: firebase.firestore.FieldValue.serverTimestamp()
-            });
+        // Prepare report data - all reports go under 'hazards' channel
+        // Speed cameras are now a hazard type, not separate
+        const reportData = {
+            type: 'hazard', // All reports are hazards (including speed cameras)
+            hazardType: hazardType || 'speedCamera', // speedCamera is now a hazard type
+            reportedBy: currentUser.uid,
+            reportedByName: currentUser.displayName || currentUser.email.split('@')[0],
+            reportedByEmail: currentUser.email,
+            latitude: location.lat,
+            longitude: location.lng,
+            imageUrl: imageUrl, // Cloudinary URL
+            timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+            status: 'active'
+        };
 
-        // Update stats instantly
+        // Add report to hierarchical structure: /reports/hazards/threads/{reportId}
+        await db.collection('reports')
+            .doc('hazards')
+            .collection('threads')
+            .add(reportData);
+
+        // Determine which stat to increment (hazardType includes speedCamera now)
+        const statKey = hazardType || 'speedCamera';
+
+        // Update user stats
         userStats.totalReports += 1;
-        userStats.reportBreakdown[type] += 1;
+        userStats.reportBreakdown[statKey] = (userStats.reportBreakdown[statKey] || 0) + 1;
         userStats.rewardPoints += 1;
 
         // Save to Firebase
@@ -413,7 +453,7 @@ async function submitReport(type, location) {
         updateRewardPointsUI();
         updateStatsOverlayUI();
 
-        console.log('Report submitted:', type, location);
+        console.log('Report submitted:', type, hazardType, location);
         return true;
 
     } catch (error) {
@@ -444,5 +484,196 @@ function updateStatsOverlayUI() {
     if (othersReportsElement) othersReportsElement.textContent = userStats.reportBreakdown.others;
 }
 
+
+// ========================================
+// CHAT SYSTEM FUNCTIONS
+// ========================================
+
+// Current region and channel state
+let currentRegion = null;
+let currentChannel = 'general';
+let messageUnsubscribe = null;
+
+// Predefined channels matching Android app
+const CHAT_CHANNELS = {
+    welcome: { name: 'Welcome', icon: '👋', description: 'Welcome to the region!' },
+    general: { name: 'General', icon: '💬', description: 'General discussion' },
+    hazards: { name: 'Hazards', icon: '⚠️', description: 'Report and discuss hazards' },
+    traffic: { name: 'Traffic', icon: '🚦', description: 'Traffic updates' },
+    speedCameras: { name: 'Speed Cameras', icon: '📷', description: 'Speed camera locations' }
+};
+
+// Join a regional chat server
+async function joinRegionalChat(country, state, city) {
+    if (!currentUser) {
+        throw new Error('Please sign in to join chat');
+    }
+
+    const regionId = `${country}-${state}-${city}`.toLowerCase().replace(/\s+/g, '-');
+
+    currentRegion = {
+        id: regionId,
+        country: country,
+        state: state,
+        city: city,
+        displayName: `${city}, ${state}, ${country}`
+    };
+
+    // Save to localStorage
+    localStorage.setItem('currentRegion', JSON.stringify(currentRegion));
+
+    console.log('Joined regional chat:', currentRegion.displayName);
+    return currentRegion;
+}
+
+// Get current region from localStorage
+function getCurrentRegion() {
+    // ALWAYS read from storage to prevent stale state issues
+    // The previous caching (if (currentRegion) return currentRegion) caused desync
+    try {
+        const stored = localStorage.getItem('currentRegion');
+        if (stored) {
+            currentRegion = JSON.parse(stored); // Update memory mirror just in case
+            return currentRegion;
+        }
+    } catch (e) {
+        console.error("Error parsing currentRegion", e);
+    }
+    return null;
+}
+
+// Subscribe to a channel's messages
+function subscribeToChannel(channelId, onMessageUpdate) {
+    // Unsubscribe from previous channel
+    if (messageUnsubscribe) {
+        messageUnsubscribe();
+    }
+
+    const region = getCurrentRegion();
+    console.log('[SUBSCRIBE] Channel:', channelId, 'Region:', region);
+    if (!region) {
+        console.error('No region selected');
+        return null;
+    }
+
+    // Safety check: Firebase might not be initialized yet
+    if (!db) {
+        console.warn('Firebase not initialized yet. Deferring channel subscription.');
+        return null;
+    }
+
+    currentChannel = channelId;
+
+    // Listen to messages in real-time
+    messageUnsubscribe = db.collection('chat')
+        .doc(region.id)
+        .collection('threads')
+        .doc(channelId)
+        .collection('messages')
+        .orderBy('created_at', 'asc')
+        .onSnapshot((snapshot) => {
+            const messages = [];
+            snapshot.forEach((doc) => {
+                messages.push({
+                    id: doc.id,
+                    ...doc.data()
+                });
+            });
+            onMessageUpdate(messages);
+        }, (error) => {
+            console.error('Error listening to messages:', error);
+        });
+
+    return messageUnsubscribe;
+}
+
+// Send a chat message
+async function sendChatMessage(text, mediaUrl = null) {
+    if (!currentUser) {
+        throw new Error('Please sign in to send messages');
+    }
+
+    const region = getCurrentRegion();
+    if (!region) {
+        throw new Error('Please join a region first');
+    }
+
+    if (!text && !mediaUrl) {
+        throw new Error('Message cannot be empty');
+    }
+
+    if (!db) {
+        throw new Error('Firebase not initialized. Please wait and try again.');
+    }
+
+    const messageData = {
+        user_id: currentUser.uid,
+        username: currentUser.displayName || currentUser.email.split('@')[0],
+        user_avatar: currentUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.displayName || currentUser.email)}&background=random`,
+        text: text || '',
+        type: mediaUrl ? (mediaUrl.includes('video') ? 'video' : 'image') : 'text',
+        image_url: mediaUrl,
+        created_at: firebase.firestore.FieldValue.serverTimestamp()
+    };
+
+    try {
+        await db.collection('chat')
+            .doc(region.id)
+            .collection('threads')
+            .doc(currentChannel)
+            .collection('messages')
+            .add(messageData);
+
+        console.log('Message sent successfully');
+        return true;
+    } catch (error) {
+        console.error('Error sending message:', error);
+        throw error;
+    }
+}
+
+// Upload chat media to Cloudinary
+async function uploadChatMedia(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', 'Mapzy1234');
+    formData.append('cloud_name', 'dpca1m8ut');
+
+    // Determine resource type based on file type
+    const resourceType = file.type.startsWith('video/') ? 'video' : 'image';
+
+    try {
+        const response = await fetch(
+            `https://api.cloudinary.com/v1_1/dpca1m8ut/${resourceType}/upload`,
+            {
+                method: 'POST',
+                body: formData
+            }
+        );
+
+        if (!response.ok) {
+            throw new Error('Upload failed');
+        }
+
+        const data = await response.json();
+        return data.secure_url;
+    } catch (error) {
+        console.error('Error uploading media:', error);
+        throw error;
+    }
+}
+
+// Leave current region
+function leaveRegionalChat() {
+    if (messageUnsubscribe) {
+        messageUnsubscribe();
+        messageUnsubscribe = null;
+    }
+    currentRegion = null;
+    currentChannel = 'general';
+    localStorage.removeItem('currentRegion');
+}
+
+console.log('Chat functions loaded');
 console.log('firebase-config.js loaded');
 
