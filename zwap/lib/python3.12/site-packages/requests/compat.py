@@ -7,39 +7,12 @@ between Python 2 and Python 3. It remains for backwards
 compatibility until the next major version.
 """
 
-import importlib
-import sys
-
-# -------
-# urllib3
-# -------
-from urllib3 import __version__ as urllib3_version
-
-# Detect which major version of urllib3 is being used.
 try:
-    is_urllib3_1 = int(urllib3_version.split(".")[0]) == 1
-except (TypeError, AttributeError):
-    # If we can't discern a version, prefer old functionality.
-    is_urllib3_1 = True
+    import chardet
+except ImportError:
+    import charset_normalizer as chardet
 
-# -------------------
-# Character Detection
-# -------------------
-
-
-def _resolve_char_detection():
-    """Find supported character detection libraries."""
-    chardet = None
-    for lib in ("chardet", "charset_normalizer"):
-        if chardet is None:
-            try:
-                chardet = importlib.import_module(lib)
-            except ImportError:
-                pass
-    return chardet
-
-
-chardet = _resolve_char_detection()
+import sys
 
 # -------
 # Pythons

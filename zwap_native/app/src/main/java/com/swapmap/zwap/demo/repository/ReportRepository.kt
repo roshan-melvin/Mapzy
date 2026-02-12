@@ -7,6 +7,14 @@ import kotlinx.coroutines.tasks.await
 import io.github.jan.supabase.postgrest.from
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.File
+import com.swapmap.zwap.demo.network.ApiClient
+import com.swapmap.zwap.demo.network.ReportResponse
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
@@ -28,10 +36,19 @@ class ReportRepository {
     private val db = FirebaseFirestore.getInstance()
     private val reportsCollection = db.collection("reports")
 
+    private fun normalizeChannelName(raw: String): String {
+        return raw
+            .removePrefix("#")
+            .trim()
+            .lowercase()
+            .replace("_", "-")
+            .replace(" ", "-")
+    }
+
     // Submit a new report to channel-specific subcollection AND Supabase
     suspend fun submitReport(report: Report) {
         // 1. Submit to Firestore (UI Feed)
-        val channelName = report.incidentType.removePrefix("#")
+        val channelName = normalizeChannelName(report.incidentType)
         val channelDoc = reportsCollection.document(channelName)
         channelDoc.set(mapOf("lastUpdated" to com.google.firebase.Timestamp.now()))
         
@@ -71,6 +88,65 @@ class ReportRepository {
         }
     }
 
+    // Submit report with image file to FastAPI Backend
+    suspend fun submitReportToBackend(
+        userId: String,
+        hazardType: String,
+        description: String,
+        lat: Double,
+        lng: Double,
+        imageFile: File
+    ): ReportResponse? {
+        val userIdReq = userId.toRequestBody("text/plain".toMediaTypeOrNull())
+        val hazardTypeReq = hazardType.toRequestBody("text/plain".toMediaTypeOrNull())
+        val descriptionReq = description.toRequestBody("text/plain".toMediaTypeOrNull())
+        val latReq = lat.toString().toRequestBody("text/plain".toMediaTypeOrNull())
+        val lngReq = lng.toString().toRequestBody("text/plain".toMediaTypeOrNull())
+        val severityReq = "1".toRequestBody("text/plain".toMediaTypeOrNull())
+
+        val imagePart = MultipartBody.Part.createFormData(
+            "image",
+            imageFile.name,
+            imageFile.asRequestBody("image/*".toMediaTypeOrNull())
+        )
+
+        val response = ApiClient.hazardApiService.submitReport(
+            userIdReq, hazardTypeReq, descriptionReq, latReq, lngReq, severityReq, imagePart
+        )
+
+        if (response.isSuccessful && response.body() != null) {
+            val backendRes = response.body()!!
+            
+            // Sync to Firestore for real-time feed
+            val report = Report(
+                id = backendRes.report_id,
+                userId = userId,
+                incidentType = hazardType,
+                description = description,
+                latitude = lat,
+                longitude = lng,
+                imageUrl = backendRes.image_url,
+                status = backendRes.status,
+                pointsAwarded = if (backendRes.status == "Verified") 10 else 0,
+                createdAt = com.google.firebase.Timestamp.now()
+            )
+            
+            val channelName = normalizeChannelName(hazardType)
+            reportsCollection.document(channelName)
+                .collection("threads")
+                .document(report.id)
+                .set(report)
+                .await()
+                
+            return backendRes
+        } else {
+            val errorBody = response.errorBody()?.string()
+            android.util.Log.e("BackendError", "Failed: $errorBody")
+            throw Exception("Backend error: ${response.code()}")
+        }
+    }
+
+
     // Get reports for a specific user across all channels
     suspend fun getUserReports(userId: String): List<Report> {
         val allReports = mutableListOf<Report>()
@@ -95,7 +171,7 @@ class ReportRepository {
 
     // Get reports for a specific channel
     fun getChannelReports(channelName: String): Query {
-        val cleanChannelName = channelName.removePrefix("#")
+        val cleanChannelName = normalizeChannelName(channelName)
         return reportsCollection
             .document(cleanChannelName)
             .collection("threads")

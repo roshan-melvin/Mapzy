@@ -62,6 +62,19 @@ class ProfileFragment : Fragment() {
             .addOnFailureListener {
                 view.findViewById<TextView>(R.id.tv_profile_name).text = "User (Offline)"
             }
+
+        // Fetch trust summary from subcollection
+        db.collection("users").document(user.uid)
+            .collection("trust").document("summary").get()
+            .addOnSuccessListener { document ->
+                if (document.exists()) {
+                    val trustScore = document.getDouble("trust_score") ?: 50.0
+                    val badgeLevel = document.getString("badge_level") ?: "BRONZE"
+
+                    view.findViewById<TextView>(R.id.tv_stats_trust).text = String.format("%.0f%%", trustScore)
+                    view.findViewById<TextView>(R.id.tv_stats_badge).text = badgeLevel
+                }
+            }
     }
 
     private fun setupButtons(view: View) {

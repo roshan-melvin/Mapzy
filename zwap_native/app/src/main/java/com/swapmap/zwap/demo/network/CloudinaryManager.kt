@@ -6,21 +6,24 @@ import android.util.Log
 import com.cloudinary.android.MediaManager
 import com.cloudinary.android.callback.ErrorInfo
 import com.cloudinary.android.callback.UploadCallback
+import com.swapmap.zwap.demo.config.AppConfig
 
 object CloudinaryManager {
 
     private const val TAG = "CloudinaryManager"
     
-    private const val CLOUD_NAME = "dpca1m8ut"
-    private const val UPLOAD_PRESET = "Mapzy1234"
-
     private var isInitialized = false
 
     fun init(context: Context) {
         if (!isInitialized) {
             try {
+                val cloudName = AppConfig.get("CLOUDINARY_CLOUD_NAME", "")
+                if (cloudName.isBlank()) {
+                    Log.e(TAG, "Cloudinary cloud name missing. Check zwap.env")
+                    return
+                }
                 val config = HashMap<String, Any>()
-                config["cloud_name"] = CLOUD_NAME
+                config["cloud_name"] = cloudName
                 config["secure"] = true
                 MediaManager.init(context, config)
                 isInitialized = true
@@ -34,12 +37,15 @@ object CloudinaryManager {
     }
 
     fun uploadImage(filePath: Uri, onProgress: ((Int) -> Unit)? = null, callback: (String?) -> Unit) {
-        if (CLOUD_NAME == "YOUR_CLOUD_NAME") { // Keeps check
-             // ...
+        val uploadPreset = AppConfig.get("CLOUDINARY_UPLOAD_PRESET", "")
+        if (uploadPreset.isBlank()) {
+            Log.e(TAG, "Cloudinary upload preset missing. Check zwap.env")
+            callback(null)
+            return
         }
 
         val requestId = MediaManager.get().upload(filePath)
-            .unsigned(UPLOAD_PRESET)
+            .unsigned(uploadPreset)
             .option("resource_type", "auto")
             .callback(object : UploadCallback {
                 override fun onStart(requestId: String) {

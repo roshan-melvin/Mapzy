@@ -1,3 +1,8 @@
+# Ignore large model files
+backend/models/*.pt
+backend/models/*.pth
+backend/models/*.h5
+backend/models/*.ckpt
 # Mappls API Configuration - Contains sensitive access tokens
 config.js
 
@@ -46,6 +51,7 @@ package-lock.json
 # Secrets
 serviceAccountKey.json
 **/serviceAccountKey.json
+zwap_native/app/src/main/assets/zwap.env
 # Note: google-services.json usually contains keys, ignore if public repo
 # google-services.json 
 
@@ -54,6 +60,34 @@ zwap/
 venv/
 __pycache__/
 *.pyc
+# Ignore zwap Python virtual environment
+zwap/bin/
+zwap/lib/
+zwap/include/
+zwap/share/
+
+# Ignore Python cache and build artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+ENV/
+build/
+dist/
+.eggs/
+*.egg-info/
+*.egg
+
+# Ignore IDE and OS files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
 
 # IDE
 .idea/

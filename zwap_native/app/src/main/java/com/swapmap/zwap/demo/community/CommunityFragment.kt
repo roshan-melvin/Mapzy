@@ -58,7 +58,7 @@ class CommunityFragment : Fragment() {
 
         val channelMap = mapOf(
             "hazards" to listOf("all-hazards", "accident", "construction", "waterlogging", "fallen-tree", "other"),
-            "cameras" to listOf("fixed-camera", "mobile-camera", "recently-added"),
+            "cameras" to listOf("speed-camera", "fixed-camera", "mobile-camera", "recently-added"),
             "leaderboard" to listOf("global-ranking", "Region ranking")
         )
 

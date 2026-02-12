@@ -130,7 +130,6 @@ class CreateReportFragment : Fragment(R.layout.fragment_create_report) {
         
         etHashtag.threshold = 1
 
-        // Setup Buttons
         btnUpload.setOnClickListener {
             pickMedia.launch(arrayOf("image/*", "video/*"))
         }
@@ -138,45 +137,93 @@ class CreateReportFragment : Fragment(R.layout.fragment_create_report) {
         btnSubmit.setOnClickListener {
             val desc = etDesc.text.toString()
             val hashtag = etHashtag.text.toString().trim()
-            
+
             if (hashtag.isBlank() || !hashtag.startsWith("#")) {
                 etHashtag.error = "Please select a channel (e.g., #accident)"
                 return@setOnClickListener
             }
-            
+
             if (desc.isBlank()) {
                 etDesc.error = "Description required"
                 return@setOnClickListener
             }
+
             if (selectedLatLng == null) {
                 Toast.makeText(context, "Please ensure location is set (wait for map)", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            
+
             if (selectedUri == null) {
-                 Toast.makeText(context, "Please attach proof (photo/video)", Toast.LENGTH_SHORT).show()
-                 return@setOnClickListener
+                Toast.makeText(context, "Please attach proof (photo/video)", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
             }
-            
-            // Start Upload & Submit
+
+            // Start Backend Submit
             pbLoading.visibility = View.VISIBLE
             btnSubmit.isEnabled = false
-            
-            CloudinaryManager.uploadImage(selectedUri!!, 
-                onProgress = { /* Update Progress */ }
-            ) { url ->
-                if (url != null) {
-                    submitReportToFirestore(hashtag, desc, url)
-                } else {
-                    activity?.runOnUiThread {
+
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val file = uriToFile(selectedUri!!)
+                    if (file == null) {
+                        withContext(Dispatchers.Main) {
+                            pbLoading.visibility = View.GONE
+                            btnSubmit.isEnabled = true
+                            Toast.makeText(context, "Failed to process image file", Toast.LENGTH_SHORT).show()
+                        }
+                        return@launch
+                    }
+
+                    val response = repository.submitReportToBackend(
+                        userId = auth.currentUser?.uid ?: "anonymous",
+                        hazardType = hashtag,
+                        description = desc,
+                        lat = selectedLatLng?.latitude ?: 0.0,
+                        lng = selectedLatLng?.longitude ?: 0.0,
+                        imageFile = file
+                    )
+
+                    withContext(Dispatchers.Main) {
+                        pbLoading.visibility = View.GONE
+                        if (response != null) {
+                            Toast.makeText(context, "Report Verified: ${response.status} (Score: ${String.format("%.0f%%", response.verification_score * 100)})", Toast.LENGTH_LONG).show()
+                            parentFragmentManager.popBackStack()
+                        } else {
+                            btnSubmit.isEnabled = true
+                            Toast.makeText(context, "Submission Failed", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
                         pbLoading.visibility = View.GONE
                         btnSubmit.isEnabled = true
-                        Toast.makeText(context, "Upload Failed", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                        android.util.Log.e("BackendSubmit", "Error", e)
                     }
                 }
             }
         }
     }
+
+    private fun uriToFile(uri: Uri): java.io.File? {
+        try {
+            val contentResolver = requireContext().contentResolver
+            val fileName = "temp_report_${System.currentTimeMillis()}.jpg"
+            val tempFile = java.io.File(requireContext().cacheDir, fileName)
+            tempFile.createNewFile()
+            
+            contentResolver.openInputStream(uri)?.use { input ->
+                tempFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+            return tempFile
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return null
+        }
+    }
+
     
     private fun setupMap(map: com.mappls.sdk.maps.MapplsMap, view: View) {
         map.uiSettings?.isLogoEnabled = false
@@ -223,40 +270,7 @@ class CreateReportFragment : Fragment(R.layout.fragment_create_report) {
         }
     }
 
-    private fun submitReportToFirestore(hashtag: String, desc: String, imageUrl: String) {
-        val lat = selectedLatLng?.latitude ?: 0.0
-        val lng = selectedLatLng?.longitude ?: 0.0
-        
-        val report = Report(
-            id = UUID.randomUUID().toString(),
-            userId = auth.currentUser?.uid ?: "",
-            incidentType = hashtag, // Store the hashtag as incident type
-            description = desc,
-            latitude = lat,
-            longitude = lng,
-            imageUrl = imageUrl,
-            status = "Pending",
-            pointsAwarded = 0,
-            createdAt = Timestamp.now()
-        )
-        
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                repository.submitReport(report)
-                withContext(Dispatchers.Main) {
-                    view?.findViewById<android.view.View>(R.id.pb_uploading)?.visibility = View.GONE
-                    Toast.makeText(context, "Report Submitted!", Toast.LENGTH_LONG).show()
-                    parentFragmentManager.popBackStack()
-                }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    view?.findViewById<android.widget.ProgressBar>(R.id.pb_uploading)?.visibility = View.GONE
-                    view?.findViewById<android.widget.Button>(R.id.btn_submit_report)?.isEnabled = true
-                    Toast.makeText(context, "Submission Error: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
-    }
+
     
     // Lifecycle
     override fun onStart() { super.onStart(); mapView?.onStart() }
