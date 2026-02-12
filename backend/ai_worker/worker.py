@@ -89,8 +89,9 @@ def process_pending_reports():
             continue
             
         try:
-            # Note: channel name is incident_type without '#'
-            channel_name = incident_type.replace("#", "")
+            # Normalize channel name from incident type
+            channel_name = incident_type.replace("#", "").strip().lower()
+            channel_name = channel_name.replace("_", "-").replace(" ", "-")
             
             # Update the specific document in Firestore
             # Path: reports/{channel}/threads/{reportId}
