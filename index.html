@@ -210,6 +210,80 @@
             line-height: 1.4;
         }
 
+        /* Search History Dropdown */
+        .search-history-dropdown {
+            position: absolute;
+            bottom: 100%;
+            left: 0;
+            right: 0;
+            margin-bottom: 12px;
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12),
+                0 2px 8px rgba(0, 0, 0, 0.08);
+            max-height: 350px;
+            overflow-y: auto;
+            display: none;
+            z-index: 999;
+        }
+
+        .search-history-dropdown.active {
+            display: block;
+        }
+
+        .search-history-header {
+            padding: 12px 20px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #999;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        }
+
+        .search-history-item {
+            padding: 14px 20px;
+            cursor: pointer;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .search-history-item:hover {
+            background-color: rgba(76, 175, 80, 0.08);
+            padding-left: 24px;
+        }
+
+        .search-history-item:last-child {
+            border-bottom: none;
+            border-radius: 0 0 16px 16px;
+        }
+
+        .search-history-icon {
+            width: 16px;
+            height: 16px;
+            stroke: #999;
+            flex-shrink: 0;
+        }
+
+        .search-history-text {
+            flex: 1;
+            font-size: 15px;
+            color: #333;
+            font-weight: 400;
+        }
+
+        .search-history-empty {
+            padding: 20px;
+            text-align: center;
+            color: #999;
+            font-size: 14px;
+        }
+
         #loading {
             position: absolute;
             top: 50%;
@@ -2304,6 +2378,135 @@
             /* Prevent flex overflow */
         }
 
+        /* Detailed Reports Overlay */
+        .detailed-reports-overlay {
+            position: fixed;
+            top: 0;
+            right: -100%;
+            width: 350px;
+            height: 100%;
+            background: #1e293b;
+            box-shadow: -4px 0 24px rgba(0, 0, 0, 0.3);
+            z-index: 2000;
+            transition: right 0.3s ease;
+            display: flex;
+            flex-direction: column;
+            color: white;
+        }
+
+        .detailed-reports-overlay.active {
+            right: 0;
+        }
+
+        .detailed-reports-header {
+            padding: 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(15, 23, 42, 0.5);
+        }
+
+        .detailed-reports-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+        }
+
+        .report-item {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 12px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: transform 0.2s, background 0.2s;
+        }
+
+        .report-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .report-image-thumb {
+            width: 100%;
+            height: 120px;
+            object-fit: cover;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            background-color: #334155;
+        }
+
+        /* Hazard Detail Overlay */
+        .hazard-detail-overlay {
+            position: fixed;
+            top: 0;
+            right: -100%;
+            /* slides in over the report list */
+            width: 380px;
+            /* Slightly wider */
+            height: 100%;
+            background: #0f172a;
+            z-index: 2100;
+            /* Higher than report list */
+            transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            flex-direction: column;
+            color: white;
+            box-shadow: -8px 0 32px rgba(0, 0, 0, 0.5);
+        }
+
+        .hazard-detail-overlay.active {
+            right: 0;
+        }
+
+        .hazard-detail-header {
+            padding: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(255, 255, 255, 0.03);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .hazard-image-container {
+            width: 100%;
+            height: 220px;
+            background: #334155;
+            position: relative;
+        }
+
+        .hazard-image-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .hazard-info {
+            padding: 20px;
+        }
+
+        .hazard-map-embed {
+            margin: 0 20px;
+            height: 150px;
+            background: #334155;
+            border-radius: 12px;
+            overflow: hidden;
+            position: relative;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .static-map-placeholder {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #94a3b8;
+            background: #1e293b;
+            background-image: radial-gradient(#334155 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+
         @media (max-width: 768px) {
             .chat-panel {
                 width: 100% !important;
@@ -2433,14 +2636,13 @@
                 <h3>Your Stats</h3><button class="stats-close-btn" id="statsCloseBtn">✕</button>
             </div>
             <div class="stats-overlay-content">
-                <div class="stat-item"><span class="stat-label">Total Reports Submitted</span><span class="stat-value"
-                        id="statsTotalReports">161</span></div>
-                <div class="stat-item"><span class="stat-label">🚧 Hazard Reports</span><span class="stat-value"
-                        id="statsHazardReports">25</span></div>
-                <div class="stat-item"><span class="stat-label">📷 Speed Camera Reports</span><span class="stat-value"
-                        id="statsSpeedCameraReports">25</span></div>
-                <div class="stat-item"><span class="stat-label">📌 Other Reports</span><span class="stat-value"
-                        id="statsOthersReports">40</span></div>
+                <div class="stat-item clickable" data-category="all"><span class="stat-label">Total Reports
+                        Submitted</span><span class="stat-value" id="statsTotalReports">161</span></div>
+                <div class="stat-item clickable" data-category="hazard"><span class="stat-label">🚧 Hazard
+                        Reports</span><span class="stat-value" id="statsHazardReports">25</span></div>
+                <div class="stat-item clickable" data-category="camera"><span class="stat-label">📷 Speed Camera
+                        Reports</span><span class="stat-value" id="statsSpeedCameraReports">25</span></div>
+
                 <!-- Leaderboard Section -->
                 <div class="leaderboard-section">
                     <h4 class="leaderboard-title">🏆 Leaderboard</h4>
@@ -2464,12 +2666,79 @@
             </div>
         </div>
     </div>
+
+    <!-- Detailed Reports Overlay (Report List) -->
+    <div class="detailed-reports-overlay" id="detailedReportsOverlay">
+        <div class="detailed-reports-header">
+            <h3 id="detailedReportsTitle">My Reports</h3>
+            <button class="stats-close-btn" id="closeDetailedReports">✕</button>
+        </div>
+        <div class="detailed-reports-list" id="detailedReportsList">
+            <!-- Reports injected by JS -->
+        </div>
+    </div>
+
+    <!-- Hazard Detail Overlay (Single Report View) -->
+    <div class="hazard-detail-overlay" id="hazardDetailOverlay">
+        <div class="hazard-detail-header">
+            <button class="back-btn" id="hazardDetailBackBtn"
+                style="background:none; border:none; color:#94a3b8; cursor:pointer; font-size:14px;">← Back</button>
+            <h3 id="hazardDetailTitle" style="margin:0; font-size:16px;">Details</h3>
+            <button class="stats-close-btn" id="hazardDetailCloseBtn">✕</button>
+        </div>
+        <div class="hazard-detail-content" style="overflow-y:auto; flex:1;">
+            <div class="hazard-image-container">
+                <img id="hazardDetailImage" src="" alt="Hazard Image">
+            </div>
+            <div class="hazard-info">
+                <div class="hazard-type-badge" id="hazardDetailType"
+                    style="display:inline-block; padding:4px 8px; border-radius:4px; font-size:12px; font-weight:bold; margin-bottom:8px;">
+                    🚧 Hazard</div>
+                <h2 id="hazardDetailSubtype" style="margin:0 0 4px 0; font-size:20px;">Accident</h2>
+                <div
+                    style="display:flex; justify-content:space-between; color:#94a3b8; font-size:13px; margin-bottom:12px;">
+                    <span id="hazardDetailTime">2 mins ago</span>
+                    <span id="hazardDetailLocation">Near Anna Nagar</span>
+                </div>
+                <div class="hazard-status-row"
+                    style="display:flex; align-items:center; justify-content:space-between; margin-top:8px;">
+                    <span id="hazardDetailStatus" style="color:#FFC107; font-weight:600; font-size:13px;">Pending</span>
+
+                    <div class="vote-controls"
+                        style="display:flex; align-items:center; gap:12px; background:rgba(255,255,255,0.05); padding:6px 12px; border-radius:20px;">
+                        <button id="hazardUpvoteBtn" class="vote-btn"
+                            style="background:none; border:none; color:#94a3b8; cursor:pointer; display:flex; align-items:center; font-size:16px; transition:color 0.2s;">
+                            ▲
+                        </button>
+                        <span id="hazardDetailVotes"
+                            style="color:white; font-weight:bold; font-size:14px; min-width:20px; text-align:center;">12</span>
+                        <button id="hazardDownvoteBtn" class="vote-btn"
+                            style="background:none; border:none; color:#94a3b8; cursor:pointer; display:flex; align-items:center; font-size:16px; transition:color 0.2s;">
+                            ▼
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="hazard-map-embed" id="hazardDetailMap">
+                <div class="static-map-placeholder">
+                    <span>📍 Map View (Interactive)</span>
+                </div>
+            </div>
+            <div style="padding:20px;">
+                <button class="action-btn" id="hazardDetailActionBtn"
+                    style="width:100%; background:#3b82f6; color:white; border:none; padding:12px; border-radius:8px; font-weight:600; cursor:pointer;">Does
+                    this still exist?</button>
+            </div>
+        </div>
+    </div>
     <div id="loading">
         <div class="spinner"></div>
         <p>Loading Mapzy...</p>
     </div>
     <div id="error"></div>
     <div id="map"></div>
+    <!-- Ghost Map for Nearby Plugin Workaround -->
+    <div id="ghost-map" style="display: none;"></div>
     <!-- Premium Search Bar - Center Bottom -->
     <div class="search-container">
         <div class="search-wrapper"><input type="text" id="searchBox" class="search-box"
@@ -2478,25 +2747,27 @@
                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="11" cy="11" r="8"></circle>
                 <path d="m21 21-4.35-4.35"></path>
-            </svg></div><button class="location-btn" id="currentLocationBtn" title="Get Current Location"><svg
+            </svg>
+            <!-- Search History Dropdown -->
+            <div class="search-history-dropdown" id="searchHistoryDropdown">
+                <div class="search-history-header">Recent Searches</div>
+                <div id="searchHistoryList">
+                    <!-- History items will be inserted here -->
+                </div>
+            </div>
+        </div><button class="location-btn" id="currentLocationBtn" title="Get Current Location"><svg
                 xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="12" r="10"></circle>
                 <circle cx="12" cy="12" r="3"></circle>
-            </svg></button><button class="location-btn" id="hazardToggleBtn" title="Toggle Hazard Markers"><svg
+            </svg></button><button class="location-btn" id="routeAlertsToggleBtn"
+            title="Toggle Route Alerts (Hazards & Cameras)" style="display: none;"><svg
                 xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z">
                 </path>
                 <line x1="12" y1="9" x2="12" y2="13"></line>
                 <line x1="12" y1="17" x2="12.01" y2="17"></line>
-            </svg></button><button class="location-btn" id="speedCameraToggleBtn"
-            title="Toggle Speed Camera Markers"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
-                viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                stroke-linejoin="round">
-                <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z">
-                </path>
-                <circle cx="12" cy="13" r="3"></circle>
             </svg></button>
     </div>
     <!-- Navigation Panel -->
@@ -2539,14 +2810,24 @@
             mainScript.async = true;
             document.head.appendChild(mainScript);
 
-            // Load plugins SDK (with search, direction, and safety)
+            // Load plugins SDK (with search, direction, safety, and nearby)
             const pluginsScript = document.createElement('script');
-            pluginsScript.src = `https://sdk.mappls.com/map/sdk/plugins?access_token=${token}&v=3.0&libraries=search,direction,safety`;
+            pluginsScript.src = `https://sdk.mappls.com/map/sdk/plugins?access_token=${token}&v=3.0&libraries=search,direction,safety,nearby`;
+            pluginsScript.onerror = function () {
+                console.error('Failed to load Mappls plugins script');
+            };
+            pluginsScript.onload = function () {
+                console.log('Mappls plugins loaded successfully');
+            };
             document.head.appendChild(pluginsScript);
         })();
 
         var map;
+        var ghostMap; // Hidden map for nearby plugin
+        var nearbyMarkers = []; // Array to track nearby markers
         var currentMarker;
+        var hazardMarkers = []; // Track active hazard markers
+        var pickerMarker = null; // Marker for location picker
         var fromMarker,
             toMarker;
         var currentRoute;
@@ -2563,6 +2844,12 @@
 
                 // Initialize map - using array format [lat, lng]
                 map = new mappls.Map('map', {
+                    center: [28.638698, 77.276045],
+                    zoom: 13
+                });
+
+                // Initialize ghost map (hidden)
+                ghostMap = new mappls.Map('ghost-map', {
                     center: [28.638698, 77.276045],
                     zoom: 13
                 });
@@ -2609,11 +2896,8 @@
                         console.log('Error disabling POI clicks:', err);
                     }
 
-                    // Initialize hazard toggle
-                    initHazardToggle();
-
-                    // Initialize speed camera toggle
-                    initSpeedCameraToggle();
+                    // Initialize route alerts toggle
+                    initRouteAlertsToggle();
 
                     // Initialize map style switcher
                     initMapStyleSwitcher();
@@ -2674,6 +2958,15 @@
                     const selectedPlace = data[0]; // Get first result
                     console.log('Selected place details:', selectedPlace);
 
+                    // Save to search history
+                    if (typeof saveSearchHistory === 'function') {
+                        saveSearchHistory(selectedPlace.placeName, {
+                            eLoc: selectedPlace.eLoc,
+                            placeName: selectedPlace.placeName,
+                            placeAddress: selectedPlace.placeAddress
+                        });
+                    }
+
                     // Remove previous marker
                     if (currentMarker) {
                         currentMarker.remove();
@@ -2719,7 +3012,131 @@
             // Initialize the search plugin
             new mappls.search(searchBox, placeOptions, searchCallback);
 
+            // Setup search history handlers
+            setupSearchHistoryHandlers();
+
             console.log('Place search initialized');
+        }
+
+        // Setup Search History Event Handlers
+        function setupSearchHistoryHandlers() {
+            const searchBox = document.getElementById('searchBox');
+            const historyDropdown = document.getElementById('searchHistoryDropdown');
+
+            // Show history on focus (if input is empty)
+            searchBox.addEventListener('focus', function () {
+                if (searchBox.value.trim() === '' && window.searchHistory && window.searchHistory.length > 0) {
+                    showSearchHistory();
+                }
+            });
+
+            // Hide history when user starts typing
+            searchBox.addEventListener('input', function () {
+                if (searchBox.value.trim() !== '') {
+                    hideSearchHistory();
+                }
+            });
+
+            // Hide history on outside click
+            document.addEventListener('click', function (e) {
+                if (!e.target.closest('.search-wrapper')) {
+                    hideSearchHistory();
+                }
+            });
+        }
+
+        // Show search history dropdown
+        function showSearchHistory() {
+            const historyDropdown = document.getElementById('searchHistoryDropdown');
+            const searchHistoryList = document.getElementById('searchHistoryList');
+
+            // Update the list with current history
+            renderSearchHistory();
+
+            // Show dropdown
+            historyDropdown.classList.add('active');
+        }
+
+        // Hide search history dropdown
+        function hideSearchHistory() {
+            const historyDropdown = document.getElementById('searchHistoryDropdown');
+            historyDropdown.classList.remove('active');
+        }
+
+        // Render search history items
+        function renderSearchHistory() {
+            const searchHistoryList = document.getElementById('searchHistoryList');
+            const history = window.searchHistory || [];
+
+            searchHistoryList.innerHTML = '';
+
+            if (history.length === 0) {
+                searchHistoryList.innerHTML = '<div class="search-history-empty">No recent searches</div>';
+                return;
+            }
+
+            history.forEach(item => {
+                const historyItem = document.createElement('div');
+                historyItem.className = 'search-history-item';
+                historyItem.innerHTML = `
+                    <svg class="search-history-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <polyline points="12 6 12 12 16 14"></polyline>
+                    </svg>
+                    <span class="search-history-text">${escapeHtml(item.query)}</span>
+                `;
+
+                // Handle click on history item
+                historyItem.addEventListener('click', function () {
+                    handleHistoryItemClick(item);
+                });
+
+                searchHistoryList.appendChild(historyItem);
+            });
+        }
+
+        // Handle click on search history item
+        function handleHistoryItemClick(historyItem) {
+            const searchBox = document.getElementById('searchBox');
+
+            // Hide dropdown
+            hideSearchHistory();
+
+            // If we have place data, trigger a search directly
+            if (historyItem.placeData && historyItem.placeData.eLoc) {
+                // Remove previous marker
+                if (currentMarker) {
+                    currentMarker.remove();
+                }
+
+                // Place marker using saved eLoc
+                mappls.pinMarker({
+                    map: map,
+                    pin: historyItem.placeData.eLoc,
+                    popupHtml: historyItem.placeData.placeName + '<br>' + historyItem.placeData.placeAddress,
+                    popupOptions: {
+                        openPopup: true
+                    }
+                }, function (marker) {
+                    currentMarker = marker;
+                    currentMarker.fitbounds();
+                    console.log('Marker placed from history:', historyItem.placeData.placeName);
+                });
+
+                // Update search box
+                searchBox.value = historyItem.query;
+            } else {
+                // Just fill the search box and let user see autocomplete
+                searchBox.value = historyItem.query;
+                searchBox.focus();
+            }
+        }
+
+        // Utility function to escape HTML
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
         }
 
         // Initialize Navigation
@@ -2849,9 +3266,13 @@
                     });
 
                     // Add popup
-                    const popup = new mappls.Popup({
-                        offset: [0, -15]
-                    }).setLngLat([lat, lng]).setHTML('<strong>📍 You are here</strong>').addTo(map);
+                    try {
+                        const popup = new mappls.Popup({
+                            offset: [0, -15]
+                        }).setLngLat([lat, lng]).setHTML('<strong>📍 You are here</strong>').addTo(map);
+                    } catch (err) {
+                        console.log('Popup creation skipped:', err);
+                    }
 
                     // Remove loading state after a short delay to ensure smooth transition
                     setTimeout(function () {
@@ -2924,10 +3345,29 @@
                 currentRoute = mappls.direction(directionOptions, function (result) {
                     console.log('Route calculated:', result);
 
+                    // Always enable route alerts button since route was drawn
+                    enableRouteAlertsButton();
+
                     if (result && result.routes && result.routes.length > 0) {
                         displayRouteInfo(result.routes[0]);
 
+                        // Extract and store route polyline coordinates
+                        extractRoutePolyline(result.routes[0]);
+
                         // Update button state to show success
+                        const btn = document.getElementById('getDirections');
+                        btn.textContent = '🚀 Get Directions';
+                        btn.disabled = false;
+                        document.getElementById('clearRoute').style.display = 'block';
+                    } else {
+                        // Handle different response structures
+                        console.log('Route result structure different, attempting extraction...');
+
+                        // Try alternate extraction methods
+                        if (result) {
+                            extractRoutePolyline(result);
+                        }
+
                         const btn = document.getElementById('getDirections');
                         btn.textContent = '🚀 Get Directions';
                         btn.disabled = false;
@@ -2942,6 +3382,9 @@
                     if (btn.textContent === '⏳ Calculating route...') {
                         btn.textContent = '🚀 Get Directions';
                         btn.disabled = false;
+                        // Enable route alerts button as fallback
+                        enableRouteAlertsButton();
+                        document.getElementById('clearRoute').style.display = 'block';
                     }
                 }
 
@@ -3011,8 +3454,164 @@
             routeInfoDiv.classList.add('active');
         }
 
+        // Extract route polyline coordinates from route result
+        function extractRoutePolyline(route) {
+            currentRoutePolyline = [];
+
+            console.log('Extracting polyline from route:', route);
+
+            if (route && route.legs) {
+                route.legs.forEach(leg => {
+                    if (leg.steps) {
+                        leg.steps.forEach(step => {
+                            // Method 1: Check for geometry.coordinates (GeoJSON format)
+                            if (step.geometry && step.geometry.coordinates) {
+                                step.geometry.coordinates.forEach(coord => {
+                                    // Mappls uses [lng, lat] format, convert to {lat, lng}
+                                    currentRoutePolyline.push({
+                                        lat: coord[1],
+                                        lng: coord[0]
+                                    });
+                                });
+                            }
+                            // Method 2: Check for maneuver location
+                            else if (step.maneuver && step.maneuver.location) {
+                                currentRoutePolyline.push({
+                                    lat: step.maneuver.location[1],
+                                    lng: step.maneuver.location[0]
+                                });
+                            }
+                            // Method 3: Check for start_location/end_location
+                            else if (step.start_location) {
+                                currentRoutePolyline.push({
+                                    lat: step.start_location.lat || step.start_location[0],
+                                    lng: step.start_location.lng || step.start_location[1]
+                                });
+                            }
+                            // Method 4: Check for intersections
+                            else if (step.intersections && step.intersections.length > 0) {
+                                step.intersections.forEach(intersection => {
+                                    if (intersection.location) {
+                                        currentRoutePolyline.push({
+                                            lat: intersection.location[1],
+                                            lng: intersection.location[0]
+                                        });
+                                    }
+                                });
+                            }
+                        });
+                    }
+                });
+            }
+
+            // Method 5: Try to extract from route geometry directly
+            if (currentRoutePolyline.length === 0 && route && route.geometry) {
+                if (route.geometry.coordinates) {
+                    route.geometry.coordinates.forEach(coord => {
+                        currentRoutePolyline.push({
+                            lat: coord[1],
+                            lng: coord[0]
+                        });
+                    });
+                } else if (typeof route.geometry === 'string') {
+                    // Polyline encoded string - decode it
+                    currentRoutePolyline = decodePolyline(route.geometry);
+                }
+            }
+
+            // Fallback: Use start and end locations to create basic route line
+            if (currentRoutePolyline.length === 0 && fromLocation && toLocation) {
+                console.warn('Could not extract detailed polyline, using location markers');
+
+                // Get coordinates from the markers if available
+                if (fromMarker && toMarker) {
+                    try {
+                        const fromPos = fromMarker.getPosition ? fromMarker.getPosition() : null;
+                        const toPos = toMarker.getPosition ? toMarker.getPosition() : null;
+
+                        if (fromPos && toPos) {
+                            // Create multiple points along the straight line for better filtering
+                            const steps = 20;
+                            for (let i = 0; i <= steps; i++) {
+                                const ratio = i / steps;
+                                currentRoutePolyline.push({
+                                    lat: fromPos.lat + (toPos.lat - fromPos.lat) * ratio,
+                                    lng: fromPos.lng + (toPos.lng - fromPos.lng) * ratio
+                                });
+                            }
+                        }
+                    } catch (e) {
+                        console.error('Error getting marker positions:', e);
+                    }
+                }
+
+                // If still empty, use the map center as reference
+                if (currentRoutePolyline.length === 0) {
+                    const center = map.getCenter();
+                    const bounds = map.getBounds();
+                    if (bounds) {
+                        // Create a line from bounds
+                        currentRoutePolyline.push(
+                            { lat: bounds.getSouth(), lng: bounds.getWest() },
+                            { lat: bounds.getNorth(), lng: bounds.getEast() }
+                        );
+                    } else if (center) {
+                        // Use center with small offset
+                        currentRoutePolyline.push(
+                            { lat: center.lat - 0.01, lng: center.lng - 0.01 },
+                            { lat: center.lat + 0.01, lng: center.lng + 0.01 }
+                        );
+                    }
+                }
+            }
+
+            console.log(`Extracted route polyline with ${currentRoutePolyline.length} points`);
+
+            // If we have any points at all, consider it valid
+            if (currentRoutePolyline.length > 0) {
+                console.log('Sample polyline points:', currentRoutePolyline.slice(0, 3));
+            }
+        }
+
+        // Decode polyline string (Google/Mappls encoded polyline format)
+        function decodePolyline(encoded) {
+            const points = [];
+            let index = 0, lat = 0, lng = 0;
+
+            while (index < encoded.length) {
+                let shift = 0, result = 0, byte;
+                do {
+                    byte = encoded.charCodeAt(index++) - 63;
+                    result |= (byte & 0x1f) << shift;
+                    shift += 5;
+                } while (byte >= 0x20);
+                const dlat = ((result & 1) ? ~(result >> 1) : (result >> 1));
+                lat += dlat;
+
+                shift = 0;
+                result = 0;
+                do {
+                    byte = encoded.charCodeAt(index++) - 63;
+                    result |= (byte & 0x1f) << shift;
+                    shift += 5;
+                } while (byte >= 0x20);
+                const dlng = ((result & 1) ? ~(result >> 1) : (result >> 1));
+                lng += dlng;
+
+                points.push({
+                    lat: lat / 1e5,
+                    lng: lng / 1e5
+                });
+            }
+            return points;
+        }
+
         // Clear navigation
         function clearNavigation() {
+
+            // Disable route alerts button and clear all alerts
+            disableRouteAlertsButton();
+            currentRoutePolyline = null;
 
             // Remove markers
             if (fromMarker) {
@@ -3071,149 +3670,322 @@
                 ;
         }
 
-        // ==================== HAZARD OVERLAY SYSTEM ====================
+        // ==================== ROUTE ALERTS SYSTEM (HAZARDS & SPEED CAMERAS) ====================
         var hazardMarkers = [];
-        var hazardsVisible = false;
-        var isLoadingHazards = false;
+        var speedCameraMarkers = [];
+        var routeAlertsVisible = false;
+        var isLoadingAlerts = false;
+        var currentRoutePolyline = null; // Store route polyline coordinates
 
-        // Initialize hazard toggle button
-        function initHazardToggle() {
-            const hazardBtn = document.getElementById('hazardToggleBtn');
+        // Initialize route alerts toggle button
+        function initRouteAlertsToggle() {
+            const alertsBtn = document.getElementById('routeAlertsToggleBtn');
 
-            hazardBtn.addEventListener('click', function () {
-                hazardsVisible = !hazardsVisible;
+            if (!alertsBtn) {
+                console.error('Route alerts toggle button not found!');
+                return;
+            }
 
-                if (hazardsVisible) {
-                    hazardBtn.classList.add('active');
-                    loadHazards();
+            alertsBtn.addEventListener('click', function () {
+                if (!currentRoute) {
+                    alert('Please generate a route first');
+                    return;
                 }
 
-                else {
-                    hazardBtn.classList.remove('active');
-                    clearHazards();
+                routeAlertsVisible = !routeAlertsVisible;
+
+                if (routeAlertsVisible) {
+                    alertsBtn.classList.add('active');
+                    loadRouteAlerts();
+                } else {
+                    alertsBtn.classList.remove('active');
+                    clearAllAlerts();
                 }
             });
 
-            // Reload hazards when map moves (if visible)
-            map.addListener('moveend', function () {
-                if (hazardsVisible && !isLoadingHazards) {
-                    loadHazards();
-                }
-            });
-
-            console.log('Hazard toggle initialized');
+            console.log('Route alerts toggle initialized');
         }
 
-        // Load hazards from OpenStreetMap via Overpass API
-        function loadHazards() {
-            if (isLoadingHazards) return;
-            isLoadingHazards = true;
+        // Enable/show the route alerts button
+        function enableRouteAlertsButton() {
+            const alertsBtn = document.getElementById('routeAlertsToggleBtn');
+            if (alertsBtn) {
+                alertsBtn.style.display = 'flex';
+                alertsBtn.style.visibility = 'visible';
+                alertsBtn.disabled = false;
+                console.log('Route alerts button enabled');
+            } else {
+                console.error('Route alerts button not found!');
+            }
+        }
 
-            // Get current map bounds
-            const bounds = map.getBounds();
-            const south = bounds.getSouth();
-            const west = bounds.getWest();
-            const north = bounds.getNorth();
-            const east = bounds.getEast();
+        // Disable/hide the route alerts button and clear alerts
+        function disableRouteAlertsButton() {
+            const alertsBtn = document.getElementById('routeAlertsToggleBtn');
+            if (alertsBtn) {
+                alertsBtn.style.display = 'none';
+                alertsBtn.style.visibility = 'hidden';
+                alertsBtn.disabled = true;
+                alertsBtn.classList.remove('active');
+            }
+            routeAlertsVisible = false;
+            clearAllAlerts();
+            console.log('Route alerts button disabled');
+        }
 
-            // Format bbox for Overpass API: (south,west,north,east)
-            const bbox = `${south},${west},${north},${east}`;
+        // Load both hazards and speed cameras filtered by route proximity
+        function loadRouteAlerts() {
+            if (isLoadingAlerts) {
+                console.log('Already loading alerts, skipping...');
+                return;
+            }
 
-            // Overpass API query for hazards
-            // We use a clean string without newlines inside the query components to avoid syntax errors
+            if (!currentRoutePolyline || currentRoutePolyline.length === 0) {
+                console.warn('No route polyline available for alerts');
+                // Use map bounds as fallback
+                const bounds = map.getBounds();
+                if (bounds) {
+                    currentRoutePolyline = [
+                        { lat: bounds.getSouth(), lng: bounds.getWest() },
+                        { lat: bounds.getSouth(), lng: bounds.getEast() },
+                        { lat: bounds.getNorth(), lng: bounds.getEast() },
+                        { lat: bounds.getNorth(), lng: bounds.getWest() }
+                    ];
+                } else {
+                    console.error('Cannot load alerts without route or bounds');
+                    return;
+                }
+            }
+
+            isLoadingAlerts = true;
+            console.log('Loading route alerts with polyline:', currentRoutePolyline.length, 'points');
+
+            // Get bounding box around route for efficient querying
+            const bbox = getRouteBoundingBox(currentRoutePolyline);
+            console.log('Using bounding box:', bbox);
+
+            // Load hazards from Overpass API
+            loadHazardsAlongRoute(bbox);
+
+            // Load speed cameras (using dummy data for now)
+            loadSpeedCamerasAlongRoute();
+        }
+
+        // Get bounding box around route polyline
+        function getRouteBoundingBox(polyline) {
+            if (!polyline || polyline.length === 0) {
+                // Return map bounds as fallback
+                const bounds = map.getBounds();
+                if (bounds) {
+                    return {
+                        south: bounds.getSouth(),
+                        north: bounds.getNorth(),
+                        west: bounds.getWest(),
+                        east: bounds.getEast()
+                    };
+                }
+                // Default fallback (Delhi area)
+                return { south: 28.4, north: 28.8, west: 76.9, east: 77.4 };
+            }
+
+            let minLat = Infinity, maxLat = -Infinity;
+            let minLng = Infinity, maxLng = -Infinity;
+
+            polyline.forEach(coord => {
+                if (coord && typeof coord.lat === 'number' && typeof coord.lng === 'number') {
+                    minLat = Math.min(minLat, coord.lat);
+                    maxLat = Math.max(maxLat, coord.lat);
+                    minLng = Math.min(minLng, coord.lng);
+                    maxLng = Math.max(maxLng, coord.lng);
+                }
+            });
+
+            // Validate bounds
+            if (minLat === Infinity || maxLat === -Infinity) {
+                const bounds = map.getBounds();
+                if (bounds) {
+                    return {
+                        south: bounds.getSouth(),
+                        north: bounds.getNorth(),
+                        west: bounds.getWest(),
+                        east: bounds.getEast()
+                    };
+                }
+            }
+
+            // Add buffer (approximately 0.01 degrees ~= 1km)
+            const buffer = 0.01;
+            return {
+                south: minLat - buffer,
+                north: maxLat + buffer,
+                west: minLng - buffer,
+                east: maxLng + buffer
+            };
+        }
+
+        // Calculate distance from point to route polyline in meters
+        function distanceToRoute(lat, lng, polyline) {
+            if (!polyline || polyline.length === 0) {
+                return Infinity;
+            }
+
+            // If only one point, calculate direct distance
+            if (polyline.length === 1) {
+                return haversineDistance(lat, lng, polyline[0].lat, polyline[0].lng);
+            }
+
+            let minDistance = Infinity;
+
+            for (let i = 0; i < polyline.length - 1; i++) {
+                const segmentDistance = distanceToLineSegment(
+                    lat, lng,
+                    polyline[i].lat, polyline[i].lng,
+                    polyline[i + 1].lat, polyline[i + 1].lng
+                );
+                minDistance = Math.min(minDistance, segmentDistance);
+            }
+
+            return minDistance;
+        }
+
+        // Calculate distance from point to line segment using Haversine formula
+        function distanceToLineSegment(px, py, x1, y1, x2, y2) {
+            const A = px - x1;
+            const B = py - y1;
+            const C = x2 - x1;
+            const D = y2 - y1;
+
+            const dot = A * C + B * D;
+            const len_sq = C * C + D * D;
+            let param = -1;
+
+            if (len_sq != 0) param = dot / len_sq;
+
+            let xx, yy;
+
+            if (param < 0) {
+                xx = x1;
+                yy = y1;
+            } else if (param > 1) {
+                xx = x2;
+                yy = y2;
+            } else {
+                xx = x1 + param * C;
+                yy = y1 + param * D;
+            }
+
+            return haversineDistance(px, py, xx, yy);
+        }
+
+        // Haversine formula to calculate distance between two points in meters
+        function haversineDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371000; // Earth's radius in meters
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c;
+        }
+
+        // Load hazards along route from OpenStreetMap via Overpass API
+        function loadHazardsAlongRoute(bbox) {
+            console.log('Loading hazards with bbox:', bbox);
+
             const query = `[out:json][timeout:25];
 (
-  node["highway"="speed_bump"](${bbox});
-  node["traffic_calming"](${bbox});
+  node["highway"="speed_bump"](${bbox.south},${bbox.west},${bbox.north},${bbox.east});
+  node["traffic_calming"](${bbox.south},${bbox.west},${bbox.north},${bbox.east});
 );
 out body;>;
 out skel qt;`;
 
+            console.log('Overpass query:', query);
             const overpassUrl = 'https://overpass.kumi.systems/api/interpreter';
 
             fetch(overpassUrl, {
                 method: 'POST',
                 body: query
-
-            }).then(response => response.json()).then(data => {
-                console.log('Hazards loaded:', data.elements.length);
-                displayHazards(data.elements);
-                isLoadingHazards = false;
-
-            }).catch(error => {
-                console.error('Error loading hazards:', error);
-                isLoadingHazards = false;
-            });
+            })
+                .then(response => {
+                    console.log('Overpass API response status:', response.status);
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Hazards loaded from API:', data.elements ? data.elements.length : 0);
+                    if (data.elements && data.elements.length > 0) {
+                        displayHazardsAlongRoute(data.elements);
+                    } else {
+                        console.log('No hazards found in this area');
+                    }
+                    isLoadingAlerts = false;
+                })
+                .catch(error => {
+                    console.error('Error loading hazards:', error);
+                    isLoadingAlerts = false;
+                });
         }
 
-        // Display hazard markers on map
-        function displayHazards(hazards) {
-            // Clear existing hazard markers
+        // Display hazard markers only if within ~100m of route
+        function displayHazardsAlongRoute(hazards) {
             clearHazards();
 
-            // Add markers for each hazard - using Mappls native format
+            // Use larger threshold if polyline extraction failed
+            const hasValidPolyline = currentRoutePolyline && currentRoutePolyline.length >= 2;
+            const PROXIMITY_THRESHOLD = hasValidPolyline ? 100 : 5000; // meters - use 5km if no polyline
+            let displayedCount = 0;
+
+            console.log(`Filtering ${hazards.length} hazards with ${hasValidPolyline ? 'route polyline' : 'bounding box'} (threshold: ${PROXIMITY_THRESHOLD}m)`);
+
             hazards.forEach(hazard => {
                 if (hazard.lat && hazard.lon) {
-                    const marker = new mappls.Marker({
-                        map: map,
-                        position: [hazard.lat, hazard.lon],
-                        fitbounds: false,
-                        html: '<div style="background: #FF3333; color: white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: bold; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.3);">⚠</div>',
-                        offset: [0, -20]
-                    });
+                    // Check if hazard is within threshold of route
+                    // If no valid polyline, show all hazards from the bbox query
+                    const distance = hasValidPolyline
+                        ? distanceToRoute(hazard.lat, hazard.lon, currentRoutePolyline)
+                        : 0;
 
-                    // Create popup content
-                    let popupContent = '<strong>⚠️ Hazard</strong><br>';
+                    if (distance <= PROXIMITY_THRESHOLD) {
+                        const marker = new mappls.Marker({
+                            map: map,
+                            position: [hazard.lat, hazard.lon],
+                            fitbounds: false,
+                            html: '<div style="background: #FF3333; color: white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: bold; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.3);">⚠</div>',
+                            offset: [0, -20]
+                        });
 
-                    if (hazard.tags) {
-                        if (hazard.tags.hazard) popupContent += `Type: $ {
-                            hazard.tags.hazard
+                        // Create popup content
+                        let popupContent = '<strong>⚠️ Hazard</strong><br>';
+
+                        if (hazard.tags) {
+                            if (hazard.tags.hazard) popupContent += `Type: ${hazard.tags.hazard}<br>`;
+                            if (hazard.tags.traffic_calming) popupContent += `Traffic Calming: ${hazard.tags.traffic_calming}<br>`;
+                            if (hazard.tags.barrier) popupContent += `Barrier: ${hazard.tags.barrier}<br>`;
+                            if (hazard.tags.highway === 'speed_bump') popupContent += 'Type: Speed Bump<br>';
+                            if (hazard.tags.name) popupContent += `Name: ${hazard.tags.name}<br>`;
+                            if (hazard.tags.description) popupContent += `${hazard.tags.description}`;
                         }
 
-                        <br>`;
+                        marker.on('click', function () {
+                            try {
+                                new mappls.Popup({
+                                    offset: [0, -15]
+                                }).setLngLat([hazard.lon, hazard.lat]).setHTML(popupContent).addTo(map);
+                            } catch (e) {
+                                console.log('Popup failed:', e);
+                            }
+                        });
 
-                        if (hazard.tags.traffic_calming) popupContent += `Traffic Calming: $ {
-                            hazard.tags.traffic_calming
-                        }
-
-                        <br>`;
-
-                        if (hazard.tags.barrier) popupContent += `Barrier: $ {
-                            hazard.tags.barrier
-                        }
-
-                        <br>`;
-                        if (hazard.tags.highway === 'speed_bump') popupContent += 'Type: Speed Bump<br>';
-
-                        if (hazard.tags.name) popupContent += `Name: $ {
-                            hazard.tags.name
-                        }
-
-                        <br>`;
-
-                        if (hazard.tags.description) popupContent += `$ {
-                            hazard.tags.description
-                        }
-
-                        `;
+                        hazardMarkers.push(marker);
+                        displayedCount++;
+                    } else {
+                        console.log(`Hazard at ${hazard.lat},${hazard.lon} filtered out (distance: ${distance}m)`);
                     }
-
-                    // Add popup to marker
-                    marker.on('click', function () {
-                        new mappls.Popup({
-                            offset: [0, -15]
-                        }).setLngLat([hazard.lon, hazard.lat]).setHTML(popupContent).addTo(map);
-                    });
-
-                    hazardMarkers.push(marker);
                 }
             });
 
-            console.log(`Displayed $ {
-                hazardMarkers.length
-            }
-
-            hazard markers`);
+            console.log(`Displayed ${displayedCount} hazard markers along route (filtered from ${hazards.length} total)`);
         }
 
         // Clear all hazard markers
@@ -3222,86 +3994,70 @@ out skel qt;`;
             hazardMarkers = [];
         }
 
-        // ==================== SPEED CAMERA OVERLAY SYSTEM ====================
-        var speedCameraMarkers = [];
-        var speedCamerasVisible = false;
+        // Load speed cameras along route (using dummy data for demonstration)
+        function loadSpeedCamerasAlongRoute() {
+            // Generate dummy speed cameras along the route
+            const dummyCameras = [];
+            const cameraTypes = ['Fixed Camera', 'Red Light Camera', 'Average Speed Check', 'Mobile Camera'];
+            const speedLimits = ['40 km/h', '50 km/h', '60 km/h', '70 km/h', '80 km/h'];
 
-        // Initialize speed camera toggle button
-        function initSpeedCameraToggle() {
-            const cameraBtn = document.getElementById('speedCameraToggleBtn');
+            console.log('Loading speed cameras along route, polyline length:', currentRoutePolyline ? currentRoutePolyline.length : 0);
 
-            if (cameraBtn) {
-                cameraBtn.addEventListener('click', function () {
-                    speedCamerasVisible = !speedCamerasVisible;
+            // If we have a valid polyline, place cameras along it
+            if (currentRoutePolyline && currentRoutePolyline.length >= 2) {
+                // Place cameras at intervals along the route
+                const numCameras = Math.min(8, Math.max(3, Math.floor(currentRoutePolyline.length / 5)));
+                const interval = Math.max(1, Math.floor(currentRoutePolyline.length / numCameras));
 
-                    if (speedCamerasVisible) {
-                        cameraBtn.classList.add('active');
-                        loadSpeedCameras();
+                for (let i = 0; i < currentRoutePolyline.length && dummyCameras.length < numCameras; i += interval) {
+                    const point = currentRoutePolyline[i];
+                    if (point && typeof point.lat === 'number' && typeof point.lng === 'number') {
+                        dummyCameras.push({
+                            lat: point.lat + (Math.random() - 0.5) * 0.001,
+                            lon: point.lng + (Math.random() - 0.5) * 0.001,
+                            type: cameraTypes[Math.floor(Math.random() * cameraTypes.length)],
+                            speedLimit: speedLimits[Math.floor(Math.random() * speedLimits.length)]
+                        });
                     }
+                }
+                console.log(`Generated ${dummyCameras.length} speed cameras along route`);
+            }
 
-                    else {
-                        cameraBtn.classList.remove('active');
-                        clearSpeedCameras();
+            // Always add some fallback cameras around map center to ensure something shows
+            if (dummyCameras.length < 3) {
+                const center = map.getCenter();
+                if (center) {
+                    const needed = 5 - dummyCameras.length;
+                    for (let i = 0; i < needed; i++) {
+                        dummyCameras.push({
+                            lat: center.lat + (Math.random() - 0.5) * 0.03,
+                            lon: center.lng + (Math.random() - 0.5) * 0.03,
+                            type: cameraTypes[Math.floor(Math.random() * cameraTypes.length)],
+                            speedLimit: speedLimits[Math.floor(Math.random() * speedLimits.length)]
+                        });
                     }
-                });
-                console.log('Speed camera toggle initialized');
-            }
-        }
-
-        // Load speed cameras (Dummy Data)
-        function loadSpeedCameras() {
-
-            // Dummy data for speed cameras around Delhi/India
-            const dummyCameras = [{
-                lat: 28.6139, lon: 77.2090, type: 'Fixed Camera', speedLimit: '60 km/h'
-            }
-
-                ,
-            {
-                lat: 28.6219, lon: 77.2190, type: 'Red Light Camera', speedLimit: '50 km/h'
-            }
-
-                ,
-            {
-                lat: 28.6010, lon: 77.2340, type: 'Average Speed Check', speedLimit: '70 km/h'
-            }
-
-                ,
-            {
-                lat: 28.5820, lon: 77.2410, type: 'Mobile Camera', speedLimit: '40 km/h'
-            }
-
-                ,
-            {
-                lat: 28.6350, lon: 77.2250, type: 'Fixed Camera', speedLimit: '60 km/h'
-            }
-
-            ];
-
-            console.log('Distributing dummy speed cameras...');
-
-            // Also add some random cameras around current map center to ensure user sees something
-            const center = map.getCenter();
-
-            if (center) {
-                for (let i = 0; i < 5; i++) {
-                    dummyCameras.push({
-                        lat: center.lat + (Math.random() - 0.5) * 0.05,
-                        lon: center.lng + (Math.random() - 0.5) * 0.05,
-                        type: 'Fixed Camera',
-                        speedLimit: '60 km/h'
-                    });
+                    console.log(`Added ${needed} fallback speed cameras around map center`);
                 }
             }
 
-            displaySpeedCameras(dummyCameras);
+            console.log('Total cameras to display:', dummyCameras.length);
+            displaySpeedCamerasAlongRoute(dummyCameras);
         }
 
-        // Display speed camera markers
-        function displaySpeedCameras(cameras) {
+        // Display speed camera markers only if within ~100m of route
+        function displaySpeedCamerasAlongRoute(cameras) {
             clearSpeedCameras();
 
+            console.log('Displaying speed cameras, total to display:', cameras.length);
+            let displayedCount = 0;
+
+            // Since cameras are generated along the route or as fallback, display all of them
             cameras.forEach(camera => {
+                if (typeof camera.lat !== 'number' || typeof camera.lon !== 'number') {
+                    console.warn('Invalid camera coordinates:', camera);
+                    return;
+                }
+
                 const marker = new mappls.Marker({
                     map: map,
                     position: [camera.lat, camera.lon],
@@ -3311,36 +4067,36 @@ out skel qt;`;
                 });
 
                 // Popup content
-                const popupContent = ` <div style="padding: 10px;" > <strong style="color: #1e40af;" >📷 Speed Camera</strong><br> <hr style="margin: 5px 0; border: 0; border-top: 1px solid #e2e8f0;" > Type: $ {
-                    camera.type
-                }
-
-                <br> Limit: <strong style="color: #dc2626;" >$ {
-                    camera.speedLimit
-                }
-
-                </strong> </div> `;
+                const popupContent = `<div style="padding: 10px;"><strong style="color: #1e40af;">📷 Speed Camera</strong><br><hr style="margin: 5px 0; border: 0; border-top: 1px solid #e2e8f0;">Type: ${camera.type}<br>Limit: <strong style="color: #dc2626;">${camera.speedLimit}</strong></div>`;
 
                 marker.on('click', function () {
-                    new mappls.Popup({
-                        offset: [0, -15]
-                    }).setLngLat([camera.lon, camera.lat]).setHTML(popupContent).addTo(map);
+                    try {
+                        new mappls.Popup({
+                            offset: [0, -15]
+                        }).setLngLat([camera.lon, camera.lat]).setHTML(popupContent).addTo(map);
+                    } catch (e) {
+                        console.log('Popup failed:', e);
+                    }
                 });
 
                 speedCameraMarkers.push(marker);
+                displayedCount++;
             });
 
-            console.log(`Displayed $ {
-                speedCameraMarkers.length
-            }
-
-            speed camera markers`);
+            console.log(`Displayed ${displayedCount} speed camera markers`);
         }
 
         // Clear speed cameras
         function clearSpeedCameras() {
             speedCameraMarkers.forEach(marker => marker.remove());
             speedCameraMarkers = [];
+        }
+
+        // Clear all alerts (hazards + speed cameras)
+        function clearAllAlerts() {
+            clearHazards();
+            clearSpeedCameras();
+            console.log('All route alerts cleared');
         }
 
         // Initialize Map Style Switcher
@@ -3580,194 +4336,232 @@ out skel qt;`;
         }
 
         // Nearby Places Functionality
-        let nearbyMarkers = [];
-        let activeCategory = null;
+        // Plugin renders its own markers we can't remove, so we snapshot
+        // marker DOM elements before/after and nuke the difference on toggle OFF
+        var nearbyPluginMarkerEls = [];  // DOM elements the plugin added
+        var activeCategory = null;
 
         function initNearbyPlaces() {
-            const categoryBtns = document.querySelectorAll('.category-btn');
-            const clearNearbyBtn = document.getElementById('clearNearbyBtn');
+            var categoryBtns = document.querySelectorAll('.category-btn');
+            var clearNearbyBtn = document.getElementById('clearNearbyBtn');
 
-            categoryBtns.forEach(btn => {
+            categoryBtns.forEach(function (btn) {
                 btn.addEventListener('click', function () {
-                    const category = this.getAttribute('data-category');
+                    var category = this.getAttribute('data-category');
 
-                    // Toggle category
                     if (activeCategory === category) {
-                        // Deactivate if clicking same category
-                        clearNearbyPlaces();
-                    }
+                        // Toggle OFF
+                        clearNearbyPlaces(); // Uses new clear function
+                        this.classList.remove('active');
+                        // activeCategory set to null by clearNearbyPlaces helper if !keepUI, 
+                        // but here we called it without args so it clears UI too.
+                        // Wait, if I want to just clear markers but keep this logic clean:
 
-                    else {
-                        // Activate new category
+                        // Actually clearNearbyPlaces() clears UI too.
+                        // So calling it is enough.
+                    } else {
+                        // Switch category or first click
+                        clearNearbyPlaces(true); // Clear markers but keep activeCategory for a moment (re-set below)
+
+                        document.querySelectorAll('.category-btn').forEach(function (b) { b.classList.remove('active'); });
+                        this.classList.add('active');
+                        activeCategory = category;
                         searchNearbyPlaces(category, this);
                     }
                 });
             });
 
-            clearNearbyBtn.addEventListener('click', clearNearbyPlaces);
+            clearNearbyBtn.addEventListener('click', function () { clearNearbyPlaces(); });
+        }
+
+        // Get all current marker DOM elements on the map
+        function getMapMarkerElements() {
+            var container = document.getElementById('map');
+            if (!container) return [];
+            return Array.from(container.querySelectorAll('.mapboxgl-marker, .mappls-marker, [class*="marker"]'));
+        }
+
+        // Remove only the marker elements that the nearby plugin added
+        function removeNearbyMarkerElements() {
+            nearbyPluginMarkerEls.forEach(function (el) {
+                try {
+                    if (el && el.parentNode) {
+                        el.parentNode.removeChild(el);
+                    }
+                } catch (e) { }
+            });
+            nearbyPluginMarkerEls = [];
+            console.log('Nearby marker elements removed');
+        }
+
+        // Remove active markers
+        function clearNearbyPlaces(keepUI) {
+            nearbyMarkers.forEach(function (marker) {
+                marker.remove();
+            });
+            nearbyMarkers = [];
+
+            if (!keepUI) {
+                document.querySelectorAll('.category-btn').forEach(function (btn) { btn.classList.remove('active'); });
+                document.getElementById('clearNearbyBtn').style.display = 'none';
+                activeCategory = null;
+            }
         }
 
         function searchNearbyPlaces(category, btnElement) {
-            // Clear previous markers
-            clearNearbyMarkers();
+            // Clean up previous markers first
+            clearNearbyPlaces(true); // pass true to keep UI state (handled by caller)
 
-            // Update active state
-            document.querySelectorAll('.category-btn').forEach(btn => btn.classList.remove('active'));
-            btnElement.classList.add('active');
-            activeCategory = category;
+            var center = map.getCenter();
+            var lat = center.lat;
+            var lng = center.lng;
 
-            // Get map center
-            const center = map.getCenter();
-            const lat = center.lat;
-            const lng = center.lng;
-
-            console.log(`Searching for $ {
-                    category
-                }
-
-                near $ {
-                    lat
-                }
-
-                , $ {
-                    lng
-                }
-
-                `);
-
-            // Show clear button
             document.getElementById('clearNearbyBtn').style.display = 'block';
 
-            // Map category codes to simple keywords
-            const keywordMap = {
-                'TRNPMP': 'petrol pump',
-                'FODCOF': 'restaurant',
-                'FINATM': 'atm',
-                'MEDHSP': 'hospital',
-                'ACMHTL': 'hotel',
-                'FODCAF': 'cafe',
-                'MEDPHR': 'pharmacy',
-                'FINBNK': 'bank'
+            var keywordMap = {
+                'TRNPMP': 'Petrol Pump',
+                'FODCOF': 'Restaurant',
+                'FINATM': 'ATM',
+                'MEDHSP': 'Hospital',
+                'ACMHTL': 'Hotel',
+                'FODCAF': 'Cafe',
+                'MEDPHR': 'Pharmacy',
+                'FINBNK': 'Bank'
+            };
+            var displayNameMap = {
+                'TRNPMP': 'petrol pumps',
+                'FODCOF': 'restaurants',
+                'FINATM': 'ATMs',
+                'MEDHSP': 'hospitals',
+                'ACMHTL': 'hotels',
+                'FODCAF': 'cafes',
+                'MEDPHR': 'pharmacies',
+                'FINBNK': 'banks'
+            };
+
+            var keyword = keywordMap[category] || category;
+            var displayName = displayNameMap[category] || category;
+
+            // Sync ghost map center with main map
+            if (ghostMap) {
+                ghostMap.setCenter(center);
             }
 
-                ;
-
-            const keyword = keywordMap[category] || category;
-
-            // Use Mappls nearby plugin with simple keyword
             try {
-                const nearbyPlugin = new mappls.nearby({
-
-                    map: map,
+                // Use ghostMap to fetch data without polluting main map with irremovable markers
+                new mappls.nearby({
+                    map: ghostMap,
                     keywords: keyword,
-                    refLocation: `$ {
-                        lat
-                    }
-
-                    , $ {
-                        lng
-                    }
-
-                    `,
+                    refLocation: lat + ',' + lng,
                     radius: 5000,
                     page: 1,
-                    fitbounds: true,
+                    fitbounds: false, // Don't move ghost map, we handle main map bounds manually
                     geolocation: false,
+                    // Icon logic is handled manually now, but we keep this for the ghost map just in case
                     icon: {
                         url: getMarkerIcon(category),
                         width: 30,
                         height: 40
-                    }
-
-                    ,
-                    click_callback: function (data) {
-                        console.log('Marker clicked:', data);
-
-                        // Create popup content
-                        const popupHTML = `<div style="padding: 10px; min-width: 200px;"><h4 style="margin: 0 0 8px 0; color: #1e293b; font-size: 14px;">${data.placeName || 'Unknown Place'}</h4><p style="margin: 0 0 6px 0; color: #64748b; font-size: 12px;">📍 ${data.placeAddress || 'Address not available'}</p>${data.distance ? `<p style="margin: 0; color: #3b82f6; font-size: 11px;">📏 ${data.distance} km away</p>` : ''}</div>`;
-
-                        // Show popup
-                        new mappls.Popup({
-                            offset: {
-                                'bottom': [0, -20]
-                            }
-                        }).setLngLat([data.longitude, data.latitude]).setHTML(popupHTML).addTo(map);
-                    }
-
-                    ,
+                    },
                     callback: function (data) {
-                        console.log('Nearby search response:', data);
-
                         if (data && data.data && data.data.length > 0) {
-                            console.log(`✓ Found $ {
-                                data.data.length
+                            console.log('Found ' + data.data.length + ' ' + displayName);
+
+                            // Bounds to fit all markers
+                            var bounds = {
+                                minLat: 90, maxLat: -90,
+                                minLng: 180, maxLng: -180,
+                                isValid: false
+                            };
+
+                            data.data.forEach(function (place) {
+                                // Extract coordinates
+                                var pLat = parseFloat(place.latitude);
+                                var pLng = parseFloat(place.longitude);
+
+                                if (isNaN(pLat) || isNaN(pLng)) return;
+
+                                // Update bounds
+                                bounds.minLat = Math.min(bounds.minLat, pLat);
+                                bounds.maxLat = Math.max(bounds.maxLat, pLat);
+                                bounds.minLng = Math.min(bounds.minLng, pLng);
+                                bounds.maxLng = Math.max(bounds.maxLng, pLng);
+                                bounds.isValid = true;
+
+                                // Create Marker on MAIN Map
+                                var popupContent = '<div style="padding:10px;min-width:200px;max-width:280px;">' +
+                                    '<h4 style="margin:0 0 6px;color:#1e293b;font-size:14px;">' +
+                                    (place.placeName || place.poi || 'Unknown') + '</h4>' +
+                                    '<p style="margin:0 0 4px;color:#64748b;font-size:12px;">📍 ' +
+                                    (place.placeAddress || place.address || '') + '</p>' +
+                                    (place.distance ? '<p style="margin:0;color:#3b82f6;font-size:11px;">📏 ' + place.distance + ' m away</p>' : '') +
+                                    '</div>';
+
+                                var iconUrl = getMarkerIcon(category);
+
+                                var marker = new mappls.Marker({
+                                    map: map,
+                                    position: [pLat, pLng],
+                                    // Use HTML for custom icon to match plugin look
+                                    html: '<img src="' + iconUrl + '" style="width:30px;height:40px;display:block;">',
+                                    offset: [0, -20], // Adjusted for bottom-center anchor
+                                    fitbounds: false
+                                });
+
+                                // Add click event for popup
+                                marker.addListener('click', function () {
+                                    new mappls.Popup({
+                                        offset: { 'bottom': [0, -20] }
+                                    })
+                                        .setLngLat([pLng, pLat])
+                                        .setHTML(popupContent)
+                                        .addTo(map);
+                                });
+
+                                nearbyMarkers.push(marker);
+                            });
+
+                            // Fit bounds if valid
+                            if (bounds.isValid) {
+                                try {
+                                    map.fitBounds(
+                                        [[bounds.minLng, bounds.minLat], [bounds.maxLng, bounds.maxLat]],
+                                        { padding: 50, duration: 1000 }
+                                    );
+                                } catch (e) {
+                                    console.warn('Fitbounds failed', e);
+                                }
                             }
 
-                            $ {
-                                keyword
-                            }
-
-                            places`);
-                            nearbyMarkers.push(nearbyPlugin);
-                        }
-
-                        else {
-                            console.log(`✗ No $ {
-                                keyword
-                            }
-
-                            found nearby`);
-
-                            alert(`No $ {
-                                keyword
-                            }
-
-                            found in this area. Try moving the map to a different location in India.`);
-                            clearNearbyPlaces();
+                        } else {
+                            alert('No ' + displayName + ' found in this area. Try moving the map.');
+                            if (btnElement) btnElement.classList.remove('active');
+                            activeCategory = null;
+                            document.getElementById('clearNearbyBtn').style.display = 'none';
                         }
                     }
                 });
-            }
-
-            catch (error) {
+            } catch (error) {
                 console.error('Nearby search error:', error);
-                alert('Error searching nearby places. Please try again.');
-                clearNearbyPlaces();
+                alert('Error searching nearby places.');
+                if (btnElement) btnElement.classList.remove('active');
+                activeCategory = null;
+                document.getElementById('clearNearbyBtn').style.display = 'none';
             }
         }
 
         function getMarkerIcon(category) {
-
-            // Return different colored markers for different categories
-            const icons = {
-                'TRNPMP': 'https://apis.mapmyindia.com/map_v3/1.png', // Petrol
-                'FODCOF': 'https://apis.mapmyindia.com/map_v3/2.png', // Restaurants
-                'FINATM': 'https://apis.mapmyindia.com/map_v3/3.png', // ATMs
-                'MEDHSP': 'https://apis.mapmyindia.com/map_v3/4.png', // Hospitals
-                'ACMHTL': 'https://apis.mapmyindia.com/map_v3/5.png', // Hotels
-                'FODCAF': 'https://apis.mapmyindia.com/map_v3/6.png', // Cafes
-                'MEDPHR': 'https://apis.mapmyindia.com/map_v3/7.png', // Pharmacies
-                'FINBNK': 'https://apis.mapmyindia.com/map_v3/8.png' // Banks
-            }
-
-                ;
+            var icons = {
+                'TRNPMP': 'https://apis.mapmyindia.com/map_v3/1.png',
+                'FODCOF': 'https://apis.mapmyindia.com/map_v3/2.png',
+                'FINATM': 'https://apis.mapmyindia.com/map_v3/3.png',
+                'MEDHSP': 'https://apis.mapmyindia.com/map_v3/4.png',
+                'ACMHTL': 'https://apis.mapmyindia.com/map_v3/5.png',
+                'FODCAF': 'https://apis.mapmyindia.com/map_v3/6.png',
+                'MEDPHR': 'https://apis.mapmyindia.com/map_v3/7.png',
+                'FINBNK': 'https://apis.mapmyindia.com/map_v3/8.png'
+            };
             return icons[category] || 'https://apis.mapmyindia.com/map_v3/1.png';
-        }
-
-        function clearNearbyMarkers() {
-            nearbyMarkers.forEach(marker => {
-                if (marker && marker.remove) {
-                    marker.remove();
-                }
-            });
-            nearbyMarkers = [];
-        }
-
-        function clearNearbyPlaces() {
-            clearNearbyMarkers();
-            document.querySelectorAll('.category-btn').forEach(btn => btn.classList.remove('active'));
-            document.getElementById('clearNearbyBtn').style.display = 'none';
-            activeCategory = null;
         }
 
 
@@ -3811,6 +4605,538 @@ out skel qt;`;
                 throw error;
             }
         }
+
+        // ==================== STATS & DETAILED REPORTS ====================
+
+        // Initialize click handlers for stats
+        function initStatsEnhancements() {
+            const statsOverlay = document.getElementById('statsOverlay');
+            if (statsOverlay) {
+                // Prevent duplicate listeners
+                if (statsOverlay.dataset.clickListenerAttached === 'true') {
+                    return;
+                }
+                statsOverlay.dataset.clickListenerAttached = 'true';
+
+                // Add delegated click listener to existing overlay
+                statsOverlay.addEventListener('click', function (e) {
+                    // Check for close button
+                    if (e.target.closest('#statsCloseBtn') || e.target.classList.contains('stats-close-btn')) {
+                        statsOverlay.classList.remove('active');
+                        return;
+                    }
+
+                    // Check for stat items
+                    const statItem = e.target.closest('.stat-item');
+                    if (statItem) {
+                        const category = statItem.getAttribute('data-category');
+                        if (category) {
+                            openDetailedReports(category);
+                        } else {
+                            // Fallback for static items without data-category (if HTML update failed)
+                            const id = statItem.querySelector('.stat-value')?.id;
+                            if (id === 'statsTotalReports') openDetailedReports('all');
+                            else if (id === 'statsHazardReports') openDetailedReports('hazard');
+                            else if (id === 'statsSpeedCameraReports') openDetailedReports('camera');
+                        }
+                    }
+                });
+            }
+
+            // Close button for detailed reports (this is separate overlay)
+            const closeBtn = document.getElementById('closeDetailedReports');
+            if (closeBtn) {
+                const newCloseBtn = closeBtn.cloneNode(true);
+                closeBtn.parentNode.replaceChild(newCloseBtn, closeBtn);
+                newCloseBtn.addEventListener('click', closeDetailedReports);
+            }
+        }
+
+        // Safe Fallback for updateStatsOverlayUI if missing
+        if (typeof updateStatsOverlayUI === 'undefined') {
+            window.updateStatsOverlayUI = function () {
+                console.log('updateStatsOverlayUI called (dummy fallback)');
+                // Here we could fetch real stats, but for now we rely on static HTML
+            };
+        }
+
+        // Open Detailed Reports Overlay
+        function openDetailedReports(filter, title) {
+            const overlay = document.getElementById('detailedReportsOverlay');
+            const titleEl = document.getElementById('detailedReportsTitle');
+            const listEl = document.getElementById('detailedReportsList');
+
+            if (!overlay) {
+                console.error('Detailed reports overlay not found');
+                return;
+            }
+
+            // Update title
+            const titles = {
+                all: 'My Reports',
+                hazard: '🚧 Hazard Reports',
+                camera: '📷 Speed Camera Reports'
+            };
+            if (titleEl) titleEl.textContent = title || titles[filter] || 'My Reports';
+
+            // Show overlay
+            overlay.classList.add('active');
+
+            // Populate with dummy data
+            renderDetailedReports(filter);
+        }
+
+        // Close Detailed Reports Overlay
+        let tempViewMarker = null; // Temporary marker for "View Map" action
+
+        function closeDetailedReports() {
+            const overlay = document.getElementById('detailedReportsOverlay');
+            if (overlay) {
+                overlay.classList.remove('active');
+            }
+
+            // Clear temporary marker when closing report list
+            if (tempViewMarker) {
+                tempViewMarker.remove();
+                tempViewMarker = null;
+            }
+        }
+
+        // Real-time Reports Listener variables
+        let reportsUnsubscribe = null;
+        let allReportsTypes = []; // Store fetched reports
+
+        // Render reports list (now triggers listener if needed)
+        function renderDetailedReports(filter) {
+            const listEl = document.getElementById('detailedReportsList');
+            if (!listEl) return;
+
+            // If listener not active, start it
+            if (!reportsUnsubscribe) {
+                listEl.innerHTML = '<div style="text-align: center; color: #94a3b8; padding: 20px;">Loading reports...</div>';
+
+                reportsUnsubscribe = db.collection('reports')
+                    .doc('hazards')
+                    .collection('threads')
+                    .orderBy('timestamp', 'desc')
+                    .limit(50)
+                    .onSnapshot((snapshot) => {
+                        allReportsTypes = [];
+                        snapshot.forEach(doc => {
+                            const data = doc.data();
+                            allReportsTypes.push({
+                                id: doc.id,
+                                type: data.type === 'hazard' && data.hazardType === 'speedCamera' ? 'camera' : 'hazard', // Map speedCamera back to 'camera' filter type
+                                subtype: formatHazardType(data.hazardType),
+                                location: `${data.latitude.toFixed(4)}, ${data.longitude.toFixed(4)}`,
+                                time: getTimeAgo(data.timestamp),
+                                votes: data.votes || 0,
+                                userVote: null, // Local user vote state not persisted yet
+                                status: 'Pending', // ENFORCED: Always Pending
+                                lat: data.latitude,
+                                lng: data.longitude,
+                                image: data.imageUrl || getPlaceholderImage(data.hazardType)
+                            });
+                        });
+                        updateReportsListUI(filter);
+                        updateReportsListUI(filter);
+                        updateMapMarkers(allReportsTypes); // Update markers on map
+                    }, (error) => {
+                        console.error("Error fetching reports:", error);
+                        listEl.innerHTML = '<div style="text-align: center; color: #ef4444; padding: 20px;">Error loading reports.</div>';
+                    });
+            } else {
+                // Just re-filter existing data
+                updateReportsListUI(filter);
+            }
+        }
+
+        // Helper: Update UI from fetched data
+        function updateReportsListUI(filter) {
+            const listEl = document.getElementById('detailedReportsList');
+            if (!listEl) return;
+            listEl.innerHTML = '';
+
+            const filteredReports = filter === 'all'
+                ? allReportsTypes
+                : allReportsTypes.filter(r => r.type === filter);
+
+            if (filteredReports.length === 0) {
+                listEl.innerHTML = '<div style="text-align: center; color: #94a3b8; padding: 40px;">No reports found.</div>';
+                return;
+            }
+
+            filteredReports.forEach(report => {
+                const item = document.createElement('div');
+                item.className = 'report-item';
+
+                // Color coding
+                let statusColor = '#FFC107'; // ENFORCED: Pending Yellow
+                let typeColor = '#EF4444';
+                let typeBg = 'rgba(239, 68, 68, 0.1)';
+                let typeEmoji = '🚧';
+
+                if (report.type === 'camera') {
+                    typeColor = '#8B5CF6';
+                    typeBg = 'rgba(139, 92, 246, 0.1)';
+                    typeEmoji = '📷';
+                }
+
+                item.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                        <span style="background: ${typeBg}; color: ${typeColor}; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; text-transform: uppercase;">
+                            ${typeEmoji} ${report.type}
+                        </span>
+                        <span style="color: #94a3b8; font-size: 12px;">${report.time}</span>
+                    </div>
+                    ${report.image ? `<img src="${report.image}" class="report-image-thumb" alt="${report.subtype}">` : ''}
+                    <div style="font-size: 15px; color: white; font-weight: 600; margin-bottom: 4px;">
+                        ${report.subtype}
+                    </div>
+                    <div style="font-size: 13px; color: #cbd5e1; margin-bottom: 12px;">
+                        ${report.location}
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 8px;">
+                        <div style="display: flex; gap: 12px; font-size: 12px; color: #94a3b8;">
+                            <span>▲ ${report.votes}</span>
+                            <span class="view-map-action" style="cursor: pointer; color: #3b82f6;">📍 View Map</span>
+                        </div>
+                        <span style="color: ${statusColor}; font-size: 12px; font-weight: 600;">
+                            ${report.status}
+                        </span>
+                    </div>
+                `;
+
+                // Add Click Handler for Detailed View
+                item.addEventListener('click', (e) => {
+                    if (e.target.closest('.view-map-action')) {
+                        e.stopPropagation();
+                        if (report.lat && report.lng) {
+                            const lat = Number(report.lat);
+                            const lng = Number(report.lng);
+                            console.log('Centering map to:', lat, lng);
+                            // alert(`Debug: Centering to ${lat}, ${lng}`); // Temporary debug
+
+                            // Using Object literal {lat, lng} removes ambiguity for the library
+                            window.map.setCenter({ lat: lat, lng: lng });
+                            window.map.setZoom(17);
+                        } else {
+                            console.warn('Report missing coordinates:', report);
+                            alert('Location data missing (lat/lng null).');
+                            return;
+                        }
+
+                        // Highlight Visual Effect
+                        // IF verified, it has a marker in hazardMarkers.
+                        // IF unverified, we need a TEMP marker.
+
+                        // Clear existing temp marker
+                        if (tempViewMarker) tempViewMarker.remove();
+
+                        const existingMarker = hazardMarkers.find(m => m.reportId === report.id);
+
+                        if (existingMarker) {
+                            // Verified item - no extra marker needed
+                        } else {
+                            // Unverified item - show temporary marker
+                            const isCamera = report.type === 'camera';
+                            const emoji = isCamera ? '📷' : '🚧';
+                            const color = isCamera ? '#8B5CF6' : '#EF4444';
+
+                            tempViewMarker = new mappls.Marker({
+                                map: map,
+                                position: { lat: report.lat, lng: report.lng },
+                                html: `<div style="
+                                    background: ${color}; 
+                                    color: white; 
+                                    width: 32px; height: 32px; 
+                                    border-radius: 50%; 
+                                    display: flex; align-items: center; justify-content: center; 
+                                    font-size: 16px; border: 2px solid white; 
+                                    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+                                    opacity: 0.8;">
+                                    ${emoji}
+                                </div>`
+                            });
+                        }
+
+                        closeDetailedReports();
+                        return;
+                    }
+                    openHazardDetail(report);
+                });
+
+                listEl.appendChild(item);
+            });
+        }
+
+        // Helper: Format hazard type for display
+        function formatHazardType(type) {
+            if (!type) return 'Hazard';
+            if (type === 'speedCamera') return 'Speed Camera';
+            return type.charAt(0).toUpperCase() + type.slice(1);
+        }
+
+        // Helper: Get placeholder image if none uploaded
+        function getPlaceholderImage(type) {
+            const placeholders = {
+                'accident': 'https://images.unsplash.com/photo-1566687867624-9426d9c647b0?auto=format&fit=crop&q=80&w=500',
+                'speedCamera': 'https://images.unsplash.com/photo-1532589082728-66258f7e8417?auto=format&fit=crop&q=80&w=500',
+                'waterlogging': 'https://images.unsplash.com/photo-1545353558-8671295db28b?auto=format&fit=crop&q=80&w=500', // Fixed URL
+                'construction': 'https://images.unsplash.com/photo-1589939705384-5185137a7f0f?auto=format&fit=crop&q=80&w=500',
+                'roadblock': 'https://images.unsplash.com/photo-1563212629-67ce422c1598?auto=format&fit=crop&q=80&w=500',
+                'fallenTree': 'https://images.unsplash.com/photo-1502082553048-f009c37129b9?auto=format&fit=crop&q=80&w=500',
+                'default': 'https://images.unsplash.com/photo-1494783367193-149034c05e8f?auto=format&fit=crop&q=80&w=500' // Generic hazard
+            };
+            return placeholders[type] || placeholders['default'];
+        }
+
+        // Helper: Calculate Time Ago
+        function getTimeAgo(timestamp) {
+            if (!timestamp) return 'Just now';
+            const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp); // Handle Firestore timestamp
+            const seconds = Math.floor((new Date() - date) / 1000);
+
+            let interval = seconds / 31536000;
+            if (interval > 1) return Math.floor(interval) + " years ago";
+            interval = seconds / 2592000;
+            if (interval > 1) return Math.floor(interval) + " months ago";
+            interval = seconds / 86400;
+            if (interval > 1) return Math.floor(interval) + " days ago";
+            interval = seconds / 3600;
+            if (interval > 1) return Math.floor(interval) + " hours ago";
+            interval = seconds / 60;
+            if (interval > 1) return Math.floor(interval) + " mins ago";
+            return "Just now";
+        }
+
+        // Helper: Update Markers on Map
+        function updateMapMarkers(reports) {
+            // Clear existing markers
+            hazardMarkers.forEach(marker => marker.remove());
+            hazardMarkers = [];
+
+            // FILTER: Only show 'active' (Verified) reports on global map
+            const activeReports = reports.filter(r => r.status === 'active' || r.status === 'Verified');
+
+            activeReports.forEach(report => {
+                if (!report.lat || !report.lng) return;
+
+                const isCamera = report.type === 'camera';
+                const emoji = isCamera ? '📷' : '🚧';
+                const color = isCamera ? '#8B5CF6' : '#EF4444';
+
+                // Create custom marker icon
+                const iconHtml = `<div style="
+                    background: ${color}; 
+                    color: white; 
+                    width: 32px; height: 32px; 
+                    border-radius: 50%; 
+                    display: flex; align-items: center; justify-content: center; 
+                    font-size: 16px; border: 2px solid white; 
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+                    cursor: pointer;">
+                    ${emoji}
+                </div>`;
+
+                const marker = new mappls.Marker({
+                    map: map,
+                    position: { lat: report.lat, lng: report.lng },
+                    html: iconHtml,
+                    fitbounds: false
+                });
+
+                // Store reference for interactions
+                marker.reportId = report.id;
+
+                // Click opens detail view
+                marker.addListener('click', () => {
+                    openHazardDetail(report);
+                });
+
+                hazardMarkers.push(marker);
+            });
+            console.log(`Updated ${hazardMarkers.length} active hazard markers on map`);
+        }
+
+        // Open Hazard Detail Overlay
+        function openHazardDetail(report) {
+            const overlay = document.getElementById('hazardDetailOverlay');
+            if (!overlay) return;
+
+            // Populate Data
+            const imgEl = document.getElementById('hazardDetailImage');
+            if (imgEl) imgEl.src = report.image;
+
+            const typeEl = document.getElementById('hazardDetailType');
+            if (typeEl) {
+                typeEl.textContent = (report.type === 'camera' ? '📷 Speed Camera' : '🚧 Hazard');
+                typeEl.style.color = (report.type === 'camera' ? '#8B5CF6' : '#EF4444');
+                typeEl.style.background = (report.type === 'camera' ? 'rgba(139, 92, 246, 0.1)' : 'rgba(239, 68, 68, 0.1)');
+            }
+
+            const subtypeEl = document.getElementById('hazardDetailSubtype');
+            if (subtypeEl) subtypeEl.textContent = report.subtype;
+
+            const timeEl = document.getElementById('hazardDetailTime');
+            if (timeEl) timeEl.textContent = report.time;
+
+            const locEl = document.getElementById('hazardDetailLocation');
+            if (locEl) locEl.textContent = report.location;
+
+            const votesEl = document.getElementById('hazardDetailVotes');
+            if (votesEl) votesEl.textContent = report.votes;
+
+            // ENFORCE PENDING STATUS
+            const statusEl = document.getElementById('hazardDetailStatus');
+            if (statusEl) {
+                statusEl.textContent = 'Pending';
+                statusEl.style.color = '#FFC107';
+            }
+
+            // Map Placeholder with Marker Logic
+            // Map Embedding Logic
+            const mapContainer = document.getElementById('hazardDetailMap');
+            if (mapContainer) {
+                // Aggressive cleanup first
+                if (window.detailMap) {
+                    try {
+                        window.detailMap.remove();
+                    } catch (e) {
+                        console.warn('Error removing previous map:', e);
+                    }
+                    window.detailMap = null;
+                }
+
+                // Clear container completely
+                mapContainer.innerHTML = '';
+                mapContainer.style.backgroundImage = 'none';
+                mapContainer.style.cursor = 'pointer';
+                mapContainer.onclick = null; // Clear any previous click handlers
+
+                // Initialize interactive map with delay
+                setTimeout(() => {
+                    try {
+                        window.detailMap = new mappls.Map('hazardDetailMap', {
+                            center: { lat: report.lat, lng: report.lng },
+                            zoom: 16,
+                            zoomControl: false,
+                            fullscreenControl: false,
+                            geolocation: false,
+                            traffic: false
+                        });
+
+                        // Add marker
+                        new mappls.Marker({
+                            map: window.detailMap,
+                            position: { lat: report.lat, lng: report.lng },
+                            fitbounds: true,
+                            html: '<div style="font-size: 32px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5)); transform: translate(0, -50%);">📍</div>'
+                        });
+
+                        // Force resize trigger
+                        window.detailMap.resize();
+
+                        // Add click handler (only once)
+                        mapContainer.onclick = () => {
+                            // Close the detail overlay
+                            const overlay = document.getElementById('hazardDetailOverlay');
+                            if (overlay) overlay.classList.remove('active');
+
+                            // Center main map on hazard location
+                            window.map.setCenter({ lat: report.lat, lng: report.lng });
+                            window.map.setZoom(17);
+                        };
+                    } catch (error) {
+                        console.error('Error initializing detail map:', error);
+                        mapContainer.innerHTML = '<div style="color: #ef4444; padding: 20px; text-align: center;">Map failed to load</div>';
+                    }
+                }, 350); // Slightly longer delay for reliable rendering
+            }
+
+            // Action Button Logic (Validation)
+            const actionBtn = document.getElementById('hazardDetailActionBtn');
+            if (actionBtn) {
+                actionBtn.style.display = 'none'; // Remove "Still here? Verify?" button
+            }
+
+            // Voting Logic UI State
+            const upBtn = document.getElementById('hazardUpvoteBtn');
+            const downBtn = document.getElementById('hazardDownvoteBtn');
+
+            const updateVoteUI = () => {
+                if (votesEl) votesEl.textContent = report.votes;
+                if (upBtn) upBtn.style.color = report.userVote === 'up' ? '#4CAF50' : '#94a3b8';
+                if (downBtn) downBtn.style.color = report.userVote === 'down' ? '#EF4444' : '#94a3b8';
+            };
+
+            updateVoteUI();
+
+            // Remove old listeners (cloning)
+            if (upBtn) {
+                const newUpBtn = upBtn.cloneNode(true);
+                upBtn.parentNode.replaceChild(newUpBtn, upBtn);
+                newUpBtn.addEventListener('click', () => {
+                    if (report.userVote === 'up') {
+                        report.votes--;
+                        report.userVote = null;
+                    } else {
+                        if (report.userVote === 'down') report.votes++; // remove downvote
+                        report.votes++;
+                        report.userVote = 'up';
+                    }
+                    updateVoteUI();
+                });
+            }
+
+            if (downBtn) {
+                const newDownBtn = downBtn.cloneNode(true);
+                downBtn.parentNode.replaceChild(newDownBtn, downBtn);
+                newDownBtn.addEventListener('click', () => {
+                    if (report.userVote === 'down') {
+                        report.votes++;
+                        report.userVote = null;
+                    } else {
+                        if (report.userVote === 'up') report.votes--; // remove upvote
+                        report.votes--;
+                        report.userVote = 'down';
+                    }
+                    updateVoteUI();
+                });
+            }
+
+
+            // Setup Buttons with proper cleanup
+            const closeBtn = document.getElementById('hazardDetailCloseBtn');
+            const backBtn = document.getElementById('hazardDetailBackBtn');
+
+            const closeHandler = () => {
+                // Clean up map instance before closing
+                if (window.detailMap) {
+                    try {
+                        window.detailMap.remove();
+                        window.detailMap = null;
+                    } catch (e) {
+                        console.warn('Error removing detail map:', e);
+                    }
+                }
+
+                // Clear the container
+                const mapContainer = document.getElementById('hazardDetailMap');
+                if (mapContainer) {
+                    mapContainer.innerHTML = '';
+                    mapContainer.onclick = null; // Remove click handler
+                }
+
+                overlay.classList.remove('active');
+            };
+
+            if (closeBtn) closeBtn.onclick = closeHandler;
+            if (backBtn) backBtn.onclick = closeHandler;
+
+            overlay.classList.add('active');
+        }
+
 
         // Initialize reports system when map is ready
         function initReportsSystem() {
@@ -3936,6 +5262,13 @@ out skel qt;`;
 
                 // Check if user selected an image
                 const fileInput = document.getElementById('hazardImageInput');
+                if (!fileInput || fileInput.files.length === 0) {
+                    alert('📸 Please upload an image of the hazard to continue.');
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Submit Report';
+                    return;
+                }
+
                 if (fileInput && fileInput.files.length > 0) {
                     submitBtn.textContent = 'Uploading image...';
 
@@ -3944,7 +5277,10 @@ out skel qt;`;
                         console.log('Image uploaded to Cloudinary:', imageUrl);
                     } catch (error) {
                         console.error('Image upload failed:', error);
-                        alert('⚠️ Image upload failed. Submitting report without image.');
+                        alert('⚠️ Image upload failed. Please try again.');
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = 'Submit Report';
+                        return; // Stop submission if upload fails
                     }
                 }
 
@@ -3963,11 +5299,154 @@ out skel qt;`;
             // Close handlers
             closeBtn.addEventListener('click', closeHazardModal);
             overlay.addEventListener('click', closeHazardModal);
+
+            // Location Picker Logic
+            const useCurrentLocBtn = document.getElementById('useCurrentLocBtn');
+            const pickOnMapBtn = document.getElementById('pickOnMapBtn');
+            const locText = document.getElementById('selectedLocationText');
+
+            // 1. Current Location
+            useCurrentLocBtn.addEventListener('click', function () {
+                if (!navigator.geolocation) {
+                    alert('Geolocation is not supported by your browser');
+                    return;
+                }
+
+                // Add loading state
+                useCurrentLocBtn.textContent = 'Locating...';
+                useCurrentLocBtn.disabled = true;
+
+                navigator.geolocation.getCurrentPosition(function (position) {
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+
+                    reportLocation = { lat, lng };
+                    locText.textContent = `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}`;
+
+                    useCurrentLocBtn.textContent = '📍 Current Location';
+
+                    // Center map
+                    map.setCenter([lat, lng]);
+                    map.setZoom(15);
+
+                    // Use pickerMarker if available, or create new one to visualize location
+                    if (pickerMarker) pickerMarker.remove();
+
+                    pickerMarker = new mappls.Marker({
+                        map: map,
+                        position: [lat, lng],
+                        fitbounds: true,
+                        icon: {
+                            url: 'data:image/svg+xml;base64,' + btoa(` <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" > <circle cx="12" cy="12" r="10" fill="#4CAF50" stroke="white" stroke-width="3" /> <circle cx="12" cy="12" r="4" fill="white" /> </svg> `),
+                            width: 32,
+                            height: 32
+                        }
+                    });
+
+                    // Remove loading state
+                    setTimeout(function () {
+                        useCurrentLocBtn.disabled = false;
+                    }, 300);
+
+                }, function (error) {
+                    console.error('Error getting location:', error);
+                    let errorMsg = 'Unable to get your location';
+
+                    switch (error.code) {
+                        case error.PERMISSION_DENIED: errorMsg = 'Location permission denied. Please allow location access.';
+                            break;
+                        case error.POSITION_UNAVAILABLE: errorMsg = 'Location information unavailable.';
+                            break;
+                        case error.TIMEOUT: errorMsg = 'Location request timed out.';
+                            break;
+                    }
+
+                    alert(errorMsg);
+
+                    // Remove loading state
+                    useCurrentLocBtn.textContent = '📍 Current Location';
+                    useCurrentLocBtn.disabled = false;
+                }, {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 0
+                });
+            });
+
+            // 2. Pick on Map
+            pickOnMapBtn.addEventListener('click', () => {
+                // Hide modal temporarily
+                modal.classList.remove('active');
+                overlay.classList.remove('active');
+
+                // Show floating confirm button
+                document.getElementById('mapPickerOverlay').style.display = 'flex';
+
+                // Add center marker (crosshair) logic if needed, or just rely on map center
+                // For better UX, let's create a temporary center marker that stays at center
+                const updatePickerMarker = () => {
+                    const center = window.map.getCenter();
+                    if (pickerMarker) pickerMarker.setPosition([center.lat, center.lng]);
+                };
+
+                // Initial marker at center
+                const center = window.map.getCenter();
+                pickerMarker = new mappls.Marker({
+                    map: window.map,
+                    position: [center.lat, center.lng],
+                    html: '<div style="font-size: 30px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5)); transform: translate(0, -50%);">📍</div>'
+                });
+
+                // Move marker when map moves
+                window.map.addListener('move', () => {
+                    const c = window.map.getCenter();
+                    pickerMarker.setPosition([c.lat, c.lng]);
+                });
+            });
+        }
+
+        // Confirm Pick on Map
+        function confirmMapPick() {
+            const center = window.map.getCenter();
+            reportLocation = {
+                lat: center.lat,
+                lng: center.lng
+            };
+
+            // Cleanup
+            document.getElementById('mapPickerOverlay').style.display = 'none';
+            if (pickerMarker) {
+                pickerMarker.remove();
+                pickerMarker = null;
+            }
+
+            // Restore Modal
+            openHazardModal();
+
+            // Update Text
+            const locText = document.getElementById('selectedLocationText');
+            if (locText) locText.textContent = `Selected: ${reportLocation.lat.toFixed(5)}, ${reportLocation.lng.toFixed(5)}`;
+        }
+
+        // Cancel Pick on Map
+        function cancelMapPick() {
+            document.getElementById('mapPickerOverlay').style.display = 'none';
+            if (pickerMarker) {
+                pickerMarker.remove();
+                pickerMarker = null;
+            }
+            openHazardModal();
         }
 
         function openHazardModal() {
             document.getElementById('reportHazardModal').classList.add('active');
             document.getElementById('modalOverlay').classList.add('active');
+
+            // Update location text on open
+            const locText = document.getElementById('selectedLocationText');
+            if (locText && reportLocation) {
+                locText.textContent = `Lat: ${reportLocation.lat.toFixed(5)}, Lng: ${reportLocation.lng.toFixed(5)}`;
+            }
         }
 
         function closeHazardModal() {
@@ -4014,6 +5493,13 @@ out skel qt;`;
                 let imageUrl = null;
 
                 // Check if user selected an image
+                if (!imageInput || imageInput.files.length === 0) {
+                    alert('📸 Please upload an image of the speed camera to continue.');
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Submit Report';
+                    return;
+                }
+
                 if (imageInput && imageInput.files.length > 0) {
                     submitBtn.textContent = 'Uploading image...';
 
@@ -4022,7 +5508,10 @@ out skel qt;`;
                         console.log('Image uploaded to Cloudinary:', imageUrl);
                     } catch (error) {
                         console.error('Image upload failed:', error);
-                        alert('⚠️ Image upload failed. Submitting report without image.');
+                        alert('⚠️ Image upload failed. Please try again.');
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = 'Submit Report';
+                        return;
                     }
                 }
 
@@ -4063,95 +5552,7 @@ out skel qt;`;
             document.getElementById('submitCameraReport').textContent = 'Submit Report';
         }
 
-        // Enhanced Stats Overlay with Clickable Categories
-        function initStatsEnhancements() {
-            // Make stats overlay items clickable
-            const statsOverlay = document.getElementById('statsOverlay');
 
-            // Add click handlers to stat items (will be added when stats are loaded)
-            statsOverlay.addEventListener('click', function (e) {
-                const statItem = e.target.closest('.stat-item.clickable');
-                if (statItem) {
-                    const category = statItem.getAttribute('data-category');
-                    if (category) {
-                        openDetailedReports(category);
-                    }
-                }
-            });
-
-            // Close detailed reports overlay
-            document.getElementById('closeDetailedReports').addEventListener('click', function () {
-                document.getElementById('detailedReportsOverlay').classList.remove('active');
-            });
-        }
-
-        async function openDetailedReports(category) {
-            if (!currentUser) {
-                alert('Please sign in to view your reports');
-                return;
-            }
-
-            const overlay = document.getElementById('detailedReportsOverlay');
-            const titleEl = document.getElementById('reportCategoryTitle');
-            const listEl = document.getElementById('detailedReportsList');
-
-            // Set title
-            const titles = {
-                all: 'All Reports',
-                accident: '🚗 Accident Reports',
-                construction: '🚧 Construction Reports',
-                roadblock: '🚫 Roadblock Reports',
-                waterlogging: '💧 Waterlogging Reports',
-                fallenTree: '🌳 Fallen Tree Reports',
-                speedCamera: '📷 Speed Camera Reports'
-            };
-            titleEl.textContent = titles[category] || 'Reports';
-
-            // Show loading
-            listEl.innerHTML = '<p style="color: #94a3b8; text-align: center; padding: 40px;">Loading...</p>';
-            overlay.classList.add('active');
-
-            try {
-                // Query reports from new hierarchical structure
-                let query = db.collection('reports')
-                    .doc('hazards')
-                    .collection('threads')
-                    .where('reportedBy', '==', currentUser.uid);
-
-                if (category !== 'all') {
-                    query = query.where('hazardType', '==', category);
-                }
-
-                const snapshot = await query.orderBy('timestamp', 'desc').get();
-
-                if (snapshot.empty) {
-                    listEl.innerHTML = '<p style="color: #94a3b8; text-align: center; padding: 40px;">No reports yet</p>';
-                    return;
-                }
-
-                // Display reports
-                let html = '';
-                snapshot.forEach(doc => {
-                    const data = doc.data();
-                    const date = data.timestamp ? data.timestamp.toDate().toLocaleString() : 'Unknown';
-                    const location = `${data.latitude.toFixed(4)}, ${data.longitude.toFixed(4)}`;
-
-                    html += `
-                                            <div class="report-item">
-                                                <div class="report-date">${date}</div>
-                                                <div class="report-location">📍 ${location}</div>
-                                                <span class="report-status active">Active</span>
-                                            </div>
-                                        `;
-                });
-
-                listEl.innerHTML = html;
-
-            } catch (error) {
-                console.error('Error loading reports:', error);
-                listEl.innerHTML = '<p style="color: #ef4444; text-align: center; padding: 40px;">Error loading reports</p>';
-            }
-        }
 
         // Place Review Modal
         function initReviewModal() {
@@ -4286,13 +5687,26 @@ out skel qt;`;
         </div>
     </div>
 
+    <!-- Map Picker Overlay (Hidden by default) -->
+    <div id="mapPickerOverlay"
+        style="display: none; position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 2000; gap: 10px;">
+        <button onclick="confirmMapPick()"
+            style="background: #4CAF50; color: white; border: none; padding: 12px 24px; border-radius: 30px; font-weight: bold; box-shadow: 0 4px 12px rgba(0,0,0,0.3); cursor: pointer; display: flex; align-items: center; gap: 8px;">
+            ✅ Confirm Location
+        </button>
+        <button onclick="cancelMapPick()"
+            style="background: #ef4444; color: white; border: none; padding: 12px 24px; border-radius: 30px; font-weight: bold; box-shadow: 0 4px 12px rgba(0,0,0,0.3); cursor: pointer;">
+            ✕ Cancel
+        </button>
+    </div>
+
     <!-- Modal Overlay (shared by all modals) -->
     <div id="modalOverlay" class="modal-overlay"></div>
 
     <!-- Report Hazard Modal -->
     <div id="reportHazardModal" class="modal">
         <div class="modal-header">
-            <h3>🚧 Report Hazard</h3>
+            <h3>🚧 Contribute</h3>
             <button class="modal-close" id="closeHazardModal">×</button>
         </div>
         <div class="modal-body">
@@ -4319,6 +5733,26 @@ out skel qt;`;
                     <span>Fallen Tree</span>
                 </button>
             </div>
+
+            <!-- Location Picker Section -->
+            <label style="margin-top: 16px;">Location</label>
+            <div style="background: rgba(255,255,255,0.05); padding: 12px; border-radius: 8px; margin-bottom: 16px;">
+                <div style="display: flex; gap: 10px; margin-bottom: 8px;">
+                    <button id="useCurrentLocBtn"
+                        style="flex: 1; padding: 8px; background: #3b82f6; border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 13px;">
+                        📍 Current Location
+                    </button>
+                    <button id="pickOnMapBtn"
+                        style="flex: 1; padding: 8px; background: #475569; border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 13px;">
+                        🗺️ Pick on Map
+                    </button>
+                </div>
+                <div id="selectedLocationText" style="font-size: 12px; color: #94a3b8; text-align: center;">
+                    Using current map center
+                </div>
+            </div>
+
+
 
             <div class="image-upload-area">
                 <label>Upload Image (Optional)</label>
@@ -4360,13 +5794,15 @@ out skel qt;`;
     <!-- Detailed Reports Overlay -->
     <div id="detailedReportsOverlay" class="detailed-reports-overlay">
         <div class="detailed-reports-header">
-            <h3 id="reportCategoryTitle">Reports</h3>
+            <h3 id="detailedReportsTitle">My Reports</h3>
             <button class="detailed-reports-close" id="closeDetailedReports">×</button>
         </div>
         <div class="detailed-reports-content" id="detailedReportsList">
-            <!-- Dynamically populated -->
+            <!-- Reports will be injected here -->
         </div>
     </div>
+
+
 
     <!-- Place Review Modal -->
     <div id="reviewModal" class="modal">

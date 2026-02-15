@@ -288,6 +288,53 @@ async function loadSearchHistory() {
     }
 }
 
+// Save search to history (or update timestamp if duplicate)
+async function saveSearchHistory(query, placeData = null) {
+    if (!currentUser || !query || query.trim() === '') {
+        return;
+    }
+
+    try {
+        const normalizedQuery = query.trim().toLowerCase();
+        
+        // Check if this query already exists
+        const existingSnapshot = await db.collection('users').doc(currentUser.uid)
+            .collection('searchHistory')
+            .where('queryLower', '==', normalizedQuery)
+            .limit(1)
+            .get();
+
+        if (!existingSnapshot.empty) {
+            // Update timestamp of existing entry
+            const docId = existingSnapshot.docs[0].id;
+            await db.collection('users').doc(currentUser.uid)
+                .collection('searchHistory')
+                .doc(docId)
+                .update({
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            console.log('Search history updated:', query);
+        } else {
+            // Create new entry
+            await db.collection('users').doc(currentUser.uid)
+                .collection('searchHistory')
+                .add({
+                    query: query.trim(),
+                    queryLower: normalizedQuery,
+                    placeData: placeData || null,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            console.log('Search history saved:', query);
+        }
+
+        // Reload search history to update UI
+        await loadSearchHistory();
+
+    } catch (error) {
+        console.error('Error saving search history:', error);
+    }
+}
+
 // Update profile UI
 function updateProfileUI(user) {
     const profileSection = document.getElementById('profileSection');
@@ -429,7 +476,7 @@ async function submitReport(type, hazardType, location, imageUrl = null) {
             longitude: location.lng,
             imageUrl: imageUrl, // Cloudinary URL
             timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-            status: 'active'
+            status: 'pending'
         };
 
         // Add report to hierarchical structure: /reports/hazards/threads/{reportId}

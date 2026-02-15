@@ -1,0 +1,50 @@
+<!-- Detailed Reports Overlay (Report List) -->
+<div class="detailed-reports-overlay" id="detailedReportsOverlay">
+    <div class="detailed-reports-header">
+        <h3 id="detailedReportsTitle">My Reports</h3>
+        <button class="stats-close-btn" id="closeDetailedReports">✕</button>
+    </div>
+    <div class="detailed-reports-list" id="detailedReportsList">
+        <!-- Reports injected by JS -->
+    </div>
+</div>
+
+<!-- Hazard Detail Overlay (Single Report View) -->
+<div class="hazard-detail-overlay" id="hazardDetailOverlay">
+    <div class="hazard-detail-header">
+        <button class="back-btn" id="hazardDetailBackBtn"
+            style="background:none; border:none; color:#94a3b8; cursor:pointer; font-size:14px;">← Back</button>
+        <h3 id="hazardDetailTitle" style="margin:0; font-size:16px;">Details</h3>
+        <button class="stats-close-btn" id="hazardDetailCloseBtn">✕</button>
+    </div>
+    <div class="hazard-detail-content" style="overflow-y:auto; flex:1;">
+        <div class="hazard-image-container">
+            <img id="hazardDetailImage" src="" alt="Hazard Image">
+        </div>
+        <div class="hazard-info">
+            <div class="hazard-type-badge" id="hazardDetailType"
+                style="display:inline-block; padding:4px 8px; border-radius:4px; font-size:12px; font-weight:bold; margin-bottom:8px;">
+                🚧 Hazard</div>
+            <h2 id="hazardDetailSubtype" style="margin:0 0 4px 0; font-size:20px;">Accident</h2>
+            <div
+                style="display:flex; justify-content:space-between; color:#94a3b8; font-size:13px; margin-bottom:12px;">
+                <span id="hazardDetailTime">2 mins ago</span>
+                <span id="hazardDetailLocation">Near Anna Nagar</span>
+            </div>
+            <div class="hazard-status" style="display:flex; align-items:center; gap:8px; font-size:13px;">
+                <span id="hazardDetailStatus" style="color:#4CAF50; font-weight:600;">Verified</span> • <span
+                    id="hazardDetailVotes">12 votes</span>
+            </div>
+        </div>
+        <div class="hazard-map-embed" id="hazardDetailMap">
+            <div class="static-map-placeholder">
+                <span>📍 Map View (Interactive)</span>
+            </div>
+        </div>
+        <div style="padding:20px;">
+            <button class="action-btn" id="hazardDetailActionBtn"
+                style="width:100%; background:#3b82f6; color:white; border:none; padding:12px; border-radius:8px; font-weight:600; cursor:pointer;">Still
+                here?</button>
+        </div>
+    </div>
+</div>
