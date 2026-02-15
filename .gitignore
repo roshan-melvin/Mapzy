@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Mappls API Configuration - Contains sensitive access tokens
 config.js
 
@@ -25,3 +26,225 @@ zwap/.pub/
 zwap/android/.gradle
 zwap/android/local.properties
 zwap/android/key.properties
+=======
+# ==========================================
+# ZWAP NAVIGATION APP - Git Ignore
+# ==========================================
+
+# ==========================================
+# SENSITIVE FILES - API Keys & Secrets
+# ==========================================
+config.js
+**/local.properties
+**/key.properties
+**/.env
+**/.env.local
+**/.env.production
+**/.env.development
+
+# Mappls SDK Keys (if stored in separate files)
+mappls_keys.txt
+api_keys.txt
+
+# ==========================================
+# ANDROID NATIVE APP (zwap_native/)
+# ==========================================
+
+# Gradle files
+.gradle/
+zwap_native/.gradle/
+zwap_native/build/
+zwap_native/app/build/
+zwap_native/local.properties
+zwap_native/gradle.properties.local
+
+# Android Studio / IntelliJ IDEA
+zwap_native/.idea/
+zwap_native/*.iml
+zwap_native/.idea/workspace.xml
+zwap_native/.idea/tasks.xml
+zwap_native/.idea/gradle.xml
+zwap_native/.idea/assetWizardSettings.xml
+zwap_native/.idea/dictionaries
+zwap_native/.idea/libraries
+zwap_native/.idea/caches
+zwap_native/.idea/modules.xml
+zwap_native/.idea/navEditor.xml
+
+# Android build outputs
+zwap_native/app/release/
+zwap_native/app/debug/
+zwap_native/*.apk
+zwap_native/*.aab
+zwap_native/*.ap_
+zwap_native/*.dex
+
+# Heap dumps and profiling files
+zwap_native/*.hprof
+*.hprof
+java_pid*.hprof
+
+# Signing files
+zwap_native/*.jks
+zwap_native/*.keystore
+zwap_native/key.properties
+
+# Captures folder
+zwap_native/captures/
+zwap_native/.externalNativeBuild/
+zwap_native/.cxx/
+
+# Google Services
+zwap_native/google-services.json
+
+# ==========================================
+# FLUTTER APP (DELETED - Keep for reference)
+# ==========================================
+zwap/
+zwap/**/*
+
+# ==========================================
+# WEB APP
+# ==========================================
+
+# Node modules (if using npm/yarn)
+node_modules/
+package-lock.json
+yarn.lock
+
+# Build outputs
+dist/
+build/
+out/
+
+# ==========================================
+# OPERATING SYSTEM FILES
+# ==========================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.directory
+.Trash-*
+
+# ==========================================
+# IDE & EDITOR FILES
+# ==========================================
+
+# Visual Studio Code
+.vscode/
+*.code-workspace
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Eclipse
+.classpath
+.project
+.settings/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# ==========================================
+# BUILD & DEPENDENCY FILES
+# ==========================================
+
+# Gradle Wrapper (keep the wrapper itself)
+!zwap_native/gradle/wrapper/gradle-wrapper.jar
+!zwap_native/gradle/wrapper/gradle-wrapper.properties
+
+# Maven
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+
+# ==========================================
+# LOGS & TEMPORARY FILES
+# ==========================================
+
+# Log files
+*.log
+logs/
+*.log.*
+
+# Temporary files
+*.tmp
+*.temp
+*.cache
+*.bak
+*.swp
+*.swo
+
+# ==========================================
+# DOCUMENTATION & NOTES (Keep these)
+# ==========================================
+# Explicitly include important docs
+!COMPLETED
+!README.md
+!CAMERA_OVERLAY_NOTES.md
+!Rules_For_App
+
+# ==========================================
+# ASSETS & MEDIA (Keep these)
+# ==========================================
+# Include images and icons
+!*.png
+!*.jpg
+!*.jpeg
+!*.svg
+!*.ico
+!*.webp
+
+# ==========================================
+# MISC
+# ==========================================
+
+# Backup files
+*.backup
+*.old
+
+# Test coverage
+coverage/
+*.coverage
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Compressed files
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8

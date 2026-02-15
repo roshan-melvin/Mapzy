@@ -4,11 +4,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="initial-scale=1.0">
+<<<<<<< HEAD
     <title>Mapzy</title>
+=======
+    <title>Mappls Map</title>
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
 
     <!-- Load configuration first (contains access token) -->
     <script src="config.js"></script>
 
+<<<<<<< HEAD
     <!-- Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
@@ -17,6 +22,8 @@
     <!-- Firebase Configuration -->
     <script src="firebase-config.js"></script>
 
+=======
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
     <style>
         * {
             margin: 0;
@@ -210,6 +217,7 @@
             line-height: 1.4;
         }
 
+<<<<<<< HEAD
         /* Search History Dropdown */
         .search-history-dropdown {
             position: absolute;
@@ -284,6 +292,8 @@
             font-size: 14px;
         }
 
+=======
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
         #loading {
             position: absolute;
             top: 50%;
@@ -348,14 +358,21 @@
 
         .nav-header {
             padding: 16px;
+<<<<<<< HEAD
             background: #1e293b;
+=======
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
             color: white;
             font-weight: 600;
             font-size: 16px;
             display: flex;
             align-items: center;
             gap: 8px;
+<<<<<<< HEAD
             border-bottom: 1px solid #334155;
+=======
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
         }
 
         .nav-body {
@@ -389,14 +406,23 @@
         }
 
         .nav-input:focus {
+<<<<<<< HEAD
             border-color: #3b82f6;
             box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+=======
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
         }
 
         .nav-button {
             width: 100%;
             padding: 14px;
+<<<<<<< HEAD
             background: #1e293b;
+=======
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
             color: white;
             border: none;
             border-radius: 8px;
@@ -408,9 +434,14 @@
         }
 
         .nav-button:hover {
+<<<<<<< HEAD
             background: #334155;
             transform: translateY(-1px);
             box-shadow: 0 4px 12px rgba(30, 41, 59, 0.4);
+=======
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
         }
 
         .nav-button:active {
@@ -418,13 +449,18 @@
         }
 
         .nav-button:disabled {
+<<<<<<< HEAD
             background: #94a3b8;
+=======
+            background: #ccc;
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
             cursor: not-allowed;
             transform: none;
         }
 
         .nav-button-secondary {
             background: white;
+<<<<<<< HEAD
             color: #64748b;
             border: 2px solid #e5e7eb;
         }
@@ -433,6 +469,14 @@
             background: #f8fafc;
             border-color: #cbd5e1;
             color: #475569;
+=======
+            color: #667eea;
+            border: 2px solid #667eea;
+        }
+
+        .nav-button-secondary:hover {
+            background: #f5f7ff;
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
         }
 
         .route-info {
@@ -570,6 +614,7 @@
         .location-btn.active svg {
             stroke: #FF6B00;
         }
+<<<<<<< HEAD
 
         /* Map Style Switcher - Top Right */
         .map-style-switcher {
@@ -2763,11 +2808,44 @@
             </svg></button><button class="location-btn" id="routeAlertsToggleBtn"
             title="Toggle Route Alerts (Hazards & Cameras)" style="display: none;"><svg
                 xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+=======
+    </style>
+</head>
+
+<body>
+    <div id="loading">
+        <div class="spinner"></div>
+        <p>Loading Mappls Map...</p>
+    </div>
+    <div id="error"></div>
+    <div id="map"></div>
+
+    <!-- Premium Search Bar - Center Bottom -->
+    <div class="search-container">
+        <div class="search-wrapper">
+            <input type="text" id="searchBox" class="search-box" placeholder="Search places, addresses, landmarks...">
+            <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.35-4.35"></path>
+            </svg>
+        </div>
+        <button class="location-btn" id="currentLocationBtn" title="Get Current Location">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+        </button>
+        <button class="location-btn" id="hazardToggleBtn" title="Toggle Hazard Markers">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z">
                 </path>
                 <line x1="12" y1="9" x2="12" y2="13"></line>
                 <line x1="12" y1="17" x2="12.01" y2="17"></line>
+<<<<<<< HEAD
             </svg></button>
     </div>
     <!-- Navigation Panel -->
@@ -2794,12 +2872,75 @@
                         id="routeDuration">-</span></div>
                 <div class="route-stat"><span class="route-stat-label">🚗 Via:</span><span class="route-stat-value"
                         id="routeVia">-</span></div>
+=======
+            </svg>
+        </button>
+    </div>
+
+
+
+    <!-- Navigation Panel -->
+    <div class="nav-panel">
+        <div class="nav-header">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="3 11 22 2 13 21 11 13 3 11"></polygon>
+            </svg>
+            Navigation
+        </div>
+
+        <div class="nav-body">
+            <div class="nav-input-group">
+                <div class="nav-label">
+                    <span class="location-dot from"></span>
+                    From (Starting Point)
+                </div>
+                <input type="text" id="fromInput" class="nav-input" placeholder="Your location or address...">
+            </div>
+
+            <div class="nav-input-group">
+                <div class="nav-label">
+                    <span class="location-dot to"></span>
+                    To (Destination)
+                </div>
+                <input type="text" id="toInput" class="nav-input" placeholder="Where do you want to go?">
+            </div>
+
+            <button id="getDirections" class="nav-button">
+                🚀 Get Directions
+            </button>
+
+            <button id="clearRoute" class="nav-button nav-button-secondary" style="display: none;">
+                ✕ Clear Route
+            </button>
+
+            <div id="routeInfo" class="route-info">
+                <div class="route-stat">
+                    <span class="route-stat-label">📏 Distance:</span>
+                    <span class="route-stat-value" id="routeDistance">-</span>
+                </div>
+                <div class="route-stat">
+                    <span class="route-stat-label">⏱️ Duration:</span>
+                    <span class="route-stat-value" id="routeDuration">-</span>
+                </div>
+                <div class="route-stat">
+                    <span class="route-stat-label">🚗 Via:</span>
+                    <span class="route-stat-value" id="routeVia">-</span>
+                </div>
+
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
                 <div id="routeSteps" class="route-steps"></div>
             </div>
         </div>
     </div>
+<<<<<<< HEAD
     <script> // Load Mappls SDK with access token from config
 
+=======
+
+    <script>
+        // Load Mappls SDK with access token from config
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
         (function () {
             const token = MAPPLS_CONFIG.accessToken;
 
@@ -2810,6 +2951,7 @@
             mainScript.async = true;
             document.head.appendChild(mainScript);
 
+<<<<<<< HEAD
             // Load plugins SDK (with search, direction, safety, and nearby)
             const pluginsScript = document.createElement('script');
             pluginsScript.src = `https://sdk.mappls.com/map/sdk/plugins?access_token=${token}&v=3.0&libraries=search,direction,safety,nearby`;
@@ -2819,10 +2961,16 @@
             pluginsScript.onload = function () {
                 console.log('Mappls plugins loaded successfully');
             };
+=======
+            // Load plugins SDK (with search, direction, and safety)
+            const pluginsScript = document.createElement('script');
+            pluginsScript.src = `https://sdk.mappls.com/map/sdk/plugins?access_token=${token}&v=3.0&libraries=search,direction,safety`;
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
             document.head.appendChild(pluginsScript);
         })();
 
         var map;
+<<<<<<< HEAD
         var ghostMap; // Hidden map for nearby plugin
         var nearbyMarkers = []; // Array to track nearby markers
         var currentMarker;
@@ -2833,6 +2981,12 @@
         var currentRoute;
         var fromLocation,
             toLocation;
+=======
+        var currentMarker;
+        var fromMarker, toMarker;
+        var currentRoute;
+        var fromLocation, toLocation;
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
 
         // This callback function is called by Mappls SDK when it's ready
         function initMap1() {
@@ -2848,16 +3002,20 @@
                     zoom: 13
                 });
 
+<<<<<<< HEAD
                 // Initialize ghost map (hidden)
                 ghostMap = new mappls.Map('ghost-map', {
                     center: [28.638698, 77.276045],
                     zoom: 13
                 });
 
+=======
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
                 // Initialize features when map loads
                 map.addListener('load', function () {
                     console.log('Map loaded successfully!');
 
+<<<<<<< HEAD
                     // Initialize Firebase
                     initializeFirebase();
 
@@ -2867,6 +3025,8 @@
                     // Initialize nearby places
                     initNearbyPlaces();
 
+=======
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
                     // Initialize place search plugin with autocomplete
                     initPlaceSearch();
 
@@ -2876,6 +3036,7 @@
                     // Initialize current location button
                     initCurrentLocationBtn();
 
+<<<<<<< HEAD
                     // Disable POI clicks to prevent "Open with Mappls" popup
                     try {
                         // Try to disable POI layer if available
@@ -2904,15 +3065,23 @@
 
                     // Initialize user reports system
                     initReportsSystem();
+=======
+                    // Initialize hazard toggle
+                    initHazardToggle();
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
                 });
 
 
 
                 console.log('Map initialized successfully!');
 
+<<<<<<< HEAD
             }
 
             catch (error) {
+=======
+            } catch (error) {
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
                 console.error('Error initializing map:', error);
                 const errorDiv = document.getElementById('error');
                 errorDiv.textContent = 'Error: ' + error.message;
@@ -2927,6 +3096,7 @@
 
             // Configure place search options
             var placeOptions = {
+<<<<<<< HEAD
 
                 location: [28.638698,
                     77.276045],
@@ -2939,15 +3109,27 @@
                 blank_callback: function () {
                     console.log('Search cleared');
 
+=======
+                location: [28.638698, 77.276045], // Current map center as radial bias
+                width: 250,
+                height: 300,
+                clearButton: true,
+                blank_callback: function () {
+                    console.log('Search cleared');
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
                     // Remove marker when search is cleared
                     if (currentMarker) {
                         currentMarker.remove();
                         currentMarker = null;
                     }
                 }
+<<<<<<< HEAD
             }
 
                 ;
+=======
+            };
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
 
             // Callback when place is selected
             function searchCallback(data) {
@@ -2958,6 +3140,7 @@
                     const selectedPlace = data[0]; // Get first result
                     console.log('Selected place details:', selectedPlace);
 
+<<<<<<< HEAD
                     // Save to search history
                     if (typeof saveSearchHistory === 'function') {
                         saveSearchHistory(selectedPlace.placeName, {
@@ -2967,6 +3150,8 @@
                         });
                     }
 
+=======
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
                     // Remove previous marker
                     if (currentMarker) {
                         currentMarker.remove();
@@ -2976,16 +3161,22 @@
                     const eloc = selectedPlace.eLoc;
 
                     if (eloc) {
+<<<<<<< HEAD
 
                         // Use Mappls pinMarker to place marker using eLoc
                         mappls.pinMarker({
 
+=======
+                        // Use Mappls pinMarker to place marker using eLoc
+                        mappls.pinMarker({
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
                             map: map,
                             pin: eloc,
                             popupHtml: selectedPlace.placeName + '<br>' + selectedPlace.placeAddress,
                             popupOptions: {
                                 openPopup: true
                             }
+<<<<<<< HEAD
                         }
 
                             , function (marker) {
@@ -3005,6 +3196,19 @@
                 }
 
                 else {
+=======
+                        }, function (marker) {
+                            currentMarker = marker;
+                            currentMarker.fitbounds(); // Auto-zoom to marker
+                            console.log('Marker placed at:', selectedPlace.placeName);
+                        });
+                    } else {
+                        console.error('No eLoc found in selected place');
+                    }
+                } else if (data && data.error) {
+                    console.error('Search error:', data.error);
+                } else {
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
                     console.log('No results returned');
                 }
             }
@@ -3012,6 +3216,7 @@
             // Initialize the search plugin
             new mappls.search(searchBox, placeOptions, searchCallback);
 
+<<<<<<< HEAD
             // Setup search history handlers
             setupSearchHistoryHandlers();
 
@@ -3139,6 +3344,11 @@
             return div.innerHTML;
         }
 
+=======
+            console.log('Place search initialized');
+        }
+
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
         // Initialize Navigation
         function initNavigation() {
             const fromInput = document.getElementById('fromInput');
@@ -3151,6 +3361,7 @@
                 location: [28.638698, 77.276045],
                 width: 280,
                 height: 300
+<<<<<<< HEAD
             }
 
                 , function (data) {
@@ -3173,12 +3384,32 @@
                             });
                     }
                 });
+=======
+            }, function (data) {
+                if (data && data.length > 0) {
+                    fromLocation = data[0];
+                    console.log('From location selected:', fromLocation);
+
+                    // Place FROM marker
+                    if (fromMarker) fromMarker.remove();
+                    mappls.pinMarker({
+                        map: map,
+                        pin: fromLocation.eLoc,
+                        popupHtml: '🟢 Start: ' + fromLocation.placeName,
+                        icon: createNavMarkerIcon('from')
+                    }, function (marker) {
+                        fromMarker = marker;
+                    });
+                }
+            });
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
 
             // Setup autocomplete for TO input
             new mappls.search(toInput, {
                 location: [28.638698, 77.276045],
                 width: 280,
                 height: 300
+<<<<<<< HEAD
             }
 
                 , function (data) {
@@ -3201,6 +3432,25 @@
                             });
                     }
                 });
+=======
+            }, function (data) {
+                if (data && data.length > 0) {
+                    toLocation = data[0];
+                    console.log('To location selected:', toLocation);
+
+                    // Place TO marker
+                    if (toMarker) toMarker.remove();
+                    mappls.pinMarker({
+                        map: map,
+                        pin: toLocation.eLoc,
+                        popupHtml: '🔴 Destination: ' + toLocation.placeName,
+                        icon: createNavMarkerIcon('to')
+                    }, function (marker) {
+                        toMarker = marker;
+                    });
+                }
+            });
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
 
             // Get Directions button
             getDirectionsBtn.addEventListener('click', function () {
@@ -3237,6 +3487,7 @@
                 locationBtn.classList.add('loading');
                 locationBtn.disabled = true;
 
+<<<<<<< HEAD
                 navigator.geolocation.getCurrentPosition(function (position) {
                     const lat = position.coords.latitude;
                     const lng = position.coords.longitude;
@@ -3284,16 +3535,72 @@
                 }
 
                     ,
+=======
+                navigator.geolocation.getCurrentPosition(
+                    function (position) {
+                        const lat = position.coords.latitude;
+                        const lng = position.coords.longitude;
+
+                        console.log('Current location:', lat, lng);
+
+                        // Center map on current location
+                        map.setCenter([lat, lng]);
+                        map.setZoom(15);
+
+                        // Remove previous current location marker
+                        if (currentMarker) {
+                            currentMarker.remove();
+                        }
+
+                        // Add marker at current location
+                        currentMarker = new mappls.Marker({
+                            map: map,
+                            position: [lat, lng],
+                            fitbounds: true,
+                            icon: {
+                                url: 'data:image/svg+xml;base64,' + btoa(`
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24">
+                                        <circle cx="12" cy="12" r="10" fill="#4CAF50" stroke="white" stroke-width="3"/>
+                                        <circle cx="12" cy="12" r="4" fill="white"/>
+                                    </svg>
+                                `),
+                                width: 32,
+                                height: 32
+                            }
+                        });
+
+                        // Add popup
+                        const popup = new mappls.Popup({ offset: [0, -15] })
+                            .setLngLat([lat, lng])
+                            .setHTML('<strong>📍 You are here</strong>')
+                            .addTo(map);
+
+                        // Remove loading state
+                        locationBtn.classList.remove('loading');
+                        locationBtn.disabled = false;
+                    },
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
                     function (error) {
                         console.error('Error getting location:', error);
                         let errorMsg = 'Unable to get your location';
 
                         switch (error.code) {
+<<<<<<< HEAD
                             case error.PERMISSION_DENIED: errorMsg = 'Location permission denied. Please allow location access.';
                                 break;
                             case error.POSITION_UNAVAILABLE: errorMsg = 'Location information unavailable.';
                                 break;
                             case error.TIMEOUT: errorMsg = 'Location request timed out.';
+=======
+                            case error.PERMISSION_DENIED:
+                                errorMsg = 'Location permission denied. Please allow location access.';
+                                break;
+                            case error.POSITION_UNAVAILABLE:
+                                errorMsg = 'Location information unavailable.';
+                                break;
+                            case error.TIMEOUT:
+                                errorMsg = 'Location request timed out.';
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
                                 break;
                         }
 
@@ -3302,13 +3609,18 @@
                         // Remove loading state
                         locationBtn.classList.remove('loading');
                         locationBtn.disabled = false;
+<<<<<<< HEAD
                     }
 
                     ,
+=======
+                    },
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
                     {
                         enableHighAccuracy: true,
                         timeout: 10000,
                         maximumAge: 0
+<<<<<<< HEAD
                     });
 
                 // Fallback: Always remove loading state after 5 seconds
@@ -3318,6 +3630,10 @@
                 }
 
                     , 5000);
+=======
+                    }
+                );
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
             });
 
             console.log('Current location button initialized');
@@ -3326,7 +3642,10 @@
         // Calculate and display route
         function calculateRoute() {
             try {
+<<<<<<< HEAD
 
+=======
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
                 // Use Mappls Direction Plugin
                 const directionOptions = {
                     map: map,
@@ -3338,13 +3657,18 @@
                     fitbounds: true,
                     divWidth: 0, // Hide default info panel
                     divId: 'routeInfo'
+<<<<<<< HEAD
                 }
 
                     ;
+=======
+                };
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
 
                 currentRoute = mappls.direction(directionOptions, function (result) {
                     console.log('Route calculated:', result);
 
+<<<<<<< HEAD
                     // Always enable route alerts button since route was drawn
                     enableRouteAlertsButton();
 
@@ -3393,6 +3717,22 @@
             }
 
             catch (error) {
+=======
+                    if (result && result.routes && result.routes.length > 0) {
+                        displayRouteInfo(result.routes[0]);
+
+                        document.getElementById('getDirections').textContent = '✓ Route Found';
+                        document.getElementById('getDirections').disabled = false;
+                        document.getElementById('clearRoute').style.display = 'block';
+                    } else {
+                        alert('No rout~e found. Please try different locations.');
+                        document.getElementById('getDirections').textContent = '🚀 Get Directions';
+                        document.getElementById('getDirections').disabled = false;
+                    }
+                });
+
+            } catch (error) {
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
                 console.error('Error calculating route:', error);
                 alert('Error calculating route: ' + error.message);
                 document.getElementById('getDirections').textContent = '🚀 Get Directions';
@@ -3433,6 +3773,7 @@
                     const stepDistance = (step.distance / 1000).toFixed(1);
                     const instruction = step.html_instructions || step.instruction || 'Continue';
 
+<<<<<<< HEAD
                     stepsHTML += ` <div class="route-step" > <strong>$ {
                             index + 1
                         }
@@ -3446,6 +3787,14 @@
                         }
 
                         km</div> </div> `;
+=======
+                    stepsHTML += `
+                        <div class="route-step">
+                            <strong>${index + 1}.</strong> ${instruction}
+                            <div class="route-step-distance">📍 ${stepDistance} km</div>
+                        </div>
+                    `;
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
                 });
 
                 stepsDiv.innerHTML = stepsHTML;
@@ -3454,6 +3803,7 @@
             routeInfoDiv.classList.add('active');
         }
 
+<<<<<<< HEAD
         // Extract route polyline coordinates from route result
         function extractRoutePolyline(route) {
             currentRoutePolyline = [];
@@ -3613,12 +3963,19 @@
             disableRouteAlertsButton();
             currentRoutePolyline = null;
 
+=======
+        // Clear navigation
+        function clearNavigation() {
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
             // Remove markers
             if (fromMarker) {
                 fromMarker.remove();
                 fromMarker = null;
             }
+<<<<<<< HEAD
 
+=======
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
             if (toMarker) {
                 toMarker.remove();
                 toMarker = null;
@@ -3626,9 +3983,13 @@
 
             // Remove route
             if (currentRoute) {
+<<<<<<< HEAD
                 mappls.remove({
                     map: map, layer: currentRoute
                 });
+=======
+                mappls.remove({ map: map, layer: currentRoute });
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
                 currentRoute = null;
             }
 
@@ -3654,17 +4015,28 @@
             const colors = {
                 from: '#4CAF50',
                 to: '#F44336'
+<<<<<<< HEAD
             }
 
                 ;
 
             const svg = ` <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="${colors[type]}" stroke="white" stroke-width="3" /></svg>`;
+=======
+            };
+
+            const svg = `
+                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10" fill="${colors[type]}" stroke="white" stroke-width="3"/>
+                </svg>
+            `;
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
 
             return {
                 url: 'data:image/svg+xml;base64,' + btoa(svg),
                 width: 32,
                 height: 32,
                 offset: [0, -16]
+<<<<<<< HEAD
             }
 
                 ;
@@ -3902,12 +4274,80 @@ out body;>;
 out skel qt;`;
 
             console.log('Overpass query:', query);
+=======
+            };
+        }
+
+        // ==================== HAZARD OVERLAY SYSTEM ====================
+        var hazardMarkers = [];
+        var hazardsVisible = false;
+        var isLoadingHazards = false;
+
+        // Initialize hazard toggle button
+        function initHazardToggle() {
+            const hazardBtn = document.getElementById('hazardToggleBtn');
+
+            hazardBtn.addEventListener('click', function () {
+                hazardsVisible = !hazardsVisible;
+
+                if (hazardsVisible) {
+                    hazardBtn.classList.add('active');
+                    loadHazards();
+                } else {
+                    hazardBtn.classList.remove('active');
+                    clearHazards();
+                }
+            });
+
+            // Reload hazards when map moves (if visible)
+            map.addListener('moveend', function () {
+                if (hazardsVisible && !isLoadingHazards) {
+                    loadHazards();
+                }
+            });
+
+            console.log('Hazard toggle initialized');
+        }
+
+        // Load hazards from OpenStreetMap via Overpass API
+        function loadHazards() {
+            const zoom = map.getZoom();
+
+            // Only load hazards at zoom level 10 or higher (city view)
+            if (zoom < 10) {
+                console.log('Zoom in to level 10+ to see hazards');
+                return;
+            }
+
+            if (isLoadingHazards) return;
+            isLoadingHazards = true;
+
+            // Get current map bounds
+            const bounds = map.getBounds();
+            const south = bounds.getSouth();
+            const west = bounds.getWest();
+            const north = bounds.getNorth();
+            const east = bounds.getEast();
+            const bbox = `${south},${west},${north},${east}`;
+
+            // Overpass API query for hazards - simplified for speed
+            const query = `
+                [out:json][timeout:15];
+                (
+                    node["highway"="speed_bump"](${bbox});
+                    node["traffic_calming"](${bbox});
+                );
+                out body;
+            `;
+
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
             const overpassUrl = 'https://overpass.kumi.systems/api/interpreter';
 
             fetch(overpassUrl, {
                 method: 'POST',
                 body: query
             })
+<<<<<<< HEAD
                 .then(response => {
                     console.log('Overpass API response status:', response.status);
                     return response.json();
@@ -3986,6 +4426,61 @@ out skel qt;`;
             });
 
             console.log(`Displayed ${displayedCount} hazard markers along route (filtered from ${hazards.length} total)`);
+=======
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Hazards loaded:', data.elements.length);
+                    displayHazards(data.elements);
+                    isLoadingHazards = false;
+                })
+                .catch(error => {
+                    console.error('Error loading hazards:', error);
+                    isLoadingHazards = false;
+                });
+        }
+
+        // Display hazard markers on map
+        function displayHazards(hazards) {
+            // Clear existing hazard markers
+            clearHazards();
+
+            // Add markers for each hazard - using Mappls native format
+            hazards.forEach(hazard => {
+                if (hazard.lat && hazard.lon) {
+                    const marker = new mappls.Marker({
+                        map: map,
+                        position: [hazard.lat, hazard.lon],
+                        fitbounds: false,
+                        html: '<div style="background: #FF3333; color: white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: bold; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.3);">⚠</div>',
+                        offset: [0, -20]
+                    });
+
+                    // Create popup content
+                    let popupContent = '<strong>⚠️ Hazard</strong><br>';
+
+                    if (hazard.tags) {
+                        if (hazard.tags.hazard) popupContent += `Type: ${hazard.tags.hazard}<br>`;
+                        if (hazard.tags.traffic_calming) popupContent += `Traffic Calming: ${hazard.tags.traffic_calming}<br>`;
+                        if (hazard.tags.barrier) popupContent += `Barrier: ${hazard.tags.barrier}<br>`;
+                        if (hazard.tags.highway === 'speed_bump') popupContent += 'Type: Speed Bump<br>';
+                        if (hazard.tags.name) popupContent += `Name: ${hazard.tags.name}<br>`;
+                        if (hazard.tags.description) popupContent += `${hazard.tags.description}`;
+                    }
+
+                    // Add popup to marker
+                    marker.on('click', function () {
+                        new mappls.Popup({ offset: [0, -15] })
+                            .setLngLat([hazard.lon, hazard.lat])
+                            .setHTML(popupContent)
+                            .addTo(map);
+                    });
+
+                    hazardMarkers.push(marker);
+                }
+            });
+
+            console.log(`Displayed ${hazardMarkers.length} hazard markers`);
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
         }
 
         // Clear all hazard markers
@@ -3994,6 +4489,7 @@ out skel qt;`;
             hazardMarkers = [];
         }
 
+<<<<<<< HEAD
         // Load speed cameras along route (using dummy data for demonstration)
         function loadSpeedCamerasAlongRoute() {
             // Generate dummy speed cameras along the route
@@ -6499,6 +6995,9 @@ out skel qt;`;
         });
     </script>
 
+=======
+    </script>
+>>>>>>> 89c82bc676c69638304ee7acc049dec06c5fc7c8
 </body>
 
 </html>
