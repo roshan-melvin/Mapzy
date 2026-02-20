@@ -13,6 +13,10 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.swapmap.zwap.R
 import com.swapmap.zwap.demo.AuthActivity
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class ProfileFragment : Fragment() {
 
@@ -51,30 +55,39 @@ class ProfileFragment : Fragment() {
                     val name = document.getString("username") ?: "Zwap User"
                     view.findViewById<TextView>(R.id.tv_profile_name).text = name
                     
-                    // Placeholder stats - can be real later
-                    val points = document.getLong("points") ?: 0
-                    val reports = document.getLong("reports_count") ?: 0
+                    view.findViewById<TextView>(R.id.tv_profile_name).text = name
                     
-                    view.findViewById<TextView>(R.id.tv_stats_points).text = points.toString()
-                    view.findViewById<TextView>(R.id.tv_stats_reports).text = reports.toString()
+                    // Stats are now fetched from FastAPI below
                 }
             }
             .addOnFailureListener {
                 view.findViewById<TextView>(R.id.tv_profile_name).text = "User (Offline)"
             }
 
-        // Fetch trust summary from subcollection
-        db.collection("users").document(user.uid)
-            .collection("trust").document("summary").get()
-            .addOnSuccessListener { document ->
-                if (document.exists()) {
-                    val trustScore = document.getDouble("trust_score") ?: 50.0
-                    val badgeLevel = document.getString("badge_level") ?: "BRONZE"
-
-                    view.findViewById<TextView>(R.id.tv_stats_trust).text = String.format("%.0f%%", trustScore)
-                    view.findViewById<TextView>(R.id.tv_stats_badge).text = badgeLevel
+        // Fetch real-time trust and stats from FastAPI Backend (Supabase)
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                android.util.Log.d("ZwapProfile", "Fetching stats for user: ${user.uid}")
+                val response = com.swapmap.zwap.demo.network.ApiClient.hazardApiService.getUserStats(user.uid)
+                if (response.isSuccessful && response.body() != null) {
+                    val stats = response.body()!!
+                    android.util.Log.d("ZwapProfile", "Stats received: Trust=${stats.trust_score}, Points=${stats.reward_points}")
+                    withContext(Dispatchers.Main) {
+                        view.findViewById<TextView>(R.id.tv_stats_trust).text = String.format("%.2f%%", stats.trust_score)
+                        view.findViewById<TextView>(R.id.tv_stats_badge).text = stats.badge_level
+                        view.findViewById<TextView>(R.id.tv_stats_points).text = stats.reward_points.toString()
+                        view.findViewById<TextView>(R.id.tv_stats_reports).text = stats.total_reports.toString()
+                        view.findViewById<TextView>(R.id.tv_profile_name).text = stats.username
+                    }
+                } else {
+                    android.util.Log.e("ZwapProfile", "Failed to fetch stats: ${response.code()} ${response.message()}")
                 }
+            } catch (e: Exception) {
+                android.util.Log.e("ZwapProfile", "Error fetching stats", e)
+                e.printStackTrace()
             }
+        }
+
     }
 
     private fun setupButtons(view: View) {

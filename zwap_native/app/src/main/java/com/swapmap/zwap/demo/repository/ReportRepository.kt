@@ -127,7 +127,8 @@ class ReportRepository {
                 longitude = lng,
                 imageUrl = backendRes.image_url,
                 status = backendRes.status,
-                pointsAwarded = if (backendRes.status == "Verified") 10 else 0,
+                pointsAwarded = if (backendRes.status == "Verified") 2 else 0,
+                hazardCondition = backendRes.hazard_condition ?: "active",
                 createdAt = com.google.firebase.Timestamp.now()
             )
             

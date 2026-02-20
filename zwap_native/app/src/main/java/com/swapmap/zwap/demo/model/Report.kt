@@ -12,5 +12,6 @@ data class Report(
     val imageUrl: String? = null,
     val status: String = "Pending", // Pending, Verified, Rejected
     val pointsAwarded: Int = 0,
+    val hazardCondition: String = "active", // active, broken, none
     val createdAt: Timestamp? = null
 )

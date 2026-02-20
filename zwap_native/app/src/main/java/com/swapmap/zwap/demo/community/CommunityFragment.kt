@@ -28,6 +28,10 @@ class CommunityFragment : Fragment() {
     private val repository = ReportRepository()
     private var fetchJob: kotlinx.coroutines.Job? = null
     private lateinit var feedAdapter: FeedAdapter
+    private lateinit var leaderboardAdapter: LeaderboardAdapter
+    private var rvFeed: RecyclerView? = null
+    private var rvLeaderboard: RecyclerView? = null
+    private var tvEmpty: TextView? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -63,7 +67,6 @@ class CommunityFragment : Fragment() {
         )
 
         val rvChannels = view.findViewById<RecyclerView>(R.id.rv_channels)
-        val rvFeed = view.findViewById<RecyclerView>(R.id.rv_feed)
         val btnBack = view.findViewById<ImageView>(R.id.btn_back_channels)
         val tvTitle = view.findViewById<TextView>(R.id.tv_server_name)
         val threadView = view.findViewById<View>(R.id.thread_view_container)
@@ -74,20 +77,26 @@ class CommunityFragment : Fragment() {
         val btnOptions = view.findViewById<ImageView>(R.id.btn_community_options)
 
         rvChannels.layoutManager = LinearLayoutManager(context)
-        rvFeed.layoutManager = LinearLayoutManager(context)
+        rvFeed = view.findViewById(R.id.rv_feed)
+        rvFeed?.layoutManager = LinearLayoutManager(context)
         rvComments.layoutManager = LinearLayoutManager(context)
         
         feedAdapter = FeedAdapter(mutableListOf()) { report ->
             showThread(report, threadView)
         }
-        rvFeed.adapter = feedAdapter
+        rvFeed?.adapter = feedAdapter
+
+        rvLeaderboard = view.findViewById(R.id.rv_leaderboard)
+        rvLeaderboard?.layoutManager = LinearLayoutManager(context)
+        leaderboardAdapter = LeaderboardAdapter(mutableListOf())
+        rvLeaderboard?.adapter = leaderboardAdapter
 
         // Mock Comments (Keep for now, or remove)
         rvComments.adapter = ChannelAdapter(listOf("Is this cleared?", "Traffic is backing up", "Still there @ 5pm")) { } 
 
         // FETCH REAL REPORTS
-        val tvEmpty = view.findViewById<TextView>(R.id.tv_empty_feed)
-        fetchRealReports(rvFeed, threadView, tvEmpty)
+        tvEmpty = view.findViewById(R.id.tv_empty_feed)
+        fetchRealReports(rvFeed!!, threadView, tvEmpty!!)
 
         val channelAdapter = ChannelAdapter(mutableListOf()) { channelName ->
             // Intercept "my-reports" to show ContributionFragment
@@ -101,25 +110,33 @@ class CommunityFragment : Fragment() {
 
             // On Channel Click -> Show Feed
             rvChannels.visibility = View.GONE
-            rvFeed.visibility = View.VISIBLE
+            val currentTvEmpty = tvEmpty
+            currentTvEmpty?.visibility = View.GONE
+
+            if (channelName == "global-ranking") {
+                rvFeed?.visibility = View.GONE
+                rvLeaderboard?.visibility = View.VISIBLE
+                fetchLeaderboard(rvLeaderboard!!, currentTvEmpty!!)
+            } else {
+                rvLeaderboard?.visibility = View.GONE
+                rvFeed?.visibility = View.VISIBLE
+                
+                // Clear current list immediately to prevent "glitching" from old data
+                feedAdapter.updateData(emptyList())
+
+                // Fetch reports for this specific channel
+                if (channelName == "all-hazards") {
+                    fetchRealReports(rvFeed!!, threadView, currentTvEmpty!!)
+                } else {
+                    fetchChannelReports(channelName, rvFeed!!, threadView, currentTvEmpty!!)
+                }
+            }
+
             btnBack.visibility = View.VISIBLE
             tvTitle.text = "#$channelName"
             
             // Store current channel name for report dialog
             view.setTag(R.id.rv_feed, channelName)
-
-            val tvEmpty = view.findViewById<TextView>(R.id.tv_empty_feed)
-            tvEmpty.visibility = View.GONE
-            
-            // Clear current list immediately to prevent "glitching" from old data
-            feedAdapter.updateData(emptyList())
-
-            // Fetch reports for this specific channel
-            if (channelName == "all-hazards") {
-                fetchRealReports(rvFeed, threadView, tvEmpty)
-            } else {
-                fetchChannelReports(channelName, rvFeed, threadView, tvEmpty)
-            }
         }
         rvChannels.adapter = channelAdapter
 
@@ -128,12 +145,13 @@ class CommunityFragment : Fragment() {
             if (threadView.visibility == View.VISIBLE) {
                  threadView.visibility = View.GONE
             } else {
-                rvFeed.visibility = View.GONE
+                rvFeed?.visibility = View.GONE
+                rvLeaderboard?.visibility = View.GONE
                 rvChannels.visibility = View.VISIBLE
                 btnBack.visibility = View.GONE
                 btnOptions.visibility = View.GONE
                 tvTitle.text = "Hazards" 
-                view.findViewById<View>(R.id.tv_empty_feed).visibility = View.GONE
+                tvEmpty?.visibility = View.GONE
             }
         }
         
@@ -172,7 +190,7 @@ class CommunityFragment : Fragment() {
                     // Update main area title
                     tvTitle.text = "Notifications"
                     rvChannels.visibility = View.VISIBLE
-                    rvFeed.visibility = View.GONE
+                    rvFeed?.visibility = View.GONE
                     btnBack.visibility = View.GONE
                     btnOptions.visibility = View.VISIBLE
                     threadView.visibility = View.GONE
@@ -183,13 +201,37 @@ class CommunityFragment : Fragment() {
                 }
                 else -> {
                     updateChannels(view, channelMap[item.id] ?: emptyList(), item.name)
-                    rvFeed.visibility = View.GONE
+                    rvFeed?.visibility = View.GONE
+                    rvLeaderboard?.visibility = View.GONE
                     rvChannels.visibility = View.VISIBLE
                     btnBack.visibility = View.GONE
                     btnOptions.visibility = View.GONE
                     threadView.visibility = View.GONE
-                    view.findViewById<View>(R.id.tv_empty_feed).visibility = View.GONE
+                    tvEmpty?.visibility = View.GONE
                 }
+            }
+        }
+    }
+
+    private fun fetchLeaderboard(rvLeaderboard: RecyclerView, tvEmpty: TextView) {
+        fetchJob?.cancel()
+        fetchJob = viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val response = com.swapmap.zwap.demo.network.ApiClient.hazardApiService.getLeaderboard(10)
+                if (response.isSuccessful && response.body() != null) {
+                    val leaderboard = response.body()!!.leaderboard
+                    withContext(Dispatchers.Main) {
+                        leaderboardAdapter.updateData(leaderboard)
+                        tvEmpty.text = "The legends of the road will appear here!"
+                        tvEmpty.visibility = if (leaderboard.isEmpty()) View.VISIBLE else View.GONE
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        android.widget.Toast.makeText(context, "Failed to load rankings", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
     }

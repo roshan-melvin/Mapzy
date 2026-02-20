@@ -79,6 +79,17 @@
             android:visibility="gone"
             android:background="#2F3136"/>
 
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rv_leaderboard"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:padding="8dp"
+            android:layout_marginTop="56dp"
+            android:layout_marginBottom="60dp"
+            android:visibility="gone"
+            android:background="#2F3136"/>
+
         <TextView
             android:id="@+id/tv_empty_feed"
             android:layout_width="wrap_content"

@@ -567,6 +567,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             Log.d("Zwap", "Hazards overlay enabled, fetching features...")
             Toast.makeText(this, "Hazards ON", Toast.LENGTH_SHORT).show()
             
+            /*
             // TEST HAZARDS
             Log.d("Zwap", "ADDING_TEST_MARKERS")
             mapplsMap?.cameraPosition?.target?.let { ctr ->
@@ -590,6 +591,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                 // Immediate proximity check
                 checkHazardProximity(lat, lon)
             }
+            */
             fetchAndDisplayOSMFeatures()
         } else {
             // Inactive state - white background
@@ -725,6 +727,75 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                         Toast.makeText(this@MainActivity, "Failed to load hazards", Toast.LENGTH_SHORT).show()
                     }
                 }
+
+                // --- FETCH COMMUNITY HAZARDS ---
+                try {
+                    Log.d("Zwap", "🚀 Fetching Community Hazards from Backend...")
+                    kotlinx.coroutines.runBlocking {
+                        val commResponse = com.swapmap.zwap.demo.network.ApiClient.hazardApiService.getHazards(
+                            lat, lon, delta * 111.0  // Convert degrees to approx km
+                        )
+                        
+                        if (commResponse.isSuccessful && commResponse.body() != null) {
+                            val clusterList = commResponse.body()!!.hazards
+                            Log.d("Zwap", "✅ Received ${clusterList.size} community hazards from Backend")
+                            
+                            var communityCount = 0
+                            clusterList.forEach { cluster ->
+                                try {
+                                    val type = if (cluster.status == "NEEDS_REVALIDATION") 
+                                        com.swapmap.zwap.demo.model.FeatureType.COMMUNITY_NEEDS_REVALIDATION 
+                                    else 
+                                        com.swapmap.zwap.demo.model.FeatureType.COMMUNITY_VERIFIED
+                                    
+                                    // Generate a stable ID from UUID hash
+                                    val featId = cluster.hazard_id.hashCode().toLong()
+                                    
+                                    val feat = com.swapmap.zwap.demo.model.OSMFeature(
+                                        id = featId,
+                                        lat = cluster.latitude,
+                                        lon = cluster.longitude,
+                                        type = type,
+                                        name = "${cluster.hazard_type.replace("_", " ")} (${cluster.verified_image_count} reports)",
+                                        tags = mapOf(
+                                            "community" to "true",
+                                            "status" to cluster.status,
+                                            "confidence" to cluster.confidence_score.toString()
+                                        )
+                                    )
+                                    
+                                    osmFeatures.add(feat)
+                                    communityCount++
+                                    
+                                    runOnUiThread {
+                                        addOSMMarker(feat)
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e("Zwap", "Error processing community hazard: ${cluster.hazard_id}", e)
+                                }
+                            }
+                            
+                            if (communityCount > 0) {
+                                runOnUiThread {
+                                    Toast.makeText(this@MainActivity, "Added $communityCount Community Hazards", Toast.LENGTH_SHORT).show()
+                                    
+                                    // Trigger immediate proximity check for new hazards
+                                    val loc = mapplsMap?.locationComponent?.lastKnownLocation
+                                    if (loc != null) {
+                                        checkHazardProximity(loc.latitude, loc.longitude)
+                                    } else {
+                                        checkHazardProximity(lat, lon)
+                                    }
+                                }
+                            }
+                        } else {
+                            Log.e("Zwap", "Backend fetch failed: ${commResponse.code()}")
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("Zwap", "Community fetch exception", e)
+                }
+
             } catch (e: Exception) {
                 Log.e("Zwap", "OSM fetch error", e)
                 runOnUiThread {
@@ -1271,8 +1342,8 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         findViewById<TextView>(R.id.tv_speed).text = "$speedKmh"
         findViewById<TextView>(R.id.tv_speed).setTextColor(if (speedKmh > 50) Color.RED else Color.WHITE)
         
-        // Check hazard proximity
-        if (osmOverlayEnabled) {
+        // Check hazard proximity (during overlay mode OR navigation)
+        if (osmOverlayEnabled || isNavigating) {
             checkHazardProximity(location.latitude, location.longitude)
         }
 
@@ -1310,6 +1381,8 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                     FeatureType.TRAFFIC_CALMING -> "Speed bump ahead in ${distance.toInt()} meters"
                     FeatureType.STOP_SIGN -> "Stop sign ahead in ${distance.toInt()} meters"
                     FeatureType.GIVE_WAY -> "Give way sign ahead in ${distance.toInt()} meters"
+                    FeatureType.COMMUNITY_VERIFIED -> "Community verified hazard ahead in ${distance.toInt()} meters"
+                    FeatureType.COMMUNITY_NEEDS_REVALIDATION -> "Reported hazard ahead in ${distance.toInt()} meters, needs verification"
                     else -> "Hazard ahead in ${distance.toInt()} meters"
                 }
                 Log.d("Zwap", "HAZARD ALERT: $msg")
@@ -1900,8 +1973,42 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                 val responseBody = response.body?.string()
                 
                 if (response.isSuccessful && responseBody != null) {
-                    val hazards = parseOSMHazards(responseBody, chunkPoints)
-                    Log.d("Zwap", "Found ${hazards.size} hazards in chunk (${progressPercent}%)")
+                    val hazards = parseOSMHazards(responseBody, chunkPoints).toMutableList()
+                    Log.d("Zwap", "Found ${hazards.size} OSM hazards in chunk (${progressPercent}%)")
+                    
+                    // Fetch Community Hazards for this chunk
+                    try {
+                        val centerLat = (minLat + maxLat) / 2
+                        val centerLon = (minLon + maxLon) / 2
+                        // Calculate approximate radius (diagonal of bounding box / 2)
+                        val latDiff = maxLat - minLat
+                        val lonDiff = maxLon - minLon
+                        val radiusKm = (Math.sqrt(latDiff * latDiff + lonDiff * lonDiff) * 111.0) / 2
+                        
+                        Log.d("Zwap", "Fetching community hazards: center=($centerLat,$centerLon), radius=${radiusKm}km")
+                        
+                        val commResponse = com.swapmap.zwap.demo.network.ApiClient.hazardApiService.getHazards(
+                            centerLat, centerLon, radiusKm
+                        )
+                        
+                        if (commResponse.isSuccessful && commResponse.body() != null) {
+                            val communityHazards = commResponse.body()!!.hazards.map { cluster ->
+                                RouteHazard(
+                                    lat = cluster.latitude,
+                                    lon = cluster.longitude,
+                                    type = if (cluster.status == "NEEDS_REVALIDATION") 
+                                        HazardType.COMMUNITY_REVALIDATE 
+                                    else 
+                                        HazardType.COMMUNITY_VERIFIED_HAZARD,
+                                    name = "${cluster.hazard_type.replace("_", " ")} (${cluster.verified_image_count} reports)"
+                                )
+                            }
+                            hazards.addAll(communityHazards)
+                            Log.d("Zwap", "Added ${communityHazards.size} community hazards to chunk")
+                        }
+                    } catch (e: Exception) {
+                        Log.e("Zwap", "Failed to fetch community hazards for chunk: ${e.message}")
+                    }
                     
                     withContext(Dispatchers.Main) {
                         if (isNavigating) {
@@ -1932,8 +2039,8 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         // Update index for next chunk and continue
         currentHazardFetchIndex = endIndex
         
-        // Longer delay between chunks to avoid API rate limiting
-        kotlinx.coroutines.delay(1500)
+        // Delay between chunks to avoid API rate limiting
+        kotlinx.coroutines.delay(500)
         
         // Fetch next chunk if still navigating
         if (isNavigating && currentHazardFetchIndex < currentRoutePoints.size - 1) {
@@ -2039,9 +2146,39 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                 
                 marker?.let { routeHazardMarkerIds.add(it.id) }
                 
-                Log.d("Zwap", "Added ${hazard.type} marker at (${hazard.lat}, ${hazard.lon})")
+                // CRITICAL: Also add to osmFeatures for proximity alerts
+                val featureType = when (hazard.type) {
+                    HazardType.SPEED_CAMERA -> com.swapmap.zwap.demo.model.FeatureType.SPEED_CAMERA
+                    HazardType.TRAFFIC_CALMING -> com.swapmap.zwap.demo.model.FeatureType.TRAFFIC_CALMING
+                    HazardType.TOLL -> com.swapmap.zwap.demo.model.FeatureType.TOLL
+                    HazardType.COMMUNITY_VERIFIED_HAZARD -> com.swapmap.zwap.demo.model.FeatureType.COMMUNITY_VERIFIED
+                    HazardType.COMMUNITY_REVALIDATE -> com.swapmap.zwap.demo.model.FeatureType.COMMUNITY_NEEDS_REVALIDATION
+                    else -> com.swapmap.zwap.demo.model.FeatureType.TRAFFIC_CALMING
+                }
+                
+                val osmFeature = com.swapmap.zwap.demo.model.OSMFeature(
+                    id = hazard.hashCode().toLong(),
+                    lat = hazard.lat,
+                    lon = hazard.lon,
+                    type = featureType,
+                    name = hazard.name,
+                    tags = mapOf("route_hazard" to "true")
+                )
+                
+                osmFeatures.add(osmFeature)
+                
+                Log.d("Zwap", "Added ${hazard.type} marker + alert at (${hazard.lat}, ${hazard.lon})")
             } catch (e: Exception) {
                 Log.e("Zwap", "Error adding hazard marker: ${e.message}")
+            }
+        }
+        
+        // Immediately check proximity for newly added hazards
+        if (hazards.isNotEmpty()) {
+            val currentLocation = mapplsMap?.locationComponent?.lastKnownLocation
+            if (currentLocation != null) {
+                checkHazardProximity(currentLocation.latitude, currentLocation.longitude)
+                Log.d("Zwap", "Triggered immediate proximity check for ${hazards.size} new hazards")
             }
         }
     }
@@ -2056,6 +2193,8 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             HazardType.HAZARD -> Color.parseColor("#FF9800")        // Orange
             HazardType.TOLL -> Color.parseColor("#9C27B0")          // Purple
             HazardType.TRAFFIC_CALMING -> Color.parseColor("#FFC107") // Yellow
+            HazardType.COMMUNITY_VERIFIED_HAZARD -> Color.parseColor("#4CAF50") // Green
+            HazardType.COMMUNITY_REVALIDATE -> Color.parseColor("#FFC107") // Yellow
             else -> Color.parseColor("#F44336")                      // Red
         }
         
@@ -2088,6 +2227,8 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             HazardType.HAZARD -> "⚠"
             HazardType.TOLL -> "💰"
             HazardType.TRAFFIC_CALMING -> "⏬"
+            HazardType.COMMUNITY_VERIFIED_HAZARD -> "✅"
+            HazardType.COMMUNITY_REVALIDATE -> "⏳"
             else -> "!"
         }
         val yPos = (size / 2f) - ((iconPaint.descent() + iconPaint.ascent()) / 2)
@@ -2120,7 +2261,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     data class RouteHazard(val lat: Double, val lon: Double, val type: HazardType, val name: String)
     
     enum class HazardType {
-        SPEED_CAMERA, HAZARD, TOLL, TRAFFIC_CALMING, OTHER
+        SPEED_CAMERA, HAZARD, TOLL, TRAFFIC_CALMING, OTHER, COMMUNITY_VERIFIED_HAZARD, COMMUNITY_REVALIDATE
     }
     
     private fun createRouteMarkerBitmap(isStart: Boolean): Bitmap {
