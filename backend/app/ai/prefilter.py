@@ -53,32 +53,32 @@ class ImagePrefilter:
     def check_resolution(self, image_path: str) -> Dict[str, any]:
         """
         Ensure image has sufficient resolution for analysis.
-        
-        Args:
-            image_path: Path to image file
-            
-        Returns:
-            Dict with 'valid' (bool), 'reason' (str), 'width', 'height'
+        Checks total pixel count (width*height) instead of strict w/h minimums
+        so landscape and portrait mobile photos both pass.
         """
         try:
             with Image.open(image_path) as img:
                 width, height = img.size
-            
-            if width < self.min_width or height < self.min_height:
+
+            total_pixels = width * height
+            # 640x480 = 307,200 px minimum — allow any aspect ratio
+            min_pixels = self.min_width * self.min_height
+
+            if total_pixels < min_pixels:
                 return {
                     "valid": False,
-                    "reason": f"Resolution too low: {width}x{height} (minimum: {self.min_width}x{self.min_height})",
+                    "reason": f"Resolution too low: {width}x{height} ({total_pixels} px, minimum: {min_pixels} px)",
                     "width": width,
                     "height": height
                 }
-            
+
             return {
                 "valid": True,
                 "reason": "",
                 "width": width,
                 "height": height
             }
-        
+
         except Exception as e:
             logger.error(f"Resolution check failed: {e}")
             return {"valid": False, "reason": f"Failed to read image dimensions: {str(e)}"}

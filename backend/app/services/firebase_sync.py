@@ -68,6 +68,7 @@ class FirebaseSyncService:
         confidence: float,
         reasoning: str,
         points_awarded: int,
+        user_id: str = "",
     ) -> None:
         if self._db is None:
             return
@@ -93,8 +94,67 @@ class FirebaseSyncService:
                 },
                 merge=True,
             )
+
+            # Write a notification to the user's notifications subcollection
+            if user_id:
+                self._push_report_notification(
+                    user_id=user_id,
+                    report_id=report_id,
+                    incident_type=incident_type,
+                    status=status,
+                    points_awarded=points_awarded,
+                )
+
         except Exception as exc:
             logger.error("Failed to sync report %s to Firestore: %s", report_id, exc)
+
+    def _push_report_notification(
+        self,
+        user_id: str,
+        report_id: str,
+        incident_type: str,
+        status: str,
+        points_awarded: int,
+    ) -> None:
+        """Write a notification document to users/{uid}/notifications."""
+        if not user_id:
+            logger.error("_push_report_notification called with empty user_id – skipping")
+            return
+        try:
+            logger.info(f"Writing notification → users/{user_id}/notifications (status={status})")
+            type_label = (incident_type or "hazard").replace("_", " ").title()
+
+            if status == "Verified":
+                title = "✅ Report Verified!"
+                message = f"Your {type_label} report was verified. +{points_awarded} pts awarded!"
+                notif_type = "verification"
+            elif status == "Rejected":
+                title = "❌ Report Rejected"
+                message = f"Your {type_label} report was rejected by our AI system."
+                notif_type = "verification"
+            else:
+                title = "⏳ Report Under Review"
+                message = f"Your {type_label} report is being manually reviewed."
+                notif_type = "system"
+
+            notif_ref = (
+                self._db.collection("users")
+                .document(user_id)
+                .collection("notifications")
+                .document()
+            )
+            notif_ref.set({
+                "userId": user_id,
+                "title": title,
+                "message": message,
+                "type": notif_type,
+                "relatedReportId": report_id,
+                "isRead": False,
+                "createdAt": firestore.SERVER_TIMESTAMP,
+            })
+            logger.info(f"Pushed notification to user {user_id}: {title}")
+        except Exception as exc:
+            logger.error("Failed to push notification for user %s: %s", user_id, exc)
 
     def update_user_trust(self, user_id: str, trust_data: Dict[str, Any]) -> None:
         if self._db is None:

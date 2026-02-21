@@ -10,7 +10,7 @@ from loguru import logger
 import sys
 
 from app.config import get_settings
-from app.api import reports, hazards, users
+from app.api import reports, hazards, users, admin
 
 # Configure logging
 logger.remove()
@@ -110,6 +110,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.include_router(reports.router, prefix="/api/v1", tags=["Reports"])
 app.include_router(hazards.router, prefix="/api/v1", tags=["Hazards"])
 app.include_router(users.router, prefix="/api/v1", tags=["Users"])
+app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
 
 
 if __name__ == "__main__":

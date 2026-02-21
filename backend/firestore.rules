@@ -2,43 +2,77 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
+    // =========================
     // Users
+    // =========================
     match /users/{userId} {
+      
+      // Anyone can read user profiles
       allow read: if true;
+      
+      // Only the owner can write to their profile
       allow write: if request.auth != null && request.auth.uid == userId;
+      
+      // 🔔 Notifications (Only owner can read, backend writes)
+      match /notifications/{notificationId} {
+        allow read, delete: if request.auth != null && request.auth.uid == userId;
+        allow create, update: if false; // Admin SDK only
+      }
+      
+      // ⭐ Trust Scores (Only owner can read, backend writes)
+      match /trust/{doc} {
+        allow read: if request.auth != null && request.auth.uid == userId;
+        allow write: if false; // Admin SDK only
+      }
+      
+      // 🔎 Search History (Only owner can read/write)
+      match /searchHistory/{searchId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
     }
     
-    // Reports (Hierarchy: reports/{channel}/threads/{reportId})
+    // =========================
+    // Reports (reports/{channel}/threads/{reportId})
+    // =========================
     match /reports/{channel} {
-      // Required for repository.submitReport() to create the channel document
-      // and for repository.getFeedReports() to list across channels
+      
+      // Required for listing channels & updating timestamps
       allow read, write: if request.auth != null;
       
       match /threads/{reportId} {
         allow read: if true;
         allow create: if request.auth != null;
         allow update: if true;
-        allow delete: if request.auth != null && (resource.data.userId == request.auth.uid || resource.data.reportedBy == request.auth.uid);
+        
+        // Only report owner or reporter can delete
+        allow delete: if request.auth != null &&
+          (resource.data.userId == request.auth.uid ||
+           resource.data.reportedBy == request.auth.uid);
       }
     }
     
+    // =========================
     // Reviews
+    // =========================
     match /reviews/{reviewId} {
       allow read: if true;
       allow create: if request.auth != null;
-      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow delete: if request.auth != null &&
+        resource.data.userId == request.auth.uid;
     }
-
+    
+    // =========================
     // Chat
+    // =========================
     match /chat/{regionId} {
       allow read, write: if request.auth != null;
       
       match /threads/{threadId} {
-         allow read, write: if request.auth != null;
-         
-         match /messages/{messageId} {
-            allow read, write: if request.auth != null;
-         }
+        allow read, write: if request.auth != null;
+        
+        match /messages/{messageId} {
+          allow read, write: if request.auth != null;
+        }
       }
     }
   }

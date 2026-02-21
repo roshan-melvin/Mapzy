@@ -49,19 +49,20 @@ class ProfileFragment : Fragment() {
         view.findViewById<TextView>(R.id.tv_profile_email).text = user.email
 
         // Fetch extra details from Firestore
+        // Priority: Firestore username -> Firebase Auth displayName -> "Zwap User"
         db.collection("users").document(user.uid).get()
             .addOnSuccessListener { document ->
-                if (document.exists()) {
-                    val name = document.getString("username") ?: "Zwap User"
-                    view.findViewById<TextView>(R.id.tv_profile_name).text = name
-                    
-                    view.findViewById<TextView>(R.id.tv_profile_name).text = name
-                    
-                    // Stats are now fetched from FastAPI below
-                }
+                val firestoreName = if (document.exists()) document.getString("name") else null
+                val name = firestoreName
+                    ?: user.displayName?.takeIf { it.isNotBlank() }
+                    ?: "Zwap User"
+                view.findViewById<TextView>(R.id.tv_profile_name).text = name
+                // Stats are fetched from FastAPI below
             }
             .addOnFailureListener {
-                view.findViewById<TextView>(R.id.tv_profile_name).text = "User (Offline)"
+                // If Firestore fails, still try displayName
+                val fallback = user.displayName?.takeIf { it.isNotBlank() } ?: "User (Offline)"
+                view.findViewById<TextView>(R.id.tv_profile_name).text = fallback
             }
 
         // Fetch real-time trust and stats from FastAPI Backend (Supabase)
@@ -77,7 +78,7 @@ class ProfileFragment : Fragment() {
                         view.findViewById<TextView>(R.id.tv_stats_badge).text = stats.badge_level
                         view.findViewById<TextView>(R.id.tv_stats_points).text = stats.reward_points.toString()
                         view.findViewById<TextView>(R.id.tv_stats_reports).text = stats.total_reports.toString()
-                        view.findViewById<TextView>(R.id.tv_profile_name).text = stats.username
+                        // stats.username is not returned by the backend properly, so rely on Firestore name
                     }
                 } else {
                     android.util.Log.e("ZwapProfile", "Failed to fetch stats: ${response.code()} ${response.message()}")

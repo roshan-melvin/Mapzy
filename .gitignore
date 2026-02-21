@@ -56,9 +56,9 @@ zwap_native/app/src/main/assets/zwap.env
 # google-services.json 
 
 # Python
-zwap/
-venv/
-__pycache__/
+/zwap/
+/venv/
+/__pycache__/
 *.pyc
 # Ignore zwap Python virtual environment
 zwap/bin/
