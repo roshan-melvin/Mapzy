@@ -12,12 +12,8 @@
         "*.local"
       ]
     }
-<<<<<<< HEAD
   ],
   "firestore": {
     "rules": "firestore.rules"
   }
-=======
-  ]
->>>>>>> fix/ai-and-git-config
 }

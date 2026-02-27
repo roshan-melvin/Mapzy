@@ -455,12 +455,7 @@ class VerificationService:
             update_payload = {
                 "status": status,
                 "verification_confidence": kwargs.get("ai_confidence", 0) * 100,
-<<<<<<< HEAD
-                "ai_reasoning": kwargs.get("ai_reasoning"),
-                "image_hash": kwargs.get("image_hash")
-=======
                 "ai_reasoning": kwargs.get("ai_reasoning")
->>>>>>> fix/ai-and-git-config
             }
             
             self.supabase.table("reports_analysis").update(update_payload).eq("report_id", report_id).execute()

@@ -117,15 +117,11 @@ class FirebaseSyncService:
         points_awarded: int,
     ) -> None:
         """Write a notification document to users/{uid}/notifications."""
-<<<<<<< HEAD
         if not user_id:
             logger.error("_push_report_notification called with empty user_id – skipping")
             return
         try:
             logger.info(f"Writing notification → users/{user_id}/notifications (status={status})")
-=======
-        try:
->>>>>>> fix/ai-and-git-config
             type_label = (incident_type or "hazard").replace("_", " ").title()
 
             if status == "Verified":
