@@ -41,3 +41,4 @@ httpx>=0.28.0
 loguru==0.7.2
 pydantic==2.5.3
 pydantic-settings==2.1.0
+websockets>=14.0,<16
