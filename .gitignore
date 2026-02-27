@@ -1,61 +1,58 @@
-# Ignore large model files
+# Large model files
 backend/models/*.pt
 backend/models/*.pth
 backend/models/*.h5
 backend/models/*.ckpt
-# Mappls API Configuration - Contains sensitive access tokens
-config.js
+yolov8n.pt
 
-# Environment files
+# Environment and Secret files
 .env
-.env.local
+.env.*
+*.env
+zwap.env
+zwap.env.*
+config.js
+serviceAccountKey.json
+**/serviceAccountKey.json
+google-services.json
+**/google-services.json
+local.properties
+**/local.properties
+zwap_native/app/src/main/assets/zwap.env
 
 # OS files
 .DS_Store
 Thumbs.db
+*.hprof
+java_pid*.hprof
 
 # IDE files
 .vscode/
 .idea/
 *.swp
 *.swo
+*.sublime-project
+*.sublime-workspace
 
-# Flutter builds
-zwap/build/
-zwap/.dart_tool/
-zwap/.flutter-plugins
-zwap/.flutter-plugins-dependencies
-zwap/.pub-cache/
-zwap/.pub/
-zwap/android/.gradle
-zwap/android/local.properties
-zwap/android/key.properties
-
-# ==========================================
-# ANDROID NATIVE APP (zwap_native/)
-# ==========================================
-.gradle/
+# Android Native App (zwap_native/)
 zwap_native/.gradle/
 zwap_native/build/
 zwap_native/app/build/
+zwap_native/captures/
+zwap_native/*.iml
+zwap_native/app/*.iml
 zwap_native/local.properties
-zwap_native/google-services.json
-zwap_native/*.hprof
-java_pid*.hprof
-zwap_native/full_log.txt
+zwap_native/External Libraries/
+.gradle/
+build/
 
-# Node dependencies
-node_modules/
-package-lock.json
-
-# Secrets
-serviceAccountKey.json
-**/serviceAccountKey.json
-zwap_native/app/src/main/assets/zwap.env
-# Note: google-services.json usually contains keys, ignore if public repo
-# google-services.json 
+# Build artifacts and logs
+build_output.txt
+full_log.txt
+*.log
 
 # Python
+<<<<<<< HEAD
 /zwap/
 /venv/
 /__pycache__/
@@ -67,28 +64,40 @@ zwap/include/
 zwap/share/
 
 # Ignore Python cache and build artifacts
+=======
+zwap/
+venv/
+.venv/
+env/
+.env/
+ENV/
+bin/
+lib/
+include/
+share/
+>>>>>>> fix/ai-and-git-config
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 .Python
-env/
-venv/
-ENV/
+*.egg-info/
+*.egg
 build/
 dist/
 .eggs/
-*.egg-info/
-*.egg
 
-# Ignore IDE and OS files
-.vscode/
-.idea/
-*.swp
-*.swo
-.DS_Store
-Thumbs.db
+# Node dependencies
+node_modules/
+package-lock.json
+yarn.lock
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# IDE
-.idea/
-.vscode/
+# Flutter (if any remains)
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/

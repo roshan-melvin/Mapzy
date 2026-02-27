@@ -269,9 +269,7 @@ class CommunityFragment : Fragment() {
                     .get().await()
 
                 val notifications = snap.documents.mapNotNull { doc ->
-                    val notif = doc.toObject(UserNotification::class.java)
-                    notif?.id = doc.id
-                    notif
+                    doc.toObject(UserNotification::class.java)?.copy(id = doc.id)
                 }
 
                 withContext(Dispatchers.Main) {
