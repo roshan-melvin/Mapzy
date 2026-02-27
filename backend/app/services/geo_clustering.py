@@ -125,7 +125,7 @@ class GeoClusteringService:
             
             # Get existing embeddings for this hazard
             existing_embeddings_response = self.supabase.table("hazard_embeddings").select(
-                "image_embedding"
+                "report_id, image_embedding"
             ).eq("hazard_id", hazard_id).execute()
             
             if not existing_embeddings_response.data:
@@ -133,11 +133,21 @@ class GeoClusteringService:
             
             # Compute similarities
             import numpy as np
+            import json
+            
+            if isinstance(new_embedding, str):
+                new_embedding = json.loads(new_embedding)
             new_emb = np.array(new_embedding)
             
             max_similarity = 0.0
             for emb_data in existing_embeddings_response.data:
-                existing_emb = np.array(emb_data["image_embedding"])
+                if emb_data.get("report_id") == report_id:
+                    continue
+                    
+                existing_emb_data = emb_data["image_embedding"]
+                if isinstance(existing_emb_data, str):
+                    existing_emb_data = json.loads(existing_emb_data)
+                existing_emb = np.array(existing_emb_data)
                 similarity = self.embedding_generator.compute_similarity(new_emb, existing_emb)
                 max_similarity = max(max_similarity, similarity)
             
@@ -179,26 +189,19 @@ class GeoClusteringService:
             )
             
             if nearby_hazard:
-                # Check embedding similarity
-                is_similar = await self.check_embedding_similarity(
-                    report["report_id"],
-                    nearby_hazard["hazard_id"]
-                )
+                # Unconditionally assign to existing cluster because it matches location & category
+                logger.info(f"Assigning to existing cluster: {nearby_hazard['hazard_id']}")
                 
-                if is_similar:
-                    # Assign to existing cluster
-                    logger.info(f"Assigning to existing cluster: {nearby_hazard['hazard_id']}")
-                    
-                    self.supabase.table("community_reports").update({
-                        "hazard_id": nearby_hazard["hazard_id"]
-                    }).eq("report_id", report["report_id"]).execute()
-                    
-                    # Update embedding with hazard_id
-                    self.supabase.table("hazard_embeddings").update({
-                        "hazard_id": nearby_hazard["hazard_id"]
-                    }).eq("report_id", report["report_id"]).execute()
-                    
-                    return nearby_hazard["hazard_id"]
+                self.supabase.table("community_reports").update({
+                    "hazard_id": nearby_hazard["hazard_id"]
+                }).eq("report_id", report["report_id"]).execute()
+                
+                # Update embedding with hazard_id
+                self.supabase.table("hazard_embeddings").update({
+                    "hazard_id": nearby_hazard["hazard_id"]
+                }).eq("report_id", report["report_id"]).execute()
+                
+                return nearby_hazard["hazard_id"]
             
             # Create new cluster
             logger.info("Creating new hazard cluster")
@@ -313,6 +316,14 @@ class GeoClusteringService:
                 
                 if distance <= radius_km:
                     hazard["distance_km"] = distance
+                    
+                    # Fetch an image from associated community reports
+                    reports_resp = self.supabase.table("community_reports").select("image_url").eq("hazard_id", hazard["hazard_id"]).limit(1).execute()
+                    if reports_resp.data:
+                        hazard["image_url"] = reports_resp.data[0].get("image_url")
+                    else:
+                        hazard["image_url"] = None
+                        
                     hazards_in_radius.append(hazard)
             
             # Sort by confidence (descending)

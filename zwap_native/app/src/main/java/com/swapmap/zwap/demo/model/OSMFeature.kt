@@ -14,7 +14,9 @@ enum class FeatureType(val osmTag: String, val color: String, val icon: String) 
     TRAFFIC_CALMING("traffic_calming", "#f59e0b", "⚠️"),
     STOP_SIGN("highway=stop", "#ef4444", "🛑"),
     GIVE_WAY("highway=give_way", "#f59e0b", "⚠️"),
-    TOLL("barrier=toll_booth", "#8b5cf6", "💰");
+    TOLL("barrier=toll_booth", "#8b5cf6", "💰"),
+    COMMUNITY_VERIFIED("community=verified", "#22c55e", "✅"),
+    COMMUNITY_NEEDS_REVALIDATION("community=revalidate", "#eab308", "⏳");
     
     companion object {
         fun fromOSMTag(key: String, value: String): FeatureType? {

@@ -184,7 +184,7 @@
                         android:id="@+id/tv_stats_trust"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="50%"
+                        android:text="0%"
                         android:textColor="#57F287"
                         android:textSize="24sp"
                         android:textStyle="bold"/>

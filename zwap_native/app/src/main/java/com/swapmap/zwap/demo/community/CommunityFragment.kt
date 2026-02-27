@@ -6,12 +6,16 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 import com.swapmap.zwap.R
 import com.swapmap.zwap.demo.model.Report
+import com.swapmap.zwap.demo.model.UserNotification
 import com.swapmap.zwap.demo.repository.ReportRepository
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
@@ -26,8 +30,27 @@ class CommunityFragment : Fragment() {
 
     private var mapView: com.mappls.sdk.maps.MapView? = null
     private val repository = ReportRepository()
-    private var fetchJob: kotlinx.coroutines.Job? = null
+    private var fetchJob: Job? = null
+
     private lateinit var feedAdapter: FeedAdapter
+    private lateinit var leaderboardAdapter: LeaderboardAdapter
+    private lateinit var notificationAdapter: NotificationAdapter
+
+    private var rvFeed: RecyclerView? = null
+    private var rvLeaderboard: RecyclerView? = null
+    private var rvNotifications: RecyclerView? = null
+    private var tvEmpty: TextView? = null
+
+    // Selection mode UI
+    private var headerNormal: LinearLayout? = null
+    private var headerSelection: LinearLayout? = null
+    private var tvSelectionCount: TextView? = null
+    private var btnSelectAll: TextView? = null
+    private var btnDeleteSelected: TextView? = null
+    private var btnSelectionBack: ImageView? = null
+
+    private val auth = FirebaseAuth.getInstance()
+    private val db = FirebaseFirestore.getInstance()
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -39,17 +62,24 @@ class CommunityFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        
+
         mapView = view.findViewById(R.id.thread_map_preview)
         mapView?.onCreate(savedInstanceState)
 
-        // Setup Servers (Sidebar)
+        // --- Selection mode header refs ---
+        headerNormal = view.findViewById(R.id.header_normal)
+        headerSelection = view.findViewById(R.id.header_selection)
+        tvSelectionCount = view.findViewById(R.id.tv_selection_count)
+        btnSelectAll = view.findViewById<TextView>(R.id.btn_select_all)
+        btnDeleteSelected = view.findViewById<TextView>(R.id.btn_delete_selected)
+        btnSelectionBack = view.findViewById(R.id.btn_selection_back)
+
+        // --- Setup Servers Sidebar ---
         val rvServers = view.findViewById<RecyclerView>(R.id.rv_servers)
         rvServers.layoutManager = LinearLayoutManager(context)
-        
-        // Sidebar Data: ID, IconRes, Name
+
         val sidebarItems = listOf(
-            SidebarItem("hazards", android.R.drawable.ic_dialog_alert, "Hazards"), 
+            SidebarItem("hazards", android.R.drawable.ic_dialog_alert, "Hazards"),
             SidebarItem("cameras", android.R.drawable.ic_menu_camera, "Speed Cameras"),
             SidebarItem("leaderboard", android.R.drawable.btn_star, "Leaderboard"),
             SidebarItem("notifications", android.R.drawable.ic_popup_reminder, "Notifications"),
@@ -63,133 +93,258 @@ class CommunityFragment : Fragment() {
         )
 
         val rvChannels = view.findViewById<RecyclerView>(R.id.rv_channels)
-        val rvFeed = view.findViewById<RecyclerView>(R.id.rv_feed)
         val btnBack = view.findViewById<ImageView>(R.id.btn_back_channels)
         val tvTitle = view.findViewById<TextView>(R.id.tv_server_name)
         val threadView = view.findViewById<View>(R.id.thread_view_container)
-        
-        // Thread View Controls
         val btnThreadBack = view.findViewById<ImageView>(R.id.btn_thread_back)
         val rvComments = view.findViewById<RecyclerView>(R.id.rv_comments)
         val btnOptions = view.findViewById<ImageView>(R.id.btn_community_options)
 
         rvChannels.layoutManager = LinearLayoutManager(context)
-        rvFeed.layoutManager = LinearLayoutManager(context)
+        rvFeed = view.findViewById(R.id.rv_feed)
+        rvFeed?.layoutManager = LinearLayoutManager(context)
         rvComments.layoutManager = LinearLayoutManager(context)
-        
-        feedAdapter = FeedAdapter(mutableListOf()) { report ->
-            showThread(report, threadView)
+
+        feedAdapter = FeedAdapter(mutableListOf()) { report -> showThread(report, threadView) }
+        rvFeed?.adapter = feedAdapter
+
+        rvLeaderboard = view.findViewById(R.id.rv_leaderboard)
+        rvLeaderboard?.layoutManager = LinearLayoutManager(context)
+        leaderboardAdapter = LeaderboardAdapter(mutableListOf())
+        rvLeaderboard?.adapter = leaderboardAdapter
+
+        rvNotifications = view.findViewById(R.id.rv_notifications)
+        rvNotifications?.layoutManager = LinearLayoutManager(context)
+        notificationAdapter = NotificationAdapter(mutableListOf(), onClick = {}) { count, inSelectionMode ->
+            onSelectionChanged(count, inSelectionMode)
         }
-        rvFeed.adapter = feedAdapter
+        rvNotifications?.adapter = notificationAdapter
 
-        // Mock Comments (Keep for now, or remove)
-        rvComments.adapter = ChannelAdapter(listOf("Is this cleared?", "Traffic is backing up", "Still there @ 5pm")) { } 
+        rvComments.adapter = ChannelAdapter(listOf("Is this cleared?", "Traffic is backing up", "Still there @ 5pm")) {}
 
-        // FETCH REAL REPORTS
-        val tvEmpty = view.findViewById<TextView>(R.id.tv_empty_feed)
-        fetchRealReports(rvFeed, threadView, tvEmpty)
+        tvEmpty = view.findViewById(R.id.tv_empty_feed)
+        fetchRealReports(rvFeed!!, threadView, tvEmpty!!)
 
+        // ── Helper: hides ALL content views ──────────────────────────────
+        fun hideAllContentViews() {
+            rvFeed?.visibility = View.GONE
+            rvLeaderboard?.visibility = View.GONE
+            rvNotifications?.visibility = View.GONE
+            threadView.visibility = View.GONE
+            tvEmpty?.visibility = View.GONE
+            // Exit notification selection mode if switching away
+            if (notificationAdapter.isSelectionMode) {
+                notificationAdapter.exitSelectionMode()
+            }
+        }
+
+        // ── Channel click handler ─────────────────────────────────────────
         val channelAdapter = ChannelAdapter(mutableListOf()) { channelName ->
-            // Intercept "my-reports" to show ContributionFragment
             if (channelName == "my-reports") {
-                 parentFragmentManager.beginTransaction()
-                     .replace(R.id.fragment_container, ContributionFragment())
-                     .addToBackStack(null)
-                     .commit()
-                 return@ChannelAdapter
+                parentFragmentManager.beginTransaction()
+                    .replace(R.id.fragment_container, ContributionFragment())
+                    .addToBackStack(null).commit()
+                return@ChannelAdapter
             }
 
-            // On Channel Click -> Show Feed
+            hideAllContentViews()
             rvChannels.visibility = View.GONE
-            rvFeed.visibility = View.VISIBLE
             btnBack.visibility = View.VISIBLE
             tvTitle.text = "#$channelName"
-            
-            // Store current channel name for report dialog
             view.setTag(R.id.rv_feed, channelName)
 
-            val tvEmpty = view.findViewById<TextView>(R.id.tv_empty_feed)
-            tvEmpty.visibility = View.GONE
-            
-            // Clear current list immediately to prevent "glitching" from old data
-            feedAdapter.updateData(emptyList())
-
-            // Fetch reports for this specific channel
-            if (channelName == "all-hazards") {
-                fetchRealReports(rvFeed, threadView, tvEmpty)
-            } else {
-                fetchChannelReports(channelName, rvFeed, threadView, tvEmpty)
+            when (channelName) {
+                "global-ranking" -> {
+                    rvLeaderboard?.visibility = View.VISIBLE
+                    fetchLeaderboard(rvLeaderboard!!, tvEmpty!!)
+                }
+                else -> {
+                    rvFeed?.visibility = View.VISIBLE
+                    feedAdapter.updateData(emptyList())
+                    if (channelName == "all-hazards") {
+                        fetchRealReports(rvFeed!!, threadView, tvEmpty!!)
+                    } else {
+                        fetchChannelReports(channelName, rvFeed!!, threadView, tvEmpty!!)
+                    }
+                }
             }
         }
         rvChannels.adapter = channelAdapter
 
-        // Back Button Logic
+        // ── Back button ───────────────────────────────────────────────────
         btnBack.setOnClickListener {
-            if (threadView.visibility == View.VISIBLE) {
-                 threadView.visibility = View.GONE
-            } else {
-                rvFeed.visibility = View.GONE
-                rvChannels.visibility = View.VISIBLE
-                btnBack.visibility = View.GONE
-                btnOptions.visibility = View.GONE
-                tvTitle.text = "Hazards" 
-                view.findViewById<View>(R.id.tv_empty_feed).visibility = View.GONE
+            when {
+                threadView.visibility == View.VISIBLE -> threadView.visibility = View.GONE
+                else -> {
+                    hideAllContentViews()
+                    rvChannels.visibility = View.VISIBLE
+                    btnBack.visibility = View.GONE
+                    btnOptions.visibility = View.GONE
+                }
             }
         }
-        
+
         btnOptions.setOnClickListener {
             val popup = android.widget.PopupMenu(context, btnOptions)
-            popup.menu.add("Clear All")
-            popup.menu.add("Filter").setOnMenuItemClickListener {
-                // Nested options: read, unread
-                val filterPopup = android.widget.PopupMenu(context, btnOptions)
-                filterPopup.menu.add("read")
-                filterPopup.menu.add("unread")
-                filterPopup.show()
-                true
-            }
+            popup.menu.add("Filter")
             popup.show()
         }
-        
-        btnThreadBack.setOnClickListener {
-            threadView.visibility = View.GONE
-        }
-        
-        // REMOVED: Channel Report Button
 
-        // Select first item by default
+        btnThreadBack.setOnClickListener { threadView.visibility = View.GONE }
+
+        // ── Selection mode toolbar buttons ────────────────────────────────
+        btnSelectAll?.setOnClickListener {
+            notificationAdapter.selectAll()
+        }
+
+        btnDeleteSelected?.setOnClickListener {
+            val selected = notificationAdapter.getSelectedNotifications()
+            android.util.Log.d("ZwapNotif", "Delete tapped, selected count: ${selected.size}")
+            if (selected.isNotEmpty()) {
+                deleteNotifications(selected)
+            }
+        }
+
+        // Back in selection mode = exit selection, stay in notifications view
+        btnSelectionBack?.setOnClickListener {
+            notificationAdapter.exitSelectionMode()
+            // Ensure the normal header is shown (onSelectionChanged handles this)
+        }
+
+        // ── Default view ──────────────────────────────────────────────────
         updateChannels(view, channelMap["hazards"] ?: emptyList(), "Hazards")
 
         rvServers.adapter = ServerAdapter(sidebarItems) { item ->
             when (item.id) {
                 "add" -> {
                     parentFragmentManager.beginTransaction()
-                         .replace(R.id.fragment_container, CreateReportFragment())
-                         .addToBackStack(null)
-                         .commit()
+                        .replace(R.id.fragment_container, CreateReportFragment())
+                        .addToBackStack(null).commit()
                 }
                 "notifications" -> {
-                    // Update main area title
+                    hideAllContentViews()
+                    rvChannels.visibility = View.GONE
+                    rvNotifications?.visibility = View.VISIBLE
+                    btnBack.visibility = View.GONE  // No back arrow in normal notifications view
+                    btnOptions.visibility = View.GONE
                     tvTitle.text = "Notifications"
-                    rvChannels.visibility = View.VISIBLE
-                    rvFeed.visibility = View.GONE
-                    btnBack.visibility = View.GONE
-                    btnOptions.visibility = View.VISIBLE
-                    threadView.visibility = View.GONE
-                    // tv_empty_feed visibility will be handled by updateChannels
-                    
-                    // Removed placeholder notifications
-                    updateChannels(view, emptyList(), "Notifications")
+                    // Ensure normal header is showing (not selection header)
+                    headerNormal?.visibility = View.VISIBLE
+                    headerSelection?.visibility = View.GONE
+                    fetchNotifications()
                 }
                 else -> {
+                    hideAllContentViews()
                     updateChannels(view, channelMap[item.id] ?: emptyList(), item.name)
-                    rvFeed.visibility = View.GONE
                     rvChannels.visibility = View.VISIBLE
                     btnBack.visibility = View.GONE
                     btnOptions.visibility = View.GONE
-                    threadView.visibility = View.GONE
-                    view.findViewById<View>(R.id.tv_empty_feed).visibility = View.GONE
                 }
+            }
+        }
+    }
+
+    // ── Selection mode callback ───────────────────────────────────────────
+    private fun onSelectionChanged(count: Int, inSelectionMode: Boolean) {
+        if (inSelectionMode) {
+            headerNormal?.visibility = View.GONE
+            headerSelection?.visibility = View.VISIBLE
+            tvSelectionCount?.text = "$count selected"
+        } else {
+            headerSelection?.visibility = View.GONE
+            headerNormal?.visibility = View.VISIBLE
+            // Don't restore btnBack — notifications view has no back arrow
+        }
+    }
+
+    // ── Fetch notifications from Firestore ────────────────────────────────
+    private fun fetchNotifications() {
+        val uid = auth.currentUser?.uid ?: return
+        fetchJob?.cancel()
+        fetchJob = viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val snap = db.collection("users").document(uid)
+                    .collection("notifications")
+                    .orderBy("createdAt", com.google.firebase.firestore.Query.Direction.DESCENDING)
+                    .get().await()
+
+                val notifications = snap.documents.mapNotNull { doc ->
+                    doc.toObject(UserNotification::class.java)?.copy(id = doc.id)
+                }
+
+                withContext(Dispatchers.Main) {
+                    notificationAdapter.updateData(notifications)
+                    tvEmpty?.text = "No notifications yet."
+                    tvEmpty?.visibility = if (notifications.isEmpty()) View.VISIBLE else View.GONE
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    // ── Delete selected notifications from Firestore ───────────────────────
+    private fun deleteNotifications(selected: List<UserNotification>) {
+        val uid = auth.currentUser?.uid ?: return
+
+        // 1. Remove from UI immediately for instant feedback
+        notificationAdapter.removeNotifications(selected)
+        tvEmpty?.visibility = if (notificationAdapter.itemCount == 0) View.VISIBLE else View.GONE
+
+        // 2. Delete from Firestore in background
+        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
+            selected.forEach { notif ->
+                if (notif.id.isNotEmpty()) {
+                    try {
+                        db.collection("users").document(uid)
+                            .collection("notifications").document(notif.id)
+                            .delete().await()
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun fetchLeaderboard(rvLeaderboard: RecyclerView, tvEmpty: TextView) {
+        fetchJob?.cancel()
+        fetchJob = viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val response = com.swapmap.zwap.demo.network.ApiClient.hazardApiService.getLeaderboard(10)
+                if (response.isSuccessful && response.body() != null) {
+                    val leaderboard = response.body()!!.leaderboard
+
+                    val firestore = FirebaseFirestore.getInstance()
+                    val resolvedItems = leaderboard.map { item ->
+                        try {
+                            val doc = firestore.collection("users").document(item.userId).get().await()
+                            val name = doc.getString("name") ?: "User ${item.userId.takeLast(4)}"
+                            com.swapmap.zwap.demo.model.LeaderboardItem(
+                                userId = item.userId,
+                                trustScore = item.trustScore,
+                                badgeLevel = item.badgeLevel,
+                                rewardPoints = item.rewardPoints,
+                                acceptedReports = item.acceptedReports,
+                                username = name
+                            )
+                        } catch (e: Exception) {
+                            item.copy(username = "User ${item.userId.takeLast(4)}")
+                        }
+                    }
+
+                    withContext(Dispatchers.Main) {
+                        leaderboardAdapter.updateData(resolvedItems)
+                        tvEmpty.text = "The legends of the road will appear here!"
+                        tvEmpty.visibility = if (resolvedItems.isEmpty()) View.VISIBLE else View.GONE
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        android.widget.Toast.makeText(context, "Failed to load rankings", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
     }
@@ -203,9 +358,7 @@ class CommunityFragment : Fragment() {
                     feedAdapter.updateData(reports)
                     tvEmpty.visibility = if (reports.isEmpty()) View.VISIBLE else View.GONE
                 }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+            } catch (e: Exception) { e.printStackTrace() }
         }
     }
 
@@ -215,53 +368,40 @@ class CommunityFragment : Fragment() {
             try {
                 val snapshot = repository.getChannelReports(channelName).get().await()
                 val reports = snapshot.toObjects(Report::class.java)
-                
                 withContext(Dispatchers.Main) {
                     feedAdapter.updateData(reports)
                     tvEmpty.visibility = if (reports.isEmpty()) View.VISIBLE else View.GONE
                 }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+            } catch (e: Exception) { e.printStackTrace() }
         }
     }
 
     private fun showThread(report: Report, threadView: View) {
         threadView.visibility = View.VISIBLE
         val postView = threadView.findViewById<View>(R.id.thread_original_post)
-        
-        postView.findViewById<TextView>(R.id.tv_username).text = "User" // report.userId (Mask or fetch name)
+        postView.findViewById<TextView>(R.id.tv_username).text = "User"
         postView.findViewById<TextView>(R.id.tv_hazard_type).text = report.incidentType
-        postView.findViewById<TextView>(R.id.tv_location).text = report.description // Showing Desc as location/details
-        
+        postView.findViewById<TextView>(R.id.tv_location).text = report.description
         val sdf = SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault())
-        postView.findViewById<TextView>(R.id.tv_timestamp).text = report.createdAt?.toDate()?.let { sdf.format(it) } ?: "Just now"
-        
+        postView.findViewById<TextView>(R.id.tv_timestamp).text =
+            report.createdAt?.toDate()?.let { sdf.format(it) } ?: "Just now"
         postView.findViewById<TextView>(R.id.tv_upvotes).text = report.pointsAwarded.toString()
-        
         val badge = postView.findViewById<TextView>(R.id.tv_category_badge)
         badge.text = report.status
-        if (report.status == "Verified") {
-            badge.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#43B581"))
-        } else {
-             badge.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#FAA61A")) // Pending/Yellow
-        }
-
-        // Map Preview (Mocked Location for now since Report has lat/lng but Map needs pin)
+        badge.backgroundTintList = android.content.res.ColorStateList.valueOf(
+            if (report.status == "Verified") Color.parseColor("#43B581")
+            else Color.parseColor("#FAA61A")
+        )
         mapView?.getMapAsync(object : com.mappls.sdk.maps.OnMapReadyCallback {
             override fun onMapReady(map: com.mappls.sdk.maps.MapplsMap) {
-                 val pos = com.mappls.sdk.maps.geometry.LatLng(report.latitude, report.longitude)
-                 map.animateCamera(com.mappls.sdk.maps.camera.CameraUpdateFactory.newLatLngZoom(pos, 14.0))
-                 map.clear()
-                 map.addMarker(com.mappls.sdk.maps.annotations.MarkerOptions().position(pos))
+                val pos = com.mappls.sdk.maps.geometry.LatLng(report.latitude, report.longitude)
+                map.animateCamera(com.mappls.sdk.maps.camera.CameraUpdateFactory.newLatLngZoom(pos, 14.0))
+                map.clear()
+                map.addMarker(com.mappls.sdk.maps.annotations.MarkerOptions().position(pos))
             }
-
-            override fun onMapError(code: Int, message: String?) {
-                // Log error if needed
-            }
+            override fun onMapError(code: Int, message: String?) {}
         })
     }
-
 
     override fun onStart() { super.onStart(); mapView?.onStart() }
     override fun onResume() { super.onResume(); mapView?.onResume() }
@@ -275,37 +415,26 @@ class CommunityFragment : Fragment() {
         view.findViewById<TextView>(R.id.tv_server_name).text = title
         val rvChannels = view.findViewById<RecyclerView>(R.id.rv_channels)
         val tvEmpty = view.findViewById<TextView>(R.id.tv_empty_feed)
-        
         (rvChannels.adapter as? ChannelAdapter)?.updateData(channels)
-        
-        if (title == "Notifications") {
-            tvEmpty.text = "No messages found"
-            tvEmpty.visibility = if (channels.isEmpty()) View.VISIBLE else View.GONE
+        tvEmpty.visibility = if (channels.isEmpty() && title == "Notifications") {
+            tvEmpty.text = "No notification channels"
+            View.VISIBLE
         } else {
-            tvEmpty.text = "No reports in this channel yet."
-            // Ensure empty state is hidden for channel browsing unless explicitly handled
-            if (title != "Hazards" && title != "Speed Cameras" && title != "Leaderboard") {
-                tvEmpty.visibility = if (channels.isEmpty()) View.VISIBLE else View.GONE
-            } else {
-                tvEmpty.visibility = View.GONE
-            }
+            View.GONE
         }
     }
 
     data class SidebarItem(val id: String, val iconRes: Int, val name: String)
 
-    // -- Adapters --
     class ServerAdapter(private val items: List<SidebarItem>, private val onClick: (SidebarItem) -> Unit) : RecyclerView.Adapter<ServerAdapter.ViewHolder>() {
         inner class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
             val iconImg: ImageView = view.findViewById(R.id.iv_icon)
             val iconText: TextView = view.findViewById(R.id.tv_icon)
         }
-
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
             val view = LayoutInflater.from(parent.context).inflate(R.layout.item_server, parent, false)
             return ViewHolder(view)
         }
-
         override fun onBindViewHolder(holder: ViewHolder, position: Int) {
             val item = items[position]
             if (item.id == "add") {
@@ -317,10 +446,7 @@ class CommunityFragment : Fragment() {
             } else {
                 holder.iconImg.visibility = View.VISIBLE
                 holder.iconText.visibility = View.GONE
-                try { 
-                    holder.iconImg.setImageResource(item.iconRes)
-                    holder.iconImg.setColorFilter(Color.WHITE)
-                } catch (e: Exception) {}
+                try { holder.iconImg.setImageResource(item.iconRes); holder.iconImg.setColorFilter(Color.WHITE) } catch (e: Exception) {}
             }
             holder.itemView.setOnClickListener { onClick(item) }
         }
@@ -335,7 +461,6 @@ class CommunityFragment : Fragment() {
         override fun getItemCount() = items.size
     }
 
-    // UPDATED FEED ADAPTER using Report
     class FeedAdapter(private var items: List<Report>, private val onClick: (Report) -> Unit) : RecyclerView.Adapter<FeedAdapter.ViewHolder>() {
         class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
             val tvUser: TextView = view.findViewById(R.id.tv_username)
@@ -345,34 +470,23 @@ class CommunityFragment : Fragment() {
             val tvVotes: TextView = view.findViewById(R.id.tv_upvotes)
             val badge: TextView = view.findViewById(R.id.tv_category_badge)
         }
-
-        fun updateData(newItems: List<Report>) {
-            items = newItems
-            notifyDataSetChanged()
-        }
-
+        fun updateData(newItems: List<Report>) { items = newItems; notifyDataSetChanged() }
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
             val view = LayoutInflater.from(parent.context).inflate(R.layout.item_report_card, parent, false)
             return ViewHolder(view)
         }
-
         override fun onBindViewHolder(holder: ViewHolder, position: Int) {
             val item = items[position]
-            holder.tvUser.text = "User" // Placeholder for Name (need user fetch)
+            holder.tvUser.text = "User"
             holder.tvType.text = item.incidentType
-            holder.tvLoc.text = item.description // Using description as primary text
-            
+            holder.tvLoc.text = item.description
             val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
             holder.tvTime.text = item.createdAt?.toDate()?.let { sdf.format(it) } ?: "Just now"
-            
             holder.tvVotes.text = item.pointsAwarded.toString()
-            
             holder.badge.text = item.status
-            if (item.status == "Verified") {
-                holder.badge.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#43B581"))
-            } else {
-                holder.badge.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#FAA61A"))
-            }
+            holder.badge.backgroundTintList = android.content.res.ColorStateList.valueOf(
+                if (item.status == "Verified") Color.parseColor("#43B581") else Color.parseColor("#FAA61A")
+            )
             holder.itemView.setOnClickListener { onClick(item) }
         }
         override fun getItemCount() = items.size

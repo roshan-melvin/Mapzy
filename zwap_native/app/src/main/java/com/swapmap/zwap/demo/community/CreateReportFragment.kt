@@ -143,10 +143,7 @@ class CreateReportFragment : Fragment(R.layout.fragment_create_report) {
                 return@setOnClickListener
             }
 
-            if (desc.isBlank()) {
-                etDesc.error = "Description required"
-                return@setOnClickListener
-            }
+// Description is now optional
 
             if (selectedLatLng == null) {
                 Toast.makeText(context, "Please ensure location is set (wait for map)", Toast.LENGTH_SHORT).show()

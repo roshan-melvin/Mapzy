@@ -56,7 +56,7 @@ class VerificationService:
             # 2. Download image
             image_path = await self._download_image(report["image_url"])
             if not image_path:
-                return self._reject_report(report_id, "Failed to download image")
+                return self._reject_report(report_id, "Failed to download image", report=report)
             
             # 3. Get existing hashes for duplicate detection
             existing_hashes = self._get_existing_hashes(
@@ -75,7 +75,7 @@ class VerificationService:
                 return self._reject_report(
                     report_id, 
                     prefilter_result["reason"],
-                    prefilter_details=prefilter_result
+                    report=report,
                 )
             
             image_hash = prefilter_result["image_hash"]
@@ -87,7 +87,8 @@ class VerificationService:
             if fake_result["is_ai_generated"]:
                 return self._reject_report(
                     report_id,
-                    f"AI-generated image detected ({fake_result['probability']:.2%})"
+                    f"AI-generated image detected ({fake_result['probability']:.2%})",
+                    report=report,
                     # ai_gen_probability=fake_result["probability"]  # Column not in DB yet
                 )
             
@@ -169,13 +170,16 @@ class VerificationService:
             }
             status = status_map.get(verdict, "Pending")
             points_awarded = 10 if status == "Verified" else 0
+            uid = report.get("user_id", "")
+            logger.info(f"🔔 Pushing Firebase notification to user_id='{uid}', status={status}")
             self.firebase_sync.update_report_status(
                 report_id=report_id,
                 incident_type=report.get("incident_type", ""),
                 status=status,
                 confidence=final_confidence,
                 reasoning=gemini_result.get("reasoning", ""),
-                points_awarded=points_awarded
+                points_awarded=points_awarded,
+                user_id=uid,
             )
             
             # 12. Store embeddings
@@ -337,33 +341,40 @@ class VerificationService:
     def _reject_report(
         self, 
         report_id: str, 
-        reason: str, 
+        reason: str,
+        report: Optional[Dict] = None,
         **kwargs
     ) -> Dict[str, Any]:
         """
-        Reject a report and update database.
-        
-        Args:
-            report_id: Report ID
-            reason: Rejection reason
-            **kwargs: Additional fields to update
-            
-        Returns:
-            Result dict
+        Reject a report and update database. Also pushes a Firebase notification.
         """
         logger.warning(f"🚫 Rejecting report {report_id}: {reason}")
         
         update_data = {
-            "status": "Rejected",  # Changed from verification_status
+            "status": "Rejected",
             "verification_confidence": 0,
             "ai_reasoning": reason,
-            # "manual_review_needed": False,  # Column not in DB yet
-            **kwargs
+            **{k: v for k, v in kwargs.items() if k != "report"},
         }
         
         self.supabase.table("reports_analysis").update(update_data).eq(
             "report_id", report_id
         ).execute()
+
+        # Push rejection notification to Firebase if we have user context
+        if report and report.get("user_id"):
+            uid = report["user_id"]
+            incident = report.get("incident_type", "hazard")
+            logger.info(f"🔔 Pushing rejection notification to user_id='{uid}'")
+            self.firebase_sync.update_report_status(
+                report_id=report_id,
+                incident_type=incident,
+                status="Rejected",
+                confidence=0.0,
+                reasoning=reason,
+                points_awarded=0,
+                user_id=uid,
+            )
         
         return {
             "success": True,
@@ -403,10 +414,16 @@ class VerificationService:
     def _get_existing_hashes(self, user_id: str, incident_type: str) -> list:
         """Get existing image hashes for duplicate detection."""
         try:
-            # Note: image_hash not in existing schema, skip for now
+            # Fetch hashes from reports_analysis to prevent duplicates
+            response = self.supabase.table("reports_analysis").select("image_hash").eq(
+                "incident_type", incident_type
+            ).not_.is_("image_hash", "null").limit(100).execute()
+            
+            if response.data:
+                return [r["image_hash"] for r in response.data]
             return []
         except Exception as e:
-            logger.error(f"Failed to fetch hashes: {e}")
+            logger.debug(f"Failed to fetch hashes (column may not exist): {e}")
             return []
     
     def _get_user_trust(self, user_id: str) -> float:
@@ -424,26 +441,55 @@ class VerificationService:
             return 0.5
     
     def _update_report_verification(self, report_id: str, **kwargs):
-        """Update report with verification results."""
+        """Update report with verification results and sync to community_reports."""
         try:
-            # Map to existing schema fields
             verdict = kwargs.get("verdict")
             status_map = {
                 "ACCEPTED": "Verified",
                 "REJECTED": "Rejected",
                 "UNCERTAIN": "Pending"
             }
+            status = status_map.get(verdict, "Pending")
             
-            self.supabase.table("reports_analysis").update({
-                "status": status_map.get(verdict, "Pending"),
+            # 1. Update primary reports_analysis table
+            update_payload = {
+                "status": status,
                 "verification_confidence": kwargs.get("ai_confidence", 0) * 100,
-                "ai_reasoning": kwargs.get("ai_reasoning"),
-                # "manual_review_needed": verdict == "UNCERTAIN"  # Column not in DB yet
-            }).eq("report_id", report_id).execute()
+                "ai_reasoning": kwargs.get("ai_reasoning")
+            }
+            
+            self.supabase.table("reports_analysis").update(update_payload).eq("report_id", report_id).execute()
+            
+            # 2. If Accepted, sync to community_reports (Post-Analysis)
+            if verdict == "ACCEPTED":
+                # Fetch full report data to ensure we have all fields
+                report = self._get_report(report_id)
+                if report:
+                    community_report = {
+                        "report_id": report["report_id"],
+                        "user_id": report["user_id"],
+                        "hazard_type": report.get("incident_type", "hazard"),
+                        "description": report.get("description"),
+                        "image_url": report["image_url"],
+                        "latitude": float(report["latitude"]),
+                        "longitude": float(report["longitude"]),
+                        # PostGIS expects POINT(longitude latitude)
+                        "location": f"POINT({report['longitude']} {report['latitude']})",
+                        "verification_status": "ACCEPTED",
+                        "ai_verdict": "ACCEPTED",
+                        "ai_confidence": kwargs.get("ai_confidence", 0) * 100,
+                        "ai_reasoning": kwargs.get("ai_reasoning"),
+                        "yolo_detections": kwargs.get("yolo_detections"),
+                        "gemini_response": kwargs.get("gemini_response"),
+                        "prefilter_passed": kwargs.get("prefilter_passed", True)
+                    }
+                    
+                    self.supabase.table("community_reports").upsert(community_report).execute()
+                    logger.info(f"Report {report_id} synced to community_reports")
             
             logger.debug(f"Updated report {report_id} with verification results")
         except Exception as e:
-            logger.error(f"Failed to update report: {e}")
+            logger.error(f"Failed to update report and sync: {e}")
     
     def _store_embeddings(
         self, 
@@ -451,13 +497,19 @@ class VerificationService:
         image_embedding, 
         text_embedding
     ):
-        """Store embeddings in database."""
+        """Store embeddings in database for similarity search."""
         try:
-            # Skip embedding storage if table doesn't exist
-            # Can be added later if needed
-            logger.debug(f"Skipping embedding storage for {report_id} (table not in schema)")
+            embedding_record = {
+                "report_id": report_id,
+                # Convert numpy arrays to lists for Supabase
+                "image_embedding": image_embedding.tolist() if hasattr(image_embedding, 'tolist') else image_embedding,
+                "description_embedding": text_embedding.tolist() if text_embedding is not None and hasattr(text_embedding, 'tolist') else text_embedding
+            }
+            
+            self.supabase.table("hazard_embeddings").upsert(embedding_record).execute()
+            logger.info(f"Successfully stored embeddings for report {report_id}")
         except Exception as e:
-            logger.error(f"Failed to store embeddings: {e}")
+            logger.error(f"Failed to store embeddings for {report_id}: {e}")
     
     async def _process_accepted_report(self, report: Dict):
         """Process accepted report (clustering, confidence update)."""
