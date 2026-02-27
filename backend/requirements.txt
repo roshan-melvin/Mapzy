@@ -1,6 +1,6 @@
 fastapi==0.109.0
 uvicorn[standard]==0.27.0
-supabase==2.3.4
+supabase>=2.4.0
 cloudinary==1.36.0
 google-generativeai==0.3.2
 python-dotenv==1.0.1
@@ -37,7 +37,7 @@ python-multipart==0.0.6
 
 # Utilities
 requests==2.31.0
-httpx==0.25.2
+httpx>=0.28.0
 loguru==0.7.2
 pydantic==2.5.3
 pydantic-settings==2.1.0
