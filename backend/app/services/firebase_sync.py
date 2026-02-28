@@ -190,6 +190,49 @@ class FirebaseSyncService:
         except Exception as exc:
             logger.error("Failed to sync trust for %s to Firestore: %s", user_id, exc)
 
+    def sync_confirmed_hazard(
+        self,
+        hazard_id: str,
+        incident_type: str,
+        latitude: float,
+        longitude: float,
+        confidence: float,
+        status: str = "CONFIRMED"
+    ) -> None:
+        """Sync a confirmed (or decayed) hazard cluster to the map_hazards collection."""
+        if self._db is None:
+            return
+
+        try:
+            doc_ref = self._db.collection("map_hazards").document(hazard_id)
+            doc_ref.set(
+                {
+                    "hazard_id": hazard_id,
+                    "incident_type": incident_type,
+                    "latitude": float(latitude),
+                    "longitude": float(longitude),
+                    "confidence": confidence,
+                    "status": status,
+                    "updated_at": firestore.SERVER_TIMESTAMP,
+                },
+                merge=True,
+            )
+            logger.info(f"Synced hazard {hazard_id} to map_hazards collection (status={status}, conf={confidence}%)")
+        except Exception as exc:
+            logger.error("Failed to sync hazard %s to Firestore map_hazards: %s", hazard_id, exc)
+
+    def remove_hazard_from_map(self, hazard_id: str) -> None:
+        """Remove an expired or deleted hazard from the map_hazards collection."""
+        if self._db is None:
+            return
+
+        try:
+            doc_ref = self._db.collection("map_hazards").document(hazard_id)
+            doc_ref.delete()
+            logger.info(f"Removed hazard {hazard_id} from map_hazards collection")
+        except Exception as exc:
+            logger.error("Failed to remove hazard %s from Firestore map_hazards: %s", hazard_id, exc)
+
 
 _firebase_sync_service: Optional[FirebaseSyncService] = None
 

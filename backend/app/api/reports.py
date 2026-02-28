@@ -56,27 +56,7 @@ async def verify_report_background(report_id: str):
     """Background task to verify report."""
     try:
         verification_service = get_verification_service()
-        result = await verification_service.verify_report(report_id)
-        
-        if result.get("success") and result.get("verdict") == "ACCEPTED":
-            # Assign to cluster and update confidence
-            geo_service = get_geo_clustering_service()
-            confidence_service = get_confidence_service()
-            
-            # Get report
-            supabase = get_supabase()
-            report_response = supabase.table("community_reports").select("*").eq(
-                "report_id", report_id
-            ).execute()
-            
-            if report_response.data:
-                report = report_response.data[0]
-                
-                # Assign to cluster
-                hazard_id = await geo_service.assign_to_cluster(report)
-                
-                # Update hazard confidence
-                confidence_service.update_hazard_confidence(hazard_id)
+        await verification_service.verify_report(report_id)
         
         logger.info(f"✅ Background verification complete for {report_id}")
     

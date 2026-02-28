@@ -110,7 +110,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     private var hazardAlertAdapter: HazardAlertAdapter? = null
     private var isHazardPanelExpanded = true
     private val activeHazards = mutableListOf<HazardAlert>()
-    private val HAZARD_CROSSED_DISTANCE = 30.0  // Consider crossed when within 30m // 10 seconds
+    private val HAZARD_CROSSED_DISTANCE = 10.0  // Consider crossed when within 10m
     
     private var symbolManager: SymbolManager? = null
     private var lineManager: LineManager? = null
@@ -122,14 +122,18 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     private var osmOverlayEnabled = false
     private var lastOSMFetchLocation: Location? = null
     private var lastZoomLevel: Double = 0.0
-    
-    // Route hazard markers (separate from regular OSM markers)
+    private var lastFetchedMapCenter: com.mappls.sdk.maps.geometry.LatLng? = null
     private val routeHazardMarkerIds = mutableListOf<Long>()
     private var isNavigating = false
     private var currentRoutePoints: List<Point> = emptyList()  // Store route points for progressive fetching
     private var currentHazardFetchIndex = 0  // Track which chunk we're fetching
     private var hazardFetchJob: kotlinx.coroutines.Job? = null  // Job to cancel if route changes
     private var totalRouteDistanceMeters = 0.0  // Total route distance for progress calculation
+    
+    // Firebase live sync state
+    private val liveConfidenceMap = mutableMapOf<Long, Double>()
+    private val liveStatusMap = mutableMapOf<Long, String>()
+    private val featureToMarkerMap = mutableMapOf<Long, com.mappls.sdk.maps.annotations.Marker>()
     
     private lateinit var auth: FirebaseAuth
     private var currentUserId: String? = null
@@ -245,7 +249,73 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         builder.show()
     }
     
+    private fun listenToFirebaseMapHazards() {
+        Log.d("Zwap", "Starting Firebase map_hazards live listener")
+        db.collection("map_hazards").addSnapshotListener { snapshots, e ->
+            if (e != null) {
+                Log.w("Zwap", "Listen to map_hazards failed.", e)
+                return@addSnapshotListener
+            }
+
+            if (snapshots != null) {
+                Log.d("Zwap", "Firebase snapshot updated! Documents found: ${snapshots.documents.size}")
+                for (doc in snapshots.documents) {
+                    val hazardIdStr = doc.id
+                    val status = doc.getString("status") ?: "CONFIRMED"
+                    val confidence = doc.getDouble("confidence") ?: 100.0
+                    val type = doc.getString("incident_type") ?: "HAZARD"
+                    
+                    val hazardId = hazardIdStr.hashCode().toLong()
+                    Log.d("Zwap", "Checking Firebase Doc: $hazardIdStr (Hash ID: $hazardId) -> Conf: $confidence")
+                    
+                    // SAVE LIVE DATA FOR BACKEND LOOKUP
+                    liveConfidenceMap[hazardId] = confidence
+                    liveStatusMap[hazardId] = status
+                    
+                    val feat = osmFeatures.find { it.id == hazardId }
+                    if (feat != null) {
+                        Log.d("Zwap", "Updating hazard $hazardIdStr from Firebase live sync. New conf: $confidence")
+                        
+                        // Extract reports count from existing name if present
+                        val currentName = feat.name ?: ""
+                        val reportsMatch = Regex("(\\d+)\\s+reports").find(currentName)
+                        val reportsStr = if (reportsMatch != null) "${reportsMatch.groupValues[1]} reports" else "1 reports"
+                        
+                        val updatedName = "${type.replace("_", " ")} ($confidence% conf, $reportsStr)"
+                        feat.name = updatedName
+                        
+                        val featType = if (status == "NEEDS_REVALIDATION") 
+                                        com.swapmap.zwap.demo.model.FeatureType.COMMUNITY_NEEDS_REVALIDATION 
+                                    else 
+                                        com.swapmap.zwap.demo.model.FeatureType.COMMUNITY_VERIFIED
+                        feat.type = featType
+                        
+                        runOnUiThread {
+                            // Update active visual alert panel if present
+                            val activeHazard = activeHazards.find { it.id == hazardId }
+                            if (activeHazard != null) {
+                                activeHazard.name = updatedName
+                                activeHazard.type = featType
+                                hazardAlertAdapter?.notifyDataSetChanged()
+                            }
+                            
+                            // Instantly re-render this exact map marker visually
+                            val oldMarker = featureToMarkerMap[hazardId]
+                            if (oldMarker != null) {
+                                oldMarker.remove()
+                                osmMarkerIds.remove(oldMarker.id)
+                                featureToMarkerMap.remove(hazardId)
+                                addOSMMarker(feat)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private fun setupUI() {
+        listenToFirebaseMapHazards()
         // Setup hazard alert panel
         setupHazardAlertPanel()
         findViewById<View>(R.id.search_trigger).setOnClickListener { showSearchOverlay(null) }
@@ -565,7 +635,6 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                 button.animate().scaleX(1.0f).scaleY(1.0f).setDuration(100).start()
             }.start()
             Log.d("Zwap", "Hazards overlay enabled, fetching features...")
-            Toast.makeText(this, "Hazards ON", Toast.LENGTH_SHORT).show()
             
             /*
             // TEST HAZARDS
@@ -597,7 +666,6 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             // Inactive state - white background
             button.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
             Log.d("Zwap", "Hazards overlay disabled, clearing markers")
-            Toast.makeText(this, "Hazards OFF", Toast.LENGTH_SHORT).show()
             clearOSMMarkers()
         }
     }
@@ -718,13 +786,12 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                     // Show final count after all markers loaded
                     runOnUiThread {
                         Log.d("Zwap", "Loaded ${osmFeatures.size} total: $cameraCount cameras, $hazardCount hazards")
-                        Toast.makeText(this@MainActivity, "Cameras: $cameraCount | Hazards: $hazardCount", Toast.LENGTH_SHORT).show()
                     }
                 } else {
                     val errorMsg = "OSM API error: ${response.code()} - ${response.message()}"
                     Log.e("Zwap", errorMsg)
                     runOnUiThread {
-                        Toast.makeText(this@MainActivity, "Failed to load hazards", Toast.LENGTH_SHORT).show()
+                        Log.e("Zwap", "Failed to load OSM hazards")
                     }
                 }
 
@@ -743,24 +810,27 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                             var communityCount = 0
                             clusterList.forEach { cluster ->
                                 try {
-                                    val type = if (cluster.status == "NEEDS_REVALIDATION") 
+                                    // Generate a stable ID from UUID hash
+                                    val featId = cluster.hazard_id.hashCode().toLong()
+                                    Log.d("Zwap", "Adding Community Hazard ID: \${cluster.hazard_id} -> HashMap ID: \$featId")
+                                    
+                                    val overrideConfidence = liveConfidenceMap[featId] ?: cluster.confidence_score
+                                    val overrideStatus = liveStatusMap[featId] ?: cluster.status
+                                    val type = if (overrideStatus == "NEEDS_REVALIDATION") 
                                         com.swapmap.zwap.demo.model.FeatureType.COMMUNITY_NEEDS_REVALIDATION 
                                     else 
                                         com.swapmap.zwap.demo.model.FeatureType.COMMUNITY_VERIFIED
-                                    
-                                    // Generate a stable ID from UUID hash
-                                    val featId = cluster.hazard_id.hashCode().toLong()
                                     
                                     val feat = com.swapmap.zwap.demo.model.OSMFeature(
                                         id = featId,
                                         lat = cluster.latitude,
                                         lon = cluster.longitude,
                                         type = type,
-                                        name = "${cluster.hazard_type.replace("_", " ")} (${cluster.verified_image_count} reports)",
+                                        name = "${cluster.hazard_type.replace("_", " ")} ($overrideConfidence% conf, ${cluster.verified_image_count} reports)",
                                         tags = mapOf(
                                             "community" to "true",
-                                            "status" to cluster.status,
-                                            "confidence" to cluster.confidence_score.toString()
+                                            "status" to overrideStatus,
+                                            "confidence" to overrideConfidence.toString()
                                         )
                                     )
                                     
@@ -777,7 +847,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                             
                             if (communityCount > 0) {
                                 runOnUiThread {
-                                    Toast.makeText(this@MainActivity, "Added $communityCount Community Hazards", Toast.LENGTH_SHORT).show()
+                                    Log.d("Zwap", "Added $communityCount Community Hazards")
                                     
                                     // Trigger immediate proximity check for new hazards
                                     val loc = mapplsMap?.locationComponent?.lastKnownLocation
@@ -799,7 +869,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             } catch (e: Exception) {
                 Log.e("Zwap", "OSM fetch error", e)
                 runOnUiThread {
-                    Toast.makeText(this@MainActivity, "Network error loading hazards", Toast.LENGTH_SHORT).show()
+                    Log.e("Zwap", "Network error loading hazards")
                 }
             }
         }.start()
@@ -818,6 +888,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             val marker = mapplsMap?.addMarker(markerOptions)
             if (marker != null) {
                 osmMarkerIds.add(marker.id)
+                featureToMarkerMap[feature.id] = marker
                 Log.d("Zwap", "Added OSM marker: ${feature.type.name} at ${feature.lat},${feature.lon}")
             } else {
                 Log.e("Zwap", "Failed to add marker for ${feature.type.name}")
@@ -880,6 +951,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     private fun clearOSMMarkers() {
         mapplsMap?.markers?.filter { osmMarkerIds.contains(it.id) }?.forEach { it.remove() }
         osmMarkerIds.clear()
+        featureToMarkerMap.clear()
     }
 
     private lateinit var searchAdapter: SearchAdapter
@@ -1279,19 +1351,36 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             enableLocationComponent(style)
         }
         
-        // Add camera change listener to refresh OSM overlay on zoom changes
         // Add camera change listener to refresh OSM overlay
         map.addOnCameraIdleListener {
             val currentZoom = map.cameraPosition.zoom
-            lastZoomLevel = currentZoom
+            val currentTarget = map.cameraPosition.target
             
-            if (osmOverlayEnabled) {
-                // Debounce fetch to update on Pan/Zoom but avoid 429 API errors
-                osmRunnable?.let { osmHandler.removeCallbacks(it) }
-                osmRunnable = Runnable { 
-                    fetchAndDisplayOSMFeatures() 
+            if (osmOverlayEnabled && currentTarget != null) {
+                var distanceMoved = 0f
+                if (lastFetchedMapCenter != null) {
+                    val distArray = FloatArray(1)
+                    android.location.Location.distanceBetween(
+                        lastFetchedMapCenter!!.latitude, lastFetchedMapCenter!!.longitude,
+                        currentTarget.latitude, currentTarget.longitude, distArray
+                    )
+                    distanceMoved = distArray[0]
                 }
-                osmHandler.postDelayed(osmRunnable!!, 1000)
+                
+                val zoomDiff = Math.abs(currentZoom - lastZoomLevel)
+                
+                // Only refetch if camera moved > 500m or zoom changed by > 0.5
+                if (lastFetchedMapCenter == null || distanceMoved > 500 || zoomDiff > 0.5) {
+                    lastZoomLevel = currentZoom
+                    lastFetchedMapCenter = currentTarget
+                    
+                    // Debounce fetch to update on Pan/Zoom but avoid 429 API errors
+                    osmRunnable?.let { osmHandler.removeCallbacks(it) }
+                    osmRunnable = Runnable { 
+                        fetchAndDisplayOSMFeatures() 
+                    }
+                    osmHandler.postDelayed(osmRunnable!!, 1000)
+                }
             }
         }
     }
@@ -1369,12 +1458,12 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
 
     private fun checkHazardProximity(userLat: Double, userLon: Double) {
         osmFeatures.forEach { feature ->
-            if (alertedHazardIds.contains(feature.id)) return@forEach
             val results = FloatArray(1)
             android.location.Location.distanceBetween(userLat, userLon, feature.lat, feature.lon, results)
             val distance = results[0].toDouble()
-            Log.d("Zwap", "Distance to ${feature.type}: ${distance.toInt()}m")
-            if (distance < HAZARD_ALERT_DISTANCE) {
+            
+            // Only trigger NEW alerts if not alerted yet and within distance
+            if (!alertedHazardIds.contains(feature.id) && distance < HAZARD_ALERT_DISTANCE) {
                 alertedHazardIds.add(feature.id)
                 val msg = when (feature.type) {
                     FeatureType.SPEED_CAMERA -> "Speed camera ahead in ${distance.toInt()} meters"
@@ -1387,7 +1476,9 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                 }
                 Log.d("Zwap", "HAZARD ALERT: $msg")
                 Toast.makeText(this, msg, Toast.LENGTH_SHORT).show(); tts?.speak(msg, TextToSpeech.QUEUE_ADD, null, null)
-                // Add to visual panel
+                addHazardToPanel(feature, distance.toInt())
+            } else if (alertedHazardIds.contains(feature.id) && distance < HAZARD_ALERT_DISTANCE) {
+                // If already alerted but still close, ensure it's visually added if not already
                 addHazardToPanel(feature, distance.toInt())
             }
         }
@@ -1403,10 +1494,15 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         }
         recyclerView?.adapter = hazardAlertAdapter
         
-        // Setup collapse/expand header click
         findViewById<View>(R.id.hazard_panel_header)?.setOnClickListener {
             toggleHazardPanel()
         }
+        
+        // Ensure panel is above everything
+        val panel = findViewById<View>(R.id.hazard_alert_panel)
+        panel?.elevation = 100f
+        panel?.translationZ = 100f
+        panel?.bringToFront()
     }
 
     private fun toggleHazardPanel() {
@@ -1433,12 +1529,8 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                 val results = FloatArray(1)
                 android.location.Location.distanceBetween(userLat, userLon, feature.lat, feature.lon, results)
                 val newDistance = results[0].toInt()
-                if (newDistance < HAZARD_CROSSED_DISTANCE) {
-                    toRemove.add(hazard.id)
-                    Log.d("Zwap", "CROSSED hazard: \${hazard.type} at \${newDistance}m")
-                } else {
-                    hazardAlertAdapter?.updateHazard(hazard.id, newDistance)
-                }
+                // Simply update distance without auto-removing right now
+                hazardAlertAdapter?.updateHazard(hazard.id, newDistance)
             }
         }
         toRemove.forEach { id ->
@@ -1446,7 +1538,12 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             activeHazards.removeIf { it.id == id }
         }
         countView?.text = activeHazards.size.toString()
-        panel?.visibility = if (activeHazards.isNotEmpty()) View.VISIBLE else View.GONE
+        if (activeHazards.isNotEmpty()) {
+            panel?.visibility = View.VISIBLE
+            panel?.bringToFront()
+        } else {
+            panel?.visibility = View.GONE
+        }
     }
 
     private fun addHazardToPanel(feature: OSMFeature, distance: Int) {
@@ -1463,7 +1560,13 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             val panel = findViewById<View>(R.id.hazard_alert_panel)
             val countView = findViewById<TextView>(R.id.tv_hazard_count)
             panel?.visibility = View.VISIBLE
+            panel?.elevation = 150f
+            panel?.translationZ = 150f
+            panel?.bringToFront()
+            panel?.requestLayout()
+            panel?.invalidate()
             countView?.text = activeHazards.size.toString()
+            Log.d("Zwap", "Visually added hazard to panel, total showing: ${activeHazards.size}")
         }
     }
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {

@@ -186,6 +186,8 @@ class TrustScoringService:
                 if r.get("hazard_id")
             )) if unique_hazards_response.data else 0
             
+            is_shadow_banned = user_trust.get("trust_score", 50.0) < 20.0
+            
             return {
                 "user_id": user_id,
                 "trust_score": user_trust["trust_score"],
@@ -196,7 +198,8 @@ class TrustScoringService:
                 "rejected_reports": user_trust["rejected_reports"],
                 "accuracy_percentage": round(accuracy, 2),
                 "unique_hazards_contributed": unique_hazards,
-                "recent_reports": recent_reports
+                "recent_reports": recent_reports,
+                "is_shadow_banned": is_shadow_banned
             }
         
         except Exception as e:

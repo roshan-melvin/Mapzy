@@ -52,30 +52,27 @@ full_log.txt
 *.log
 
 # Python
-<<<<<<< HEAD
+# Ignore Python virtual environments
 /zwap/
 /venv/
-/__pycache__/
-*.pyc
-# Ignore zwap Python virtual environment
+/.venv/
+/env/
+/.env/
+/ENV/
+
+# Ignore zwap Python virtual environment specific folders
 zwap/bin/
 zwap/lib/
 zwap/include/
 zwap/share/
 
-# Ignore Python cache and build artifacts
-=======
-zwap/
-venv/
-.venv/
-env/
-.env/
-ENV/
+# Generic root level environment folders
 bin/
 lib/
 include/
 share/
->>>>>>> fix/ai-and-git-config
+
+# Ignore Python cache and build artifacts
 __pycache__/
 *.pyc
 *.pyo

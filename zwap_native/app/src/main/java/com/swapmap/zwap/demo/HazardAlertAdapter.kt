@@ -10,8 +10,8 @@ import com.swapmap.zwap.demo.model.FeatureType
 
 data class HazardAlert(
     val id: Long,
-    val type: FeatureType,
-    val name: String,
+    var type: FeatureType,
+    var name: String,
     val distance: Int,
     var crossed: Boolean = false
 )
@@ -50,16 +50,8 @@ class HazardAlertAdapter(
         }
         
         // Set name
-        holder.nameView.text = when (hazard.type) {
-            FeatureType.SPEED_CAMERA -> "Speed Camera"
-            FeatureType.TRAFFIC_CALMING -> "Speed Bump"
-            FeatureType.STOP_SIGN -> "Stop Sign"
-            FeatureType.GIVE_WAY -> "Give Way"
-            FeatureType.TOLL -> "Toll Booth"
-            FeatureType.COMMUNITY_VERIFIED -> "Verified Hazard"
-            FeatureType.COMMUNITY_NEEDS_REVALIDATION -> "Check Status"
-            else -> "Hazard"
-        }
+        // Set name (which contains type and confidence score)
+        holder.nameView.text = hazard.name
         
         // Set distance
         holder.distanceView.text = "${hazard.distance}m ahead"

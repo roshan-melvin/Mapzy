@@ -81,7 +81,8 @@ async def resolve_pending_report(
                 confidence_service = get_confidence_service()
                 
                 hazard_id = await geo_service.assign_to_cluster(report)
-                confidence_service.update_hazard_confidence(hazard_id)
+                if hazard_id:
+                    confidence_service.update_hazard_confidence(hazard_id)
             except Exception as e:
                 logger.error(f"Failed to process accepted report for clustering: {e}")
                 

@@ -46,6 +46,7 @@ class ConfidenceLifecycleService:
             if hazard["status"] == "PENDING" and report_count >= settings.initial_confirmation_count:
                 logger.info(f"✅ Initial confirmation reached ({report_count} reports)")
                 self._confirm_hazard(hazard_id, report_count)
+                self._sync_to_map(hazard_id, hazard["incident_type"], hazard["latitude"], hazard["longitude"], 100, "CONFIRMED")
                 return {"success": True, "status": "CONFIRMED", "confidence": 100}
             
             # Not enough reports yet
@@ -54,27 +55,44 @@ class ConfidenceLifecycleService:
                 return {"success": True, "status": "PENDING", "confidence": 0}
             
             # Phase 2: Time-Based Decay
-            if hazard["last_verified_at"]:
+            current_confidence = hazard.get("confidence_score", 0)
+            status = hazard["status"]
+            
+            if hazard["last_verified_at"] and status in ["CONFIRMED", "NEEDS_REVALIDATION"]:
                 last_verified = datetime.fromisoformat(
                     hazard["last_verified_at"].replace("Z", "+00:00")
                 )
                 days_since_verification = (datetime.now(last_verified.tzinfo) - last_verified).days
                 
-                if days_since_verification >= settings.revalidation_days:
-                    logger.warning(f"⏰ Hazard needs revalidation ({days_since_verification} days old)")
-                    self._mark_needs_revalidation(hazard_id)
-                    return {"success": True, "status": "NEEDS_REVALIDATION", "confidence": 50}
+                # Decay by 25 points for every full 7 days passed
+                weeks_passed = days_since_verification // 7
+                if weeks_passed > 0:
+                    decay_amount = weeks_passed * 25
+                    new_confidence = max(0, current_confidence - decay_amount)
+                    
+                    if new_confidence < current_confidence:
+                        logger.warning(f"⏰ Hazard {hazard_id} decayed by {decay_amount} points ({weeks_passed} weeks old)")
+                        current_confidence = new_confidence
+                        status = "NEEDS_REVALIDATION"
+                        
+                        # Reset the timer so it doesn't double-decay
+                        self.supabase.table("hazard_clusters").update({
+                            "status": status,
+                            "confidence_score": current_confidence,
+                            "last_verified_at": datetime.now().isoformat()
+                        }).eq("hazard_id", hazard_id).execute()
+                        
+                        self._sync_to_map(hazard_id, hazard["incident_type"], hazard["latitude"], hazard["longitude"], current_confidence, status)
             
-            # Phase 3: Expiry Check
-            current_confidence = hazard.get("confidence_score", 0)
-            if current_confidence < settings.expiry_confidence_threshold:
+            # Phase 3: Expiry Check (e.g. if it hits 0 and stays 0)
+            if current_confidence < settings.expiry_confidence_threshold and status != "PENDING":
                 logger.warning(f"❌ Hazard expired (confidence: {current_confidence}%)")
                 self._expire_hazard(hazard_id)
                 return {"success": True, "status": "EXPIRED", "confidence": current_confidence}
             
             return {
                 "success": True,
-                "status": hazard["status"],
+                "status": status,
                 "confidence": current_confidence
             }
         
@@ -115,9 +133,33 @@ class ConfidenceLifecycleService:
                 "status": "EXPIRED"
             }).eq("hazard_id", hazard_id).execute()
             
-            logger.info(f"❌ Hazard {hazard_id} expired")
+            # Remove from Firebase live map
+            try:
+                from app.services.firebase_sync import get_firebase_sync_service
+                firebase_sync = get_firebase_sync_service()
+                firebase_sync.remove_hazard_from_map(hazard_id=hazard_id)
+            except Exception as e:
+                logger.error(f"Failed to remove expired hazard from map: {e}")
+            
+            logger.info(f"❌ Hazard {hazard_id} expired and removed from map")
         except Exception as e:
             logger.error(f"Failed to expire hazard: {e}")
+            
+    def _sync_to_map(self, hazard_id: str, incident_type: str, latitude: float, longitude: float, confidence: float, status: str):
+        """Helper to sync hazard to the Firebase map collection."""
+        try:
+            from app.services.firebase_sync import get_firebase_sync_service
+            firebase_sync = get_firebase_sync_service()
+            firebase_sync.sync_confirmed_hazard(
+                hazard_id=hazard_id,
+                incident_type=incident_type,
+                latitude=latitude,
+                longitude=longitude,
+                confidence=confidence,
+                status=status
+            )
+        except Exception as e:
+            logger.error(f"Failed to trigger map sync: {e}")
     
     async def process_revalidation_response(
         self,
@@ -155,22 +197,22 @@ class ConfidenceLifecycleService:
             
             if response == "YES":
                 if new_image_url:
-                    # Create new report for verification
-                    logger.info("📸 User provided new image for revalidation")
-                    # TODO: Create report and trigger verification
-                    # For now, just boost confidence
-                    new_confidence = min(100, current_confidence + 30)
+                    logger.info("📸 User provided new image for revalidation, giving larger boost")
+                    boost = 40
                 else:
-                    # Trust-based confirmation
-                    user_trust = self._get_user_trust(user_id)
-                    boost = user_trust * 0.5  # Max 50% boost
-                    new_confidence = min(100, current_confidence + boost)
+                    logger.info("✅ User confirmed hazard existence")
+                    boost = 25
                 
+                new_confidence = min(100, current_confidence + boost)
+                
+                new_status = "CONFIRMED" if new_confidence >= 100 else "NEEDS_REVALIDATION"
                 self.supabase.table("hazard_clusters").update({
                     "confidence_score": new_confidence,
                     "last_verified_at": datetime.now().isoformat(),
-                    "status": "CONFIRMED" if new_confidence >= 70 else "NEEDS_REVALIDATION"
+                    "status": new_status
                 }).eq("hazard_id", hazard_id).execute()
+                
+                self._sync_to_map(hazard_id, hazard["incident_type"], hazard["latitude"], hazard["longitude"], new_confidence, new_status)
                 
                 logger.info(f"✅ Revalidation YES: confidence {current_confidence}% → {new_confidence}%")
                 return {"success": True, "new_confidence": new_confidence}
@@ -185,6 +227,8 @@ class ConfidenceLifecycleService:
                     "confidence_score": new_confidence,
                     "status": new_status
                 }).eq("hazard_id", hazard_id).execute()
+                
+                self._sync_to_map(hazard_id, hazard["incident_type"], hazard["latitude"], hazard["longitude"], new_confidence, new_status)
                 
                 logger.info(f"❌ Revalidation NO: confidence {current_confidence}% → {new_confidence}%")
                 return {"success": True, "new_confidence": new_confidence, "status": new_status}
@@ -277,16 +321,56 @@ class ConfidenceLifecycleService:
             return None
     
     def _get_accepted_reports(self, hazard_id: str) -> List[Dict]:
-        """Get all accepted reports for a hazard."""
+        """Get all accepted reports for a hazard, filtering out severe shadow bans."""
         try:
-            response = self.supabase.table("community_reports").select("*").eq(
+            # First fetch all accepted reports for this hazard
+            reports_response = self.supabase.table("community_reports").select("*").eq(
                 "hazard_id", hazard_id
             ).eq("verification_status", "ACCEPTED").execute()
             
-            return response.data
+            reports = reports_response.data or []
+            if not reports:
+                return []
+                
+            # Extract unique user IDs
+            user_ids = list(set([r["user_id"] for r in reports if r.get("user_id")]))
+            
+            if not user_ids:
+                return reports
+                
+            # Fetch trust scores for these users
+            trust_response = self.supabase.table("user_trust_scores").select("user_id, trust_score").in_(
+                "user_id", user_ids
+            ).execute()
+            
+            # Create a lookup mapping user_id -> trust_score
+            trust_map = {
+                t["user_id"]: t.get("trust_score", 50.0) 
+                for t in (trust_response.data or [])
+            }
+            
+            # Filter out reporters with trust score < 20
+            valid_reports = []
+            for req in reports:
+                user_id = req.get("user_id")
+                trust = trust_map.get(user_id, 50.0)
+                if trust >= 20.0:
+                    valid_reports.append(req)
+                else:
+                    logger.warning(f"Excluding report {req.get('report_id')} from confidence (Shadow Banned User with trust {trust})")
+                    
+            return valid_reports
         except Exception as e:
-            logger.error(f"Failed to get accepted reports: {e}")
-            return []
+            # Complete fallback
+            logger.error(f"Failed to get accepted reports with manual map: {e}")
+            try:
+                response = self.supabase.table("community_reports").select("*").eq(
+                     "hazard_id", hazard_id
+                ).eq("verification_status", "ACCEPTED").execute()
+                return response.data or []
+            except Exception as e2:
+                logger.error(f"Fallback failed to get accepted reports: {e2}")
+                return []
     
     def _get_user_trust(self, user_id: str) -> float:
         """Get user trust score (0-100)."""

@@ -14,6 +14,13 @@ from app.database import get_supabase
 router = APIRouter()
 
 
+from cachetools import TTLCache
+import time
+
+# Cache for 60 seconds, max 1000 distinct location queries
+# This singlehandedly fixes the "drag map spam" and server overload
+hazards_cache = TTLCache(maxsize=1000, ttl=60)
+
 @router.get("/hazards")
 async def get_hazards(
     latitude: float,
@@ -30,6 +37,14 @@ async def get_hazards(
     - **hazard_type**: Optional filter by hazard type
     """
     try:
+        # Round to 3 decimal places (~111 meters precision)
+        # If user drags map tiny amounts, it still hits the cached center!
+        cache_key = f"{round(latitude, 3)}_{round(longitude, 3)}_{radius_km}_{hazard_type}"
+        
+        if cache_key in hazards_cache:
+            logger.info("Serving hazards from memory cache ⚡")
+            return hazards_cache[cache_key]
+        
         geo_service = get_geo_clustering_service()
         hazards = geo_service.get_hazards_in_radius(latitude, longitude, radius_km)
         
@@ -37,12 +52,16 @@ async def get_hazards(
         if hazard_type:
             hazards = [h for h in hazards if h["hazard_type"] == hazard_type]
         
-        return {
+        result = {
             "hazards": hazards,
             "count": len(hazards),
             "center": {"latitude": latitude, "longitude": longitude},
             "radius_km": radius_km
         }
+        
+        # Save to cache
+        hazards_cache[cache_key] = result
+        return result
     
     except Exception as e:
         logger.error(f"Failed to get hazards: {e}")

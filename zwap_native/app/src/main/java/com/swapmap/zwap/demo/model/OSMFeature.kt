@@ -4,8 +4,8 @@ data class OSMFeature(
     val id: Long,
     val lat: Double,
     val lon: Double,
-    val type: FeatureType,
-    val name: String? = null,
+    var type: FeatureType,
+    var name: String? = null,
     val tags: Map<String, String> = emptyMap()
 )
 

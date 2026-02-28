@@ -162,7 +162,31 @@ class VerificationService:
                 prefilter_passed=True
             )
 
-            # Sync status to Firestore for app UI
+            # 12. Store embeddings
+            if image_embedding is not None:
+                self._store_embeddings(
+                    report_id=report_id,
+                    image_embedding=image_embedding,
+                    text_embedding=text_embedding
+                )
+            
+            # 13. Process accepted report (clustering, confidence update)
+            if verdict == "ACCEPTED":
+                is_clustered = await self._process_accepted_report(report)
+                if not is_clustered:
+                    # Stop here. cluster engine rejected it and sent notification already.
+                    Path(image_path).unlink(missing_ok=True)
+                    return {
+                        "success": True,
+                        "verdict": "REJECTED",
+                        "confidence": final_confidence,
+                        "reasoning": "Rejected during cluster assignment"
+                    }
+            
+            # 14. Update user trust
+            self._update_user_trust(report["user_id"], verdict)
+            
+            # 15. Sync status to Firestore for app UI
             status_map = {
                 "ACCEPTED": "Verified",
                 "REJECTED": "Rejected",
@@ -181,21 +205,6 @@ class VerificationService:
                 points_awarded=points_awarded,
                 user_id=uid,
             )
-            
-            # 12. Store embeddings
-            if image_embedding is not None:
-                self._store_embeddings(
-                    report_id=report_id,
-                    image_embedding=image_embedding,
-                    text_embedding=text_embedding
-                )
-            
-            # 13. Process accepted report (clustering, confidence update)
-            if verdict == "ACCEPTED":
-                await self._process_accepted_report(report)
-            
-            # 14. Update user trust
-            self._update_user_trust(report["user_id"], verdict)
             
             # Clean up temp file
             Path(image_path).unlink(missing_ok=True)
@@ -360,6 +369,13 @@ class VerificationService:
         self.supabase.table("reports_analysis").update(update_data).eq(
             "report_id", report_id
         ).execute()
+        
+        # Clean up any downstream tables in case this was rejected late (e.g. during clustering)
+        try:
+            self.supabase.table("community_reports").delete().eq("report_id", report_id).execute()
+            self.supabase.table("hazard_embeddings").delete().eq("report_id", report_id).execute()
+        except Exception as e:
+            logger.debug(f"Cleanup of downstream tables failed (expected if not yet inserted): {e}")
 
         # Push rejection notification to Firebase if we have user context
         if report and report.get("user_id"):
@@ -511,8 +527,8 @@ class VerificationService:
         except Exception as e:
             logger.error(f"Failed to store embeddings for {report_id}: {e}")
     
-    async def _process_accepted_report(self, report: Dict):
-        """Process accepted report (clustering, confidence update)."""
+    async def _process_accepted_report(self, report: Dict) -> bool:
+        """Process accepted report (clustering, confidence update). Returns True if merged successfully."""
         try:
             logger.info(f"Processing accepted report: {report['report_id']}")
             
@@ -526,12 +542,20 @@ class VerificationService:
             # Assign to cluster
             hazard_id = await geo_service.assign_to_cluster(report)
             
+            if not hazard_id:
+                logger.warning(f"Report {report['report_id']} was rejected during cluster assignment (e.g. anti-farming or duplicate).")
+                # The _reject_report function was already called inside assign_to_cluster
+                # which pushes the rejection notification.
+                return False
+            
             # Update hazard confidence
             confidence_service.update_hazard_confidence(hazard_id)
             
             logger.info(f"✅ Report processed and assigned to hazard {hazard_id}")
+            return True
         except Exception as e:
             logger.error(f"Failed to process accepted report: {e}")
+            return False
     
     def _update_user_trust(self, user_id: str, verdict: str):
         """Update user trust score based on verdict."""

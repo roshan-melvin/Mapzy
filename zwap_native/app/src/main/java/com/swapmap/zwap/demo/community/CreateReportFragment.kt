@@ -118,7 +118,9 @@ class CreateReportFragment : Fragment(R.layout.fragment_create_report) {
                         }
                     }
                     etHashtag.setAdapter(adapter)
-                    etHashtag.showDropDown()
+                    if (etHashtag.isAttachedToWindow && etHashtag.hasFocus()) {
+                        etHashtag.showDropDown()
+                    }
                 } else {
                     // Show all options when just # is typed
                     val allOptions = availableChannels.map { "#$it" }.toTypedArray()
@@ -166,7 +168,7 @@ class CreateReportFragment : Fragment(R.layout.fragment_create_report) {
                         withContext(Dispatchers.Main) {
                             pbLoading.visibility = View.GONE
                             btnSubmit.isEnabled = true
-                            Toast.makeText(context, "Failed to process image file", Toast.LENGTH_SHORT).show()
+                            context?.let { Toast.makeText(it, "Failed to process image file", Toast.LENGTH_SHORT).show() }
                         }
                         return@launch
                     }
@@ -183,18 +185,18 @@ class CreateReportFragment : Fragment(R.layout.fragment_create_report) {
                     withContext(Dispatchers.Main) {
                         pbLoading.visibility = View.GONE
                         if (response != null) {
-                            Toast.makeText(context, "Report Verified: ${response.status} (Score: ${String.format("%.0f%%", response.verification_score * 100)})", Toast.LENGTH_LONG).show()
+                            context?.let { Toast.makeText(it, "Report Verified: ${response.status} (Score: ${String.format("%.0f%%", response.verification_score * 100)})", Toast.LENGTH_LONG).show() }
                             parentFragmentManager.popBackStack()
                         } else {
                             btnSubmit.isEnabled = true
-                            Toast.makeText(context, "Submission Failed", Toast.LENGTH_SHORT).show()
+                            context?.let { Toast.makeText(it, "Submission Failed", Toast.LENGTH_SHORT).show() }
                         }
                     }
                 } catch (e: Exception) {
                     withContext(Dispatchers.Main) {
                         pbLoading.visibility = View.GONE
                         btnSubmit.isEnabled = true
-                        Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                        context?.let { Toast.makeText(it, "Error: ${e.message}", Toast.LENGTH_LONG).show() }
                         android.util.Log.e("BackendSubmit", "Error", e)
                     }
                 }

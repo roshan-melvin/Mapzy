@@ -1,6 +1,6 @@
 # Explore Architecture Flowchart (Mappls Integration)
 
-This flowchart details the architecture and logic of the "Explore" tab, focusing on the Map implementation and Search functionality.
+This flowchart details the architecture and logic of the "Explore" tab, focusing on the Map implementation, Search functionality, and the Intelligent Hazard Engine overlays.
 
 ## 1. Map Initialization & Layering
 ```mermaid
@@ -10,8 +10,13 @@ graph TD
     subgraph "Mappls SDK Layers"
         MapView --> BaseMap[Base Map Tiles]
         MapView --> TrafficLayer[Traffic Overlay]
-        MapView --> Markers[Marker Annotations]
         MapView --> Polyline[Navigation Path]
+    end
+    
+    subgraph "Intelligent Hazard Overlays"
+        MapView --> HazardMarkers[OSM & Community Markers]
+        HazardMarkers --> FirebaseListener[Live Map State Sync]
+        FirebaseListener --> VisualAlert[Visual Drop-up Panel]
     end
     
     subgraph "Custom UI Overlays"
@@ -21,32 +26,27 @@ graph TD
     end
 ```
 
-## 2. Search & Nearby API Flow
+## 2. Dynamic Component Updating
 ```mermaid
 sequenceDiagram
     participant User
-    participant SearchUI as Search Sheet
-    participant App as ExploreFragment
-    participant Mappls as Mappls SDK / API
+    participant MapUI as Mappls Canvas
+    participant AlertPanel as Hazard Alert Panel
+    participant Firebase as Firebase Firestore
+    participant Engine as Intelligent Engine
     
-    Note over User, App: 1. User Initiates Search
-    User->>SearchUI: Types Query (e.g. "Hospital")
-    SearchUI->>App: Callback onTextChanged()
+    Note over User, MapUI: 1. Hazard Rendered
+    Engine->>Firebase: New hazard validated (Confidence 100)
+    Firebase-->>MapUI: Real-time Snapshot fires
+    MapUI->>MapUI: Removes old cache marker, re-renders new
+
+    Note over User, AlertPanel: 2. Hazard Proximity
+    User->>MapUI: Moves within 300m of Hazard
+    MapUI->>AlertPanel: Injects hazard into Active List
+    AlertPanel->>User: Drops up visual alert (Elevated layer) & TTS Voice
     
-    Note over App, Mappls: 2. Auto-Suggest (Optional)
-    App->>Mappls: MapplsAutoSuggest.builder().query("Hos")...
-    Mappls-->>App: Returns Suggestions List
-    App->>SearchUI: Updates Recycler View with Suggestions
-    
-    Note over User, App: 3. Nearby Search (Action)
-    User->>SearchUI: Clicks "Search" or Suggestion
-    App->>Mappls: MapplsNearby.builder().keyword("Hospital").setLocation(lat, lng)...
-    Mappls-->>App: Returns List<NearbyPlace> (eLoc, Name, LatLng)
-    
-    Note over App, User: 4. Rendering Results
-    loop For Each Place
-        App->>App: Create Marker Option
-        App->>Mappls: Plugin.addMarker(MarkerOption)
-    end
-    App->>User: Moves Camera to Bounds of Results
+    Note over User, AlertPanel: 3. Hazard CROSSED
+    User->>MapUI: Hazard safely crossed
+    AlertPanel->>AlertPanel: Distance falls to 0m
+    AlertPanel->>User: Removes from active list
 ```

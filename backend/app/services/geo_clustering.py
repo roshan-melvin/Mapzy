@@ -96,8 +96,9 @@ class GeoClusteringService:
         self,
         report_id: str,
         hazard_id: str,
-        threshold: Optional[float] = None
-    ) -> bool:
+        threshold: Optional[float] = None,
+        return_score: bool = False
+    ) -> Any:
         """
         Check if report image is similar to existing hazard images.
         
@@ -105,9 +106,10 @@ class GeoClusteringService:
             report_id: ID of new report
             hazard_id: ID of existing hazard cluster
             threshold: Similarity threshold (defaults to config)
+            return_score: If True, returns dict with max_similarity instead of bool
             
         Returns:
-            True if similar enough to belong to cluster, False otherwise
+            True if similar enough, False otherwise, or dict if return_score=True.
         """
         threshold = threshold or settings.similarity_threshold
         
@@ -119,7 +121,7 @@ class GeoClusteringService:
             
             if not new_embedding_response.data:
                 logger.warning(f"No embedding found for report {report_id}")
-                return True  # Allow if no embedding (shouldn't happen)
+                return {"max_similarity": 0.0, "is_similar": True} if return_score else True
             
             new_embedding = new_embedding_response.data[0]["image_embedding"]
             
@@ -129,7 +131,7 @@ class GeoClusteringService:
             ).eq("hazard_id", hazard_id).execute()
             
             if not existing_embeddings_response.data:
-                return True  # No existing embeddings, allow
+                return {"max_similarity": 0.0, "is_similar": True} if return_score else True
             
             # Compute similarities
             import numpy as np
@@ -151,81 +153,123 @@ class GeoClusteringService:
                 similarity = self.embedding_generator.compute_similarity(new_emb, existing_emb)
                 max_similarity = max(max_similarity, similarity)
             
-            # Check for exact duplicates (very high similarity)
+            is_similar = max_similarity > threshold
+            
+            if return_score:
+                return {"max_similarity": float(max_similarity), "is_similar": is_similar}
+            
+            # Legacy behavior
             if max_similarity > settings.duplicate_threshold:
                 logger.warning(f"Duplicate image detected: similarity {max_similarity:.2%}")
                 return False  # Reject duplicate
             
-            # Check if similar enough to belong to cluster
-            is_similar = max_similarity > threshold
-            
             logger.info(f"Similarity check: {max_similarity:.2%} (threshold: {threshold:.2%}) -> {is_similar}")
-            
             return is_similar
         
         except Exception as e:
             logger.error(f"Similarity check failed: {e}")
-            return True  # Allow on error (fail open)
+            return {"max_similarity": 0.0, "is_similar": True} if return_score else True
     
     async def assign_to_cluster(self, report: Dict) -> str:
         """
-        Assign report to existing cluster or create new one.
+        Assign report to existing cluster or create new one based on 4-step logic.
         
         Args:
             report: Report dict with location and type info
             
         Returns:
-            hazard_id (UUID)
+            hazard_id (UUID) or None if rejected
         """
         try:
-            # Find nearby hazard
-            # Note: Database stores as 'incident_type' but may have 'hazard_type' key
             hazard_type = report.get("hazard_type") or report.get("incident_type", "unknown")
+            user_id = report.get("user_id")
+            report_id = report.get("report_id")
+            latitude = float(report["latitude"])
+            longitude = float(report["longitude"])
             
+            # Anti-farming service
+            from app.services.anti_farming import get_anti_farming_service
+            anti_farming = get_anti_farming_service()
+            
+            # Step 1: Find nearby hazard (50m)
             nearby_hazard = self.find_nearby_hazard(
-                latitude=float(report["latitude"]),
-                longitude=float(report["longitude"]),
-                hazard_type=hazard_type
-            )
-            
-            if nearby_hazard:
-                # Unconditionally assign to existing cluster because it matches location & category
-                logger.info(f"Assigning to existing cluster: {nearby_hazard['hazard_id']}")
-                
-                self.supabase.table("community_reports").update({
-                    "hazard_id": nearby_hazard["hazard_id"]
-                }).eq("report_id", report["report_id"]).execute()
-                
-                # Update embedding with hazard_id
-                self.supabase.table("hazard_embeddings").update({
-                    "hazard_id": nearby_hazard["hazard_id"]
-                }).eq("report_id", report["report_id"]).execute()
-                
-                return nearby_hazard["hazard_id"]
-            
-            # Create new cluster
-            logger.info("Creating new hazard cluster")
-            hazard_id = self._create_hazard_cluster(
+                latitude=latitude,
+                longitude=longitude,
                 hazard_type=hazard_type,
-                latitude=float(report["latitude"]),
-                longitude=float(report["longitude"])
+                radius_meters=settings.cluster_radius_meters
             )
             
-            # Update report with hazard_id
-            self.supabase.table("community_reports").update({
-                "hazard_id": hazard_id
-            }).eq("report_id", report["report_id"]).execute()
+            if not nearby_hazard:
+                # No cluster -> create new cluster
+                logger.info("Step 1: No existing cluster found. Creating new hazard cluster.")
+                hazard_id = self._create_hazard_cluster(
+                    hazard_type=hazard_type,
+                    latitude=latitude,
+                    longitude=longitude
+                )
+                self._assign_db(report_id, hazard_id)
+                return hazard_id
+                
+            hazard_id = nearby_hazard["hazard_id"]
+            distance = nearby_hazard.get("distance", 0)
+            logger.info(f"Step 1: Found existing cluster {hazard_id} at {distance:.1f}m")
             
-            # Update embedding with hazard_id
-            self.supabase.table("hazard_embeddings").update({
-                "hazard_id": hazard_id
-            }).eq("report_id", report["report_id"]).execute()
+            # Step 2: Same User Check
+            if anti_farming.check_same_user_cluster_duplicate(user_id, hazard_id):
+                logger.warning(f"Step 2: User {user_id} already reported to cluster {hazard_id}. Rejecting.")
+                anti_farming.apply_penalty(user_id, "SAME_USER_DUPLICATE", penalty_score=10.0)
+                from app.services.verification import get_verification_service
+                vs = get_verification_service()
+                vs._reject_report(report_id, "You have already submitted a report for this hazard.", report=report)
+                return None
+                
+            # Step 3: Image Similarity Check
+            similarity_result = await self.check_embedding_similarity(report_id, hazard_id, return_score=True)
+            max_similarity = similarity_result.get("max_similarity", 0.0)
             
-            return hazard_id
-        
+            if max_similarity > settings.duplicate_threshold: # > 0.95
+                logger.warning(f"Step 3: Exact duplicate image detected ({max_similarity:.2%}). Rejecting.")
+                anti_farming.apply_penalty(user_id, "EXACT_DUPLICATE_IMAGE", penalty_score=20.0)
+                from app.services.verification import get_verification_service
+                vs = get_verification_service()
+                vs._reject_report(report_id, f"Duplicate image detected ({max_similarity:.2%}).", report=report)
+                return None
+                
+            elif max_similarity > settings.similarity_threshold: # 0.85 - 0.95
+                logger.info(f"Step 3: High similarity ({max_similarity:.2%}). Merging into existing cluster {hazard_id}.")
+                # Could apply slight penalty if suspicious, but we'll merge
+                self._assign_db(report_id, hazard_id)
+                return hazard_id
+                
+            # Step 4: Fine Distance Merge (<= 15m)
+            logger.info(f"Step 4: Image not duplicate ({max_similarity:.2%}). Checking fine distance.")
+            if distance <= settings.fine_merge_radius_meters:
+                logger.info(f"Step 4: Within {settings.fine_merge_radius_meters}m fine merge radius. Merging.")
+                self._assign_db(report_id, hazard_id)
+                return hazard_id
+            else:
+                logger.info("Step 4: Outside fine merge radius. Creating new cluster.")
+                new_hazard_id = self._create_hazard_cluster(
+                    hazard_type=hazard_type,
+                    latitude=latitude,
+                    longitude=longitude
+                )
+                self._assign_db(report_id, new_hazard_id)
+                return new_hazard_id
+                
         except Exception as e:
             logger.error(f"Cluster assignment failed: {e}")
             raise
+            
+    def _assign_db(self, report_id: str, hazard_id: str):
+        """Helper to quickly update DB assignments."""
+        self.supabase.table("community_reports").update({
+            "hazard_id": hazard_id
+        }).eq("report_id", report_id).execute()
+        
+        self.supabase.table("hazard_embeddings").update({
+            "hazard_id": hazard_id
+        }).eq("report_id", report_id).execute()
     
     def _create_hazard_cluster(
         self,

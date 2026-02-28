@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     
     # Geo-Clustering
     cluster_radius_meters: int = 50
+    fine_merge_radius_meters: int = 15
     highway_cluster_radius_meters: int = 100
     
     # Confidence Lifecycle
