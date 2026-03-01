@@ -23,7 +23,7 @@ class GeminiVerificationClient:
 **YOLO Detections**: {yolo_results}
 
 Analyze the image and determine:
-1. Is this a valid {hazard_type}?
+1. Is this a valid {hazard_type}? (CRITICAL: If the image shows broken, damaged, fallen, or overturned equipment that could plausibly be the reported hazard - e.g., a broken pole that could be a speed camera - you MUST classify it as VALID).
 2. Does the image match the description?
 3. Is the context plausible (road environment, lighting, perspective)?
 4. Are there any signs of manipulation or staging?
@@ -35,7 +35,7 @@ Provide your assessment as JSON:
   "reasoning": "Brief explanation of your decision"
 }}
 
-Be strict but fair. Reject only when you are clearly confident the image does NOT match the hazard. If the evidence is weak or unclear, return "UNCERTAIN".
+Be strict but fair. Reject only when you are clearly confident the image does NOT match the hazard. If the evidence is weak or unclear, return "UNCERTAIN". Remember, damaged or broken versions of the hazard are still VALID.
 """
     
     def __init__(self, api_key: Optional[str] = None):

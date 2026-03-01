@@ -117,11 +117,13 @@ class ReportRepository {
         if (response.isSuccessful && response.body() != null) {
             val backendRes = response.body()!!
             
+            val safeHazardType = normalizeChannelName(hazardType)
+            
             // Sync to Firestore for real-time feed
             val report = Report(
                 id = backendRes.report_id,
                 userId = userId,
-                incidentType = hazardType,
+                incidentType = safeHazardType,
                 description = description,
                 latitude = lat,
                 longitude = lng,
@@ -132,8 +134,7 @@ class ReportRepository {
                 createdAt = com.google.firebase.Timestamp.now()
             )
             
-            val channelName = normalizeChannelName(hazardType)
-            reportsCollection.document(channelName)
+            reportsCollection.document(safeHazardType)
                 .collection("threads")
                 .document(report.id)
                 .set(report)

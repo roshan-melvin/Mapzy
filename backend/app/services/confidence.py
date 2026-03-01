@@ -46,7 +46,7 @@ class ConfidenceLifecycleService:
             if hazard["status"] == "PENDING" and report_count >= settings.initial_confirmation_count:
                 logger.info(f"✅ Initial confirmation reached ({report_count} reports)")
                 self._confirm_hazard(hazard_id, report_count)
-                self._sync_to_map(hazard_id, hazard["incident_type"], hazard["latitude"], hazard["longitude"], 100, "CONFIRMED")
+                self._sync_to_map(hazard_id, hazard["hazard_type"], hazard["latitude"], hazard["longitude"], 100, "CONFIRMED")
                 return {"success": True, "status": "CONFIRMED", "confidence": 100}
             
             # Not enough reports yet
@@ -82,7 +82,7 @@ class ConfidenceLifecycleService:
                             "last_verified_at": datetime.now().isoformat()
                         }).eq("hazard_id", hazard_id).execute()
                         
-                        self._sync_to_map(hazard_id, hazard["incident_type"], hazard["latitude"], hazard["longitude"], current_confidence, status)
+                        self._sync_to_map(hazard_id, hazard["hazard_type"], hazard["latitude"], hazard["longitude"], current_confidence, status)
             
             # Phase 3: Expiry Check (e.g. if it hits 0 and stays 0)
             if current_confidence < settings.expiry_confidence_threshold and status != "PENDING":
@@ -212,7 +212,7 @@ class ConfidenceLifecycleService:
                     "status": new_status
                 }).eq("hazard_id", hazard_id).execute()
                 
-                self._sync_to_map(hazard_id, hazard["incident_type"], hazard["latitude"], hazard["longitude"], new_confidence, new_status)
+                self._sync_to_map(hazard_id, hazard["hazard_type"], hazard["latitude"], hazard["longitude"], new_confidence, new_status)
                 
                 logger.info(f"✅ Revalidation YES: confidence {current_confidence}% → {new_confidence}%")
                 return {"success": True, "new_confidence": new_confidence}
@@ -228,7 +228,7 @@ class ConfidenceLifecycleService:
                     "status": new_status
                 }).eq("hazard_id", hazard_id).execute()
                 
-                self._sync_to_map(hazard_id, hazard["incident_type"], hazard["latitude"], hazard["longitude"], new_confidence, new_status)
+                self._sync_to_map(hazard_id, hazard["hazard_type"], hazard["latitude"], hazard["longitude"], new_confidence, new_status)
                 
                 logger.info(f"❌ Revalidation NO: confidence {current_confidence}% → {new_confidence}%")
                 return {"success": True, "new_confidence": new_confidence, "status": new_status}
