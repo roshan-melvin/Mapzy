@@ -31,6 +31,7 @@ class CommunityFragment : Fragment() {
     private var mapView: com.mappls.sdk.maps.MapView? = null
     private val repository = ReportRepository()
     private var fetchJob: Job? = null
+    private var feedListener: com.google.firebase.firestore.ListenerRegistration? = null
 
     private lateinit var feedAdapter: FeedAdapter
     private lateinit var leaderboardAdapter: LeaderboardAdapter
@@ -97,13 +98,12 @@ class CommunityFragment : Fragment() {
         val tvTitle = view.findViewById<TextView>(R.id.tv_server_name)
         val threadView = view.findViewById<View>(R.id.thread_view_container)
         val btnThreadBack = view.findViewById<ImageView>(R.id.btn_thread_back)
-        val rvComments = view.findViewById<RecyclerView>(R.id.rv_comments)
         val btnOptions = view.findViewById<ImageView>(R.id.btn_community_options)
 
         rvChannels.layoutManager = LinearLayoutManager(context)
         rvFeed = view.findViewById(R.id.rv_feed)
         rvFeed?.layoutManager = LinearLayoutManager(context)
-        rvComments.layoutManager = LinearLayoutManager(context)
+
 
         feedAdapter = FeedAdapter(mutableListOf()) { report -> showThread(report, threadView) }
         rvFeed?.adapter = feedAdapter
@@ -120,7 +120,7 @@ class CommunityFragment : Fragment() {
         }
         rvNotifications?.adapter = notificationAdapter
 
-        rvComments.adapter = ChannelAdapter(listOf("Is this cleared?", "Traffic is backing up", "Still there @ 5pm")) {}
+
 
         tvEmpty = view.findViewById(R.id.tv_empty_feed)
         fetchRealReports(rvFeed!!, threadView, tvEmpty!!)
@@ -365,52 +365,94 @@ class CommunityFragment : Fragment() {
     }
 
     private fun fetchRealReports(rvFeed: RecyclerView, threadView: View, tvEmpty: TextView) {
-        fetchJob?.cancel()
-        fetchJob = viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val reports = repository.getFeedReports()
-                withContext(Dispatchers.Main) {
-                    feedAdapter.updateData(reports)
-                    tvEmpty.visibility = if (reports.isEmpty()) View.VISIBLE else View.GONE
+        feedListener?.remove()
+        val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return
+        val db = FirebaseFirestore.getInstance()
+        // collectionGroup with only whereEqualTo — no orderBy avoids needing a composite index
+        feedListener = db.collectionGroup("threads")
+            .whereEqualTo("userId", uid)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    android.util.Log.e("FeedListener", "Firestore error: ${error.message}", error)
+                    return@addSnapshotListener
                 }
-            } catch (e: Exception) { e.printStackTrace() }
-        }
+                // Sort client-side — no Firestore composite index needed
+                val reports = (snapshot?.toObjects(Report::class.java) ?: emptyList())
+                    .sortedByDescending { it.createdAt }
+                feedAdapter.updateData(reports)
+                tvEmpty.visibility = if (reports.isEmpty()) View.VISIBLE else View.GONE
+            }
     }
 
     private fun fetchChannelReports(channelName: String, rvFeed: RecyclerView, threadView: View, tvEmpty: TextView) {
-        fetchJob?.cancel()
-        fetchJob = viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val snapshot = repository.getChannelReports(channelName).get().await()
-                val reports = snapshot.toObjects(Report::class.java)
-                withContext(Dispatchers.Main) {
-                    feedAdapter.updateData(reports)
-                    tvEmpty.visibility = if (reports.isEmpty()) View.VISIBLE else View.GONE
+        feedListener?.remove()
+        val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return
+        val db = FirebaseFirestore.getInstance()
+        val cleanChannel = channelName.trimStart('#').trim().lowercase().replace(" ", "-")
+        // Query channel directly with only whereEqualTo — no composite index needed
+        feedListener = db.collection("reports").document(cleanChannel)
+            .collection("threads")
+            .whereEqualTo("userId", uid)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    android.util.Log.e("ChannelListener", "Firestore error: ${error.message}", error)
+                    return@addSnapshotListener
                 }
-            } catch (e: Exception) { e.printStackTrace() }
-        }
+                // Sort client-side
+                val reports = (snapshot?.toObjects(Report::class.java) ?: emptyList())
+                    .sortedByDescending { it.createdAt }
+                feedAdapter.updateData(reports)
+                tvEmpty.visibility = if (reports.isEmpty()) View.VISIBLE else View.GONE
+            }
     }
 
     private fun showThread(report: Report, threadView: View) {
         threadView.visibility = View.VISIBLE
         val postView = threadView.findViewById<View>(R.id.thread_original_post)
-        postView.findViewById<TextView>(R.id.tv_username).text = "User"
+
+        // Hide the vote counter row (arrows + count) — not applicable for personal thread view
+        postView.findViewById<View>(R.id.ll_vote_container)?.visibility = View.GONE
+
+        // Pending name while Firestore fetches
+        postView.findViewById<TextView>(R.id.tv_username).text = "Loading..."
+        // Fetch real display name from Firestore
+        db.collection("users").document(report.userId).get()
+            .addOnSuccessListener { doc ->
+                val name = doc.getString("name") ?: doc.getString("displayName") ?: "Unknown User"
+                postView.findViewById<TextView>(R.id.tv_username).text = name
+            }
+            .addOnFailureListener {
+                postView.findViewById<TextView>(R.id.tv_username).text = "User"
+            }
+
         postView.findViewById<TextView>(R.id.tv_hazard_type).text = report.incidentType
         postView.findViewById<TextView>(R.id.tv_location).text = report.description
+
         val sdf = SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault())
         postView.findViewById<TextView>(R.id.tv_timestamp).text =
             report.createdAt?.toDate()?.let { sdf.format(it) } ?: "Just now"
-        postView.findViewById<TextView>(R.id.tv_upvotes).text = report.pointsAwarded.toString()
+
+        // Status badge — use actual report status, not hardcoded
         val badge = postView.findViewById<TextView>(R.id.tv_category_badge)
         badge.text = report.status
         badge.backgroundTintList = android.content.res.ColorStateList.valueOf(
-            if (report.status == "Verified") Color.parseColor("#43B581")
-            else Color.parseColor("#FAA61A")
+            when (report.status) {
+                "Verified" -> Color.parseColor("#43B581")
+                "Rejected" -> Color.parseColor("#F04747")
+                else -> Color.parseColor("#FAA61A")   // Pending / Uploading
+            }
         )
-        mapView?.getMapAsync(object : com.mappls.sdk.maps.OnMapReadyCallback {
+
+        // Real coordinates label
+        threadView.findViewById<TextView>(R.id.tv_exact_location)?.text =
+            "Lat: %.5f, Lon: %.5f".format(report.latitude, report.longitude)
+
+        // Use the map embedded inside the thread view (not the fragment-level mapView)
+        val threadMapView = threadView.findViewById<com.mappls.sdk.maps.MapView>(R.id.thread_map_preview)
+        threadMapView?.getMapAsync(object : com.mappls.sdk.maps.OnMapReadyCallback {
             override fun onMapReady(map: com.mappls.sdk.maps.MapplsMap) {
                 val pos = com.mappls.sdk.maps.geometry.LatLng(report.latitude, report.longitude)
-                map.animateCamera(com.mappls.sdk.maps.camera.CameraUpdateFactory.newLatLngZoom(pos, 14.0))
+                map.animateCamera(com.mappls.sdk.maps.camera.CameraUpdateFactory.newLatLngZoom(pos, 15.0))
                 map.clear()
                 map.addMarker(com.mappls.sdk.maps.annotations.MarkerOptions().position(pos))
             }
@@ -422,7 +464,7 @@ class CommunityFragment : Fragment() {
     override fun onResume() { super.onResume(); mapView?.onResume() }
     override fun onPause() { super.onPause(); mapView?.onPause() }
     override fun onStop() { super.onStop(); mapView?.onStop() }
-    override fun onDestroyView() { super.onDestroyView(); mapView?.onDestroy() }
+    override fun onDestroyView() { super.onDestroyView(); mapView?.onDestroy(); feedListener?.remove() }
     override fun onSaveInstanceState(outState: Bundle) { super.onSaveInstanceState(outState); mapView?.onSaveInstanceState(outState) }
     override fun onLowMemory() { super.onLowMemory(); mapView?.onLowMemory() }
 
@@ -492,7 +534,16 @@ class CommunityFragment : Fragment() {
         }
         override fun onBindViewHolder(holder: ViewHolder, position: Int) {
             val item = items[position]
-            holder.tvUser.text = "User"
+            holder.tvUser.text = "..."
+            // Fetch display name async
+            com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                .collection("users").document(item.userId).get()
+                .addOnSuccessListener { doc ->
+                    holder.tvUser.text = doc.getString("name")
+                        ?: doc.getString("displayName")
+                        ?: "User"
+                }
+                .addOnFailureListener { holder.tvUser.text = "User" }
             holder.tvType.text = item.incidentType
             holder.tvLoc.text = item.description
             val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
@@ -500,7 +551,11 @@ class CommunityFragment : Fragment() {
             holder.tvVotes.text = item.pointsAwarded.toString()
             holder.badge.text = item.status
             holder.badge.backgroundTintList = android.content.res.ColorStateList.valueOf(
-                if (item.status == "Verified") Color.parseColor("#43B581") else Color.parseColor("#FAA61A")
+                when (item.status) {
+                    "Verified"  -> Color.parseColor("#43B581")
+                    "Rejected"  -> Color.parseColor("#F04747")
+                    else        -> Color.parseColor("#FAA61A")
+                }
             )
             holder.itemView.setOnClickListener { onClick(item) }
         }

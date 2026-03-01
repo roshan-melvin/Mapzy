@@ -118,28 +118,40 @@ class ReportRepository {
             val backendRes = response.body()!!
             
             val safeHazardType = normalizeChannelName(hazardType)
-            
-            // Sync to Firestore for real-time feed
-            val report = Report(
-                id = backendRes.report_id,
-                userId = userId,
-                incidentType = safeHazardType,
-                description = description,
-                latitude = lat,
-                longitude = lng,
-                imageUrl = backendRes.image_url,
-                status = backendRes.status,
-                pointsAwarded = if (backendRes.status == "Verified") 2 else 0,
-                hazardCondition = backendRes.hazard_condition ?: "active",
-                createdAt = com.google.firebase.Timestamp.now()
-            )
-            
-            reportsCollection.document(safeHazardType)
+            val reportId = backendRes.report_id
+            val docRef = reportsCollection
+                .document(safeHazardType)
                 .collection("threads")
-                .document(report.id)
-                .set(report)
-                .await()
-                
+                .document(reportId)
+
+            // Check if the backend's verification already wrote to this document
+            // (fast rejections can beat the Android Firestore write)
+            val existing = docRef.get().await()
+            val preservedStatus = if (existing.exists()) {
+                // Backend already set the real status — preserve it
+                existing.getString("status") ?: "Pending"
+            } else {
+                "Pending"
+            }
+
+            // Build a map so we control exactly what gets written.
+            // Critically: 'status' uses the preserved backend value, not hardcoded Pending.
+            val firestoreData = mapOf(
+                "id"             to reportId,
+                "userId"         to userId,
+                "incidentType"   to safeHazardType,
+                "description"    to description,
+                "latitude"       to lat,
+                "longitude"      to lng,
+                "imageUrl"       to backendRes.image_url,
+                "status"         to preservedStatus,
+                "pointsAwarded"  to if (preservedStatus == "Verified") 10 else 0,
+                "hazardCondition" to (backendRes.hazard_condition ?: "active"),
+                "createdAt"      to (existing.getTimestamp("createdAt") ?: com.google.firebase.Timestamp.now())
+            )
+            docRef.set(firestoreData, com.google.firebase.firestore.SetOptions.merge()).await()
+
+            android.util.Log.d("FirestoreSync", "📝 Wrote doc $reportId with status=$preservedStatus")
             return backendRes
         } else {
             val errorBody = response.errorBody()?.string()
