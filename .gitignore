@@ -25,6 +25,7 @@ zwap_native/app/src/main/assets/zwap.env
 Thumbs.db
 *.hprof
 java_pid*.hprof
+**/documentation/.DS_Store
 
 # IDE files
 .vscode/

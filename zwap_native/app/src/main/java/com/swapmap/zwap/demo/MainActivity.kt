@@ -49,6 +49,7 @@ import android.view.LayoutInflater
 import android.view.ViewGroup
 import android.speech.RecognizerIntent
 import android.widget.EditText
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.auth.FirebaseAuth
@@ -82,8 +83,17 @@ import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.swapmap.zwap.demo.profile.ProfileFragment
 import com.swapmap.zwap.demo.community.CommunityFragment
 import com.swapmap.zwap.demo.chat.ChatFragment
+import com.swapmap.zwap.demo.repository.ReportRepository
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.MultipartBody
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageCaptureException
+import androidx.camera.lifecycle.ProcessCameraProvider
+import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnInitListener {
 
@@ -138,6 +148,86 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     private lateinit var auth: FirebaseAuth
     private var currentUserId: String? = null
 
+    // CameraX for hands-free auto-capture
+    private var imageCapture: ImageCapture? = null
+    private val cameraExecutor = Executors.newSingleThreadExecutor()
+    private var isCameraXStarted = false
+
+    // Hoisted here so launchVoiceReporter() (called from wake-word OR FAB) can use it
+    private lateinit var speechLauncherMain: androidx.activity.result.ActivityResultLauncher<android.content.Intent>
+    private lateinit var takeAIPicture: androidx.activity.result.ActivityResultLauncher<android.net.Uri>
+
+    // State holders for the voice + camera flow
+    private var aiVoiceTranscript = ""
+    private var aiImageFileMain: java.io.File? = null
+    private var aiCameraUriMain: android.net.Uri? = null
+
+    // ── Wake-Word Receiver ────────────────────────────────────────────────────
+    // Receives a local broadcast from WakeWordService when "Hey Mapzy" is heard,
+    // then triggers the same voice pipeline as tapping the mic FAB.
+    private val wakeWordReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+            if (intent?.action == WakeWordService.ACTION_WAKE_WORD_DETECTED) {
+                android.util.Log.i("WakeWord", "🔔 'Hey Mapzy' detected — launching voice reporter")
+                launchVoiceReporter()
+            }
+        }
+    }
+
+    /** Bind CameraX with the chosen lens (back or front) for silent auto-capture. */
+    private fun startCameraX(lens: String) {
+        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
+        cameraProviderFuture.addListener({
+            val cameraProvider = cameraProviderFuture.get()
+            imageCapture = ImageCapture.Builder()
+                .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                .build()
+            val selector = if (lens == "front")
+                CameraSelector.DEFAULT_FRONT_CAMERA
+            else
+                CameraSelector.DEFAULT_BACK_CAMERA
+            try {
+                cameraProvider.unbindAll()
+                cameraProvider.bindToLifecycle(this, selector, imageCapture!!)
+                isCameraXStarted = true
+                Log.d("CameraX", "✅ CameraX bound with $lens lens")
+            } catch (e: Exception) {
+                Log.e("CameraX", "Failed to bind CameraX", e)
+            }
+        }, androidx.core.content.ContextCompat.getMainExecutor(this))
+    }
+
+    /**
+     * Shared entry point for the AI voice reporter.
+     * Called by: (1) Mic FAB tap, (2) Wake-word 'Hey Mapzy' broadcast.
+     * Checks permissions first, then launches Android speech recognition.
+     */
+    internal fun launchVoiceReporter() {
+        val neededPerms = mutableListOf<String>()
+        if (androidx.core.content.ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+            != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            neededPerms.add(Manifest.permission.CAMERA)
+        }
+        if (androidx.core.content.ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+            != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            neededPerms.add(Manifest.permission.RECORD_AUDIO)
+        }
+        if (neededPerms.isNotEmpty()) {
+            ActivityCompat.requestPermissions(this, neededPerms.toTypedArray(), 999)
+            Toast.makeText(this, "Please grant camera & mic permissions.", Toast.LENGTH_LONG).show()
+            return
+        }
+        val intent = android.content.Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "Describe the road hazard")
+        }
+        try {
+            speechLauncherMain.launch(intent)
+        } catch (e: Exception) {
+            Toast.makeText(this, "Speech not supported on this device.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
@@ -148,6 +238,9 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         Mappls.getInstance(this)
         
         setContentView(R.layout.activity_main)
+
+        // Register launchers strictly here while in CREATED state
+        initLaunchers()
 
         mapView = findViewById(R.id.map_view)
         mapView?.onCreate(savedInstanceState)
@@ -355,11 +448,108 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         } catch (e: Exception) {
             Log.e("Zwap", "Error setting up hazard button", e)
         }
+
+        // Mic FAB click → shared method used by both FAB and wake-word
+        try {
+            findViewById<View>(R.id.fab_ai_voice)?.setOnClickListener {
+                launchVoiceReporter()
+            }
+        } catch (e: Exception) {
+            Log.e("Zwap", "Error setting up AI voice button", e)
+        }
         
         setupBottomNavigation()
         setupSearchOverlay()
     }
     
+    /**
+     * Shared AI pipeline: upload image + transcript to the assistant backend,
+     * then silently submit the detected hazard to the main backend.
+     * Called by both Manual (TakePicture) and Auto (CameraX) capture paths.
+     */
+    /**
+     * One-Shot Hybrid AI Voice Report.
+     * The Assistant Backend handles everything: AI, Cloudinary, Supabase insert,
+     * and for Path C: Firebase rejection notification.
+     * This function just fires the POST and shows a smart toast.
+     */
+    private fun sendToAiAndSubmit(imageFile: java.io.File, transcript: String, lat: Double, lng: Double) {
+        val userId = auth.currentUser?.uid ?: "anonymous"
+        lifecycleScope.launch {
+            try {
+                val client = okhttp3.OkHttpClient.Builder()
+                    .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(90, java.util.concurrent.TimeUnit.SECONDS)
+                    .build()
+
+                val requestBody = okhttp3.MultipartBody.Builder()
+                    .setType(okhttp3.MultipartBody.FORM)
+                    .addFormDataPart("transcript", transcript)
+                    .addFormDataPart("user_id", userId)
+                    .addFormDataPart("latitude", lat.toString())
+                    .addFormDataPart("longitude", lng.toString())
+                    .addFormDataPart(
+                        "image", imageFile.name,
+                        imageFile.readBytes().toRequestBody("image/jpeg".toMediaTypeOrNull())
+                    )
+                    .build()
+
+                val assistantUrl = com.swapmap.zwap.demo.config.AppConfig.get(
+                    "ASSISTANT_BACKEND_URL", "http://192.168.0.102:8001"
+                )
+                val request = okhttp3.Request.Builder()
+                    .url("$assistantUrl/api/v1/reports/ai-draft")
+                    .post(requestBody)
+                    .build()
+
+                val response = withContext(Dispatchers.IO) { client.newCall(request).execute() }
+                val body = response.body?.string()
+
+                if (response.isSuccessful && body != null) {
+                    val json = org.json.JSONObject(body)
+                    val success    = json.optBoolean("success", false)
+                    val hazardType = json.optString("hazard_type", "")
+                    val status     = json.optString("status", "")
+                    val path       = json.optString("path", "")
+
+                    withContext(Dispatchers.Main) {
+                        when {
+                            success && path == "A" ->
+                                Toast.makeText(this@MainActivity,
+                                    "✅ $hazardType detected visually — report submitted!",
+                                    Toast.LENGTH_LONG).show()
+
+                            success && path == "B" ->
+                                Toast.makeText(this@MainActivity,
+                                    "🎙️ $hazardType captured from voice — report submitted!",
+                                    Toast.LENGTH_LONG).show()
+
+                            success && path == "C" ->
+                                Toast.makeText(this@MainActivity,
+                                    "🎙️ No hazard found — logged for your history.",
+                                    Toast.LENGTH_LONG).show()
+
+                            else -> {
+                                val error = json.optString("error", "Unknown error")
+                                Toast.makeText(this@MainActivity, "🚫 $error", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@MainActivity,
+                            "AI Server error: ${response.code}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+                Log.e("AI_Main", "Exception in sendToAiAndSubmit", e)
+            }
+        }
+    }
+
     private fun setupBottomNavigation() {
         val bottomNav = findViewById<BottomNavigationView>(R.id.bottom_navigation)
         val fragmentContainer = findViewById<View>(R.id.fragment_container)
@@ -2446,13 +2636,126 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     }
 
     override fun onStart() { super.onStart(); mapView?.onStart() }
-    override fun onResume() { super.onResume(); mapView?.onResume() }
-    override fun onPause() { super.onPause(); mapView?.onPause() }
+
+    override fun onResume() {
+        super.onResume()
+        mapView?.onResume()
+        // Register wake-word receiver and re-start service if user has it enabled
+        LocalBroadcastManager.getInstance(this).registerReceiver(
+            wakeWordReceiver,
+            android.content.IntentFilter(WakeWordService.ACTION_WAKE_WORD_DETECTED)
+        )
+        val prefs = getSharedPreferences("zwap_prefs", android.content.Context.MODE_PRIVATE)
+        if (prefs.getBoolean("wake_word_enabled", false)) {
+            val audioPerm = androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO)
+            if (audioPerm == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                startForegroundService(android.content.Intent(this, WakeWordService::class.java))
+            } else {
+                android.util.Log.w("Zwap", "WakeWordService not started: RECORD_AUDIO permission missing")
+            }
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        mapView?.onPause()
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(wakeWordReceiver)
+    }
+
     override fun onStop() { super.onStop(); mapView?.onStop() }
     override fun onSaveInstanceState(outState: Bundle) { super.onSaveInstanceState(outState); mapView?.onSaveInstanceState(outState) }
-    override fun onDestroy() { 
+    override fun onDestroy() {
         locationEngine?.removeLocationUpdates(callback)
         tts?.stop(); tts?.shutdown()
-        super.onDestroy(); mapView?.onDestroy() 
+        cameraExecutor.shutdown()
+        super.onDestroy()
+        mapView?.onDestroy()
+    }
+
+    private fun initLaunchers() {
+        // 1. Camera launcher for AI flow (Manual Mode)
+        takeAIPicture = registerForActivityResult(
+            androidx.activity.result.contract.ActivityResultContracts.TakePicture()
+        ) { success ->
+            if (success && aiImageFileMain != null) {
+                Toast.makeText(this, "⏳ Scanning road for hazards...", Toast.LENGTH_SHORT).show()
+                val lat = mapplsMap?.cameraPosition?.target?.latitude  ?: 0.0
+                val lng = mapplsMap?.cameraPosition?.target?.longitude ?: 0.0
+                sendToAiAndSubmit(aiImageFileMain!!, aiVoiceTranscript, lat, lng)
+            }
+        }
+
+        // 2. Speech recognizer launcher
+        speechLauncherMain = registerForActivityResult(
+            androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+        ) { result ->
+            if (result.resultCode == android.app.Activity.RESULT_OK) {
+                val results = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                if (!results.isNullOrEmpty()) {
+                    aiVoiceTranscript = results[0]
+
+                    // ── Read camera preference ─────────────────────────────
+                    val prefs = getSharedPreferences("zwap_prefs", android.content.Context.MODE_PRIVATE)
+                    val cameraMode = prefs.getString("voice_camera_mode", "manual")
+                    val cameraLens = prefs.getString("voice_camera_lens", "back") ?: "back"
+
+                    if (cameraMode == "auto") {
+                        // ── AUTO: silently capture with CameraX ────────────
+                        Toast.makeText(this, "⏳ Scanning road for hazards...", Toast.LENGTH_SHORT).show()
+
+                        // Capture location immediately
+                        val captureLat = mapplsMap?.cameraPosition?.target?.latitude  ?: 0.0
+                        val captureLng = mapplsMap?.cameraPosition?.target?.longitude ?: 0.0
+
+                        // Ensure CameraX is bound with the correct lens
+                        if (!isCameraXStarted) startCameraX(cameraLens)
+
+                        // Give camera a moment to bind, then capture
+                        val captureHandler = android.os.Handler(mainLooper)
+                        captureHandler.postDelayed({
+                            val ic = imageCapture
+                            if (ic == null) {
+                                Toast.makeText(this, "⚠️ Camera not ready, retrying...", Toast.LENGTH_SHORT).show()
+                                return@postDelayed
+                            }
+                            aiImageFileMain = java.io.File(cacheDir, "ai_auto_${System.currentTimeMillis()}.jpg")
+                            val outputOptions = ImageCapture.OutputFileOptions.Builder(aiImageFileMain!!).build()
+                            ic.takePicture(
+                                outputOptions,
+                                cameraExecutor,
+                                object : ImageCapture.OnImageSavedCallback {
+                                    override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                                        Log.d("CameraX", "📸 Auto-captured: ${aiImageFileMain?.absolutePath}")
+                                        sendToAiAndSubmit(aiImageFileMain!!, aiVoiceTranscript, captureLat, captureLng)
+                                    }
+                                    override fun onError(exc: ImageCaptureException) {
+                                        Log.e("CameraX", "Capture failed", exc)
+                                        runOnUiThread {
+                                            Toast.makeText(this@MainActivity, "📷 Auto-capture failed: ${exc.message}", Toast.LENGTH_LONG).show()
+                                        }
+                                    }
+                                }
+                            )
+                        }, 800) // 800ms gives CameraX time to bind on first use
+
+                    } else {
+                        // ── MANUAL: open system camera ─────────────────────
+                        Toast.makeText(this, "🎙 \"$aiVoiceTranscript\" — Taking photo...", Toast.LENGTH_SHORT).show()
+                        try {
+                            aiImageFileMain = java.io.File(cacheDir, "ai_main_${System.currentTimeMillis()}.jpg")
+                            aiCameraUriMain = androidx.core.content.FileProvider.getUriForFile(
+                                this,
+                                "$packageName.fileprovider",
+                                aiImageFileMain!!
+                            )
+                            takeAIPicture.launch(aiCameraUriMain!!)
+                        } catch (e: Exception) {
+                            Log.e("Zwap", "Failed to launch camera", e)
+                            Toast.makeText(this, "Camera failed to start", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            }
+        }
     }
 }

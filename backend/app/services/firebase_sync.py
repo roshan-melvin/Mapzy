@@ -71,16 +71,26 @@ class FirebaseSyncService:
         user_id: str = "",
     ) -> None:
         if self._db is None:
+            logger.warning("Firebase DB not initialized — skipping update_report_status")
             return
 
         try:
             channel = self._normalize_channel(incident_type)
+            doc_path = f"reports/{channel}/threads/{report_id}"
+            logger.info(f"📝 Writing status '{status}' → Firestore path: {doc_path}")
             doc_ref = (
                 self._db.collection("reports")
                 .document(channel)
                 .collection("threads")
                 .document(report_id)
             )
+            # Check if document exists first
+            existing = doc_ref.get()
+            if not existing.exists:
+                logger.warning(f"⚠️ Document NOT FOUND at {doc_path} — status update will CREATE a partial document!")
+            else:
+                logger.info(f"✅ Document exists at {doc_path}, current status: {existing.to_dict().get('status')}")
+
             doc_ref.set(
                 {
                     "status": status,
@@ -94,6 +104,7 @@ class FirebaseSyncService:
                 },
                 merge=True,
             )
+            logger.info(f"✅ Firestore status updated to '{status}' at {doc_path}")
 
             # Write a notification to the user's notifications subcollection
             if user_id:

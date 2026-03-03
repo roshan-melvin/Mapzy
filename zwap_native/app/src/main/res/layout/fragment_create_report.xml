@@ -41,7 +41,44 @@
             android:inputType="text"
             android:completionThreshold="1"
             android:dropDownHeight="wrap_content"
-            android:layout_marginBottom="16dp"/>
+            android:layout_marginBottom="8dp"/>
+
+        <!-- Most Popular Tags -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="4dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Most Popular"
+                android:textColor="#B9BBBE"
+                android:textSize="12sp"
+                android:layout_marginEnd="8dp"/>
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1"
+                android:background="#3E4047"/>
+        </LinearLayout>
+
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scrollbars="none"
+            android:layout_marginBottom="16dp">
+
+            <com.google.android.material.chip.ChipGroup
+                android:id="@+id/cg_popular_tags"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                app:singleLine="true"
+                app:chipSpacingHorizontal="6dp"/>
+        </HorizontalScrollView>
 
         <TextView
             android:layout_width="wrap_content"
@@ -49,6 +86,7 @@
             android:text="Description"
             android:textColor="#B9BBBE"
             android:layout_marginBottom="8dp"/>
+
 
         <EditText
             android:id="@+id/et_description"
@@ -62,7 +100,20 @@
             android:textColor="#FFFFFF"
             android:textColorHint="#72767D"
             android:inputType="textMultiLine"
-            android:layout_marginBottom="16dp"/>
+            android:layout_marginBottom="8dp"/>
+
+        <!-- Smart Suggestions Chip Group -->
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scrollbars="none"
+            android:layout_marginBottom="16dp">
+            <com.google.android.material.chip.ChipGroup
+                android:id="@+id/cg_suggestions"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                app:singleLine="true"/>
+        </HorizontalScrollView>
 
         <TextView
             android:layout_width="wrap_content"
@@ -169,6 +220,7 @@
             android:layout_height="60dp"
             android:text="Submit Report"
             android:backgroundTint="#43B581"/>
+
             
         <ProgressBar
             android:id="@+id/pb_uploading"

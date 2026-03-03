@@ -486,6 +486,19 @@
 
         <!-- Fragment Container for Community/Profile -->
 
+        <!-- AI Voice Report Button (above hazard toggle) -->
+        <ImageButton
+            android:id="@+id/fab_ai_voice"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:layout_marginBottom="12dp"
+            android:background="@drawable/rounded_mic_btn"
+            android:src="@android:drawable/ic_btn_speak_now"
+            android:scaleType="centerInside"
+            android:padding="14dp"
+            android:elevation="6dp"
+            android:contentDescription="AI Voice Report"/>
+
         <!-- Hazard Toggle Button with Icon -->
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btn_toggle_osm"
@@ -505,6 +518,7 @@
             android:elevation="6dp"
             app:strokeWidth="1dp"
             app:strokeColor="#E0E0E0" />
+
 
         <!-- Compass Button -->
         <com.google.android.material.floatingactionbutton.FloatingActionButton

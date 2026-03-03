@@ -298,6 +298,194 @@
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
+        <!-- AI Voice Camera Settings -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="AI Voice Reporter"
+            android:textColor="#72767D"
+            android:textSize="14sp"
+            android:layout_marginTop="24dp"
+            android:layout_marginBottom="8dp"
+            android:textAllCaps="true"/>
+
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardBackgroundColor="#2F3136"
+            app:cardCornerRadius="12dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <!-- Mode label -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Camera Mode"
+                    android:textColor="#B9BBBE"
+                    android:textSize="13sp"
+                    android:layout_marginBottom="10dp"/>
+
+                <!-- Manual / Auto toggle -->
+                <RadioGroup
+                    android:id="@+id/rg_camera_mode"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <RadioButton
+                        android:id="@+id/rb_camera_manual"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Manual"
+                        android:textColor="#FFFFFF"
+                        android:buttonTint="#5865F2"
+                        android:checked="true"/>
+
+                    <RadioButton
+                        android:id="@+id/rb_camera_auto"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Auto (Hands-Free)"
+                        android:textColor="#FFFFFF"
+                        android:buttonTint="#5865F2"/>
+
+                </RadioGroup>
+
+                <!-- Lens selection (only visible in Auto mode) -->
+                <LinearLayout
+                    android:id="@+id/ll_lens_selector"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:layout_marginTop="14dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Auto-Capture Lens"
+                        android:textColor="#B9BBBE"
+                        android:textSize="13sp"
+                        android:layout_marginBottom="10dp"/>
+
+                    <RadioGroup
+                        android:id="@+id/rg_camera_lens"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+
+                        <RadioButton
+                            android:id="@+id/rb_lens_back"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Back Camera"
+                            android:textColor="#FFFFFF"
+                            android:buttonTint="#43B581"
+                            android:checked="true"/>
+
+                        <RadioButton
+                            android:id="@+id/rb_lens_front"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Front Camera"
+                            android:textColor="#FFFFFF"
+                            android:buttonTint="#43B581"/>
+
+                    </RadioGroup>
+                </LinearLayout>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Auto mode instantly captures a photo when you finish speaking — perfect for hands-free driving."
+                    android:textColor="#72767D"
+                    android:textSize="12sp"
+                    android:layout_marginTop="12dp"/>
+
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- Wake Word Detection Settings -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Wake Word Detection"
+            android:textColor="#72767D"
+            android:textSize="14sp"
+            android:layout_marginTop="24dp"
+            android:layout_marginBottom="8dp"
+            android:textAllCaps="true"/>
+
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardBackgroundColor="#2F3136"
+            app:cardCornerRadius="12dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <!-- Toggle row -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Hey Mapzy"
+                            android:textColor="#FFFFFF"
+                            android:textSize="16sp"
+                            android:textStyle="bold"/>
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Listens for 'Hey Mapzy' in the background"
+                            android:textColor="#B9BBBE"
+                            android:textSize="12sp"
+                            android:layout_marginTop="2dp"/>
+                    </LinearLayout>
+
+                    <androidx.appcompat.widget.SwitchCompat
+                        android:id="@+id/sw_wake_word"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:checked="false"/>
+                </LinearLayout>
+
+                <!-- Info text -->
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="When ON, say 'Hey Mapzy' and the voice reporter activates automatically — no button tap needed. Uses Picovoice Porcupine (processed 100% on-device, no data sent)."
+                    android:textColor="#72767D"
+                    android:textSize="12sp"
+                    android:layout_marginTop="12dp"/>
+
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
         <!-- Sign Out Button -->
         <Button
             android:id="@+id/btn_sign_out"
@@ -308,6 +496,7 @@
             android:backgroundTint="#2F3136"
             android:layout_marginTop="24dp"
             android:textAllCaps="false"/>
+
 
         <TextView
             android:layout_width="match_parent"
