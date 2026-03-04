@@ -49,7 +49,6 @@ import android.view.LayoutInflater
 import android.view.ViewGroup
 import android.speech.RecognizerIntent
 import android.widget.EditText
-import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.auth.FirebaseAuth
@@ -58,52 +57,42 @@ import com.mappls.sdk.services.api.directions.DirectionsCriteria
 import com.mappls.sdk.services.api.directions.MapplsDirectionManager
 import com.mappls.sdk.services.api.directions.MapplsDirections
 import com.mappls.sdk.services.api.directions.models.DirectionsResponse
-import com.mappls.sdk.services.api.directions.models.DirectionsRoute
 import com.mappls.sdk.services.api.directions.models.LegStep
-import com.mappls.sdk.plugin.annotation.Line
+import java.util.*
+import java.text.SimpleDateFormat
 import com.mappls.sdk.plugin.annotation.LineManager
 import com.mappls.sdk.plugin.annotation.LineOptions
-import com.mappls.sdk.plugin.annotation.OnLineClickListener
-import com.mappls.sdk.plugin.annotation.OnSymbolClickListener
-import com.mappls.sdk.plugin.annotation.Symbol
 import com.mappls.sdk.plugin.annotation.SymbolManager
 import com.mappls.sdk.plugin.annotation.SymbolOptions
+import com.google.android.gms.common.api.ApiException
+import com.google.android.gms.location.*
 import com.mappls.sdk.services.utils.Constants
 import com.swapmap.zwap.R
 import com.swapmap.zwap.demo.model.FeatureType
 import com.swapmap.zwap.demo.model.OSMFeature
 import com.swapmap.zwap.demo.network.OSMOverpassService
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.ViewModelProvider
-import androidx.lifecycle.Observer
-import com.swapmap.zwap.demo.viewmodel.HazardViewModel
 import android.graphics.BitmapFactory
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.Typeface
+import android.transition.TransitionManager
+import android.transition.ChangeBounds
 import android.widget.Button
+import android.widget.ImageView
+import android.widget.RelativeLayout
 import java.lang.ref.WeakReference
 import java.util.*
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.swapmap.zwap.demo.profile.ProfileFragment
 import com.swapmap.zwap.demo.community.CommunityFragment
 import com.swapmap.zwap.demo.chat.ChatFragment
-import com.swapmap.zwap.demo.repository.ReportRepository
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
-import okhttp3.MultipartBody
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import androidx.camera.core.CameraSelector
-import androidx.camera.core.ImageCapture
-import androidx.camera.core.ImageCaptureException
-import androidx.camera.lifecycle.ProcessCameraProvider
-import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnInitListener {
 
@@ -115,10 +104,12 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     // Firestore Database
     private val db = FirebaseFirestore.getInstance()
     
-    private var locationEngine: LocationEngine? = null
-    private val callback = LocationChangeCallback(this)
+    private lateinit var fusedLocationClient: FusedLocationProviderClient
+    private lateinit var locationCallback: LocationCallback
+    private var lastLocationForSpeed: Location? = null
     
     private var isFollowMode = true
+    private var isMapTilted = false  // Tracks 2D (false) vs 3D (true) tilt state
     private var tts: TextToSpeech? = null
     
     private var currentRoute: DirectionsResponse? = null
@@ -127,9 +118,6 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     private val ALERT_COOLDOWN = 3000L  // 3 seconds
     private val HAZARD_ALERT_DISTANCE = 300.0  // 300 meters
     private val alertedHazardIds = mutableSetOf<Long>()
-
-    // ── ViewModel: owns speed limit state, fetch logic, over-speed TTS ────────
-    private lateinit var hazardViewModel: HazardViewModel
     private var hazardAlertAdapter: HazardAlertAdapter? = null
     private var isHazardPanelExpanded = true
     private val activeHazards = mutableListOf<HazardAlert>()
@@ -148,19 +136,12 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     private var lastFetchedMapCenter: com.mappls.sdk.maps.geometry.LatLng? = null
     private val routeHazardMarkerIds = mutableListOf<Long>()
     private var isNavigating = false
-    private var isPreviewMode = false
     private var currentRoutePoints: List<Point> = emptyList()  // Store route points for progressive fetching
     private var currentHazardFetchIndex = 0  // Track which chunk we're fetching
     private var hazardFetchJob: kotlinx.coroutines.Job? = null  // Job to cancel if route changes
     private var totalRouteDistanceMeters = 0.0  // Total route distance for progress calculation
     
-    // Interactive Route selection maps
-    private val markerToRouteMap = mutableMapOf<Long, DirectionsRoute>()
-    private val routeMetaMarkerIds = mutableListOf<Long>()
-    // Store all route geometries for tap-detection on gray lines
-    private val allRouteGeometries = mutableMapOf<DirectionsRoute, List<com.mappls.sdk.maps.geometry.LatLng>>()
-    // The currently displayed primary (blue) route
-    private var currentPrimaryRoute: DirectionsRoute? = null
+    private var isRouteSwapped = false  // Tracks if origin/destination are swapped
     
     // Firebase live sync state
     private val liveConfidenceMap = mutableMapOf<Long, Double>()
@@ -170,254 +151,73 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     private lateinit var auth: FirebaseAuth
     private var currentUserId: String? = null
 
-    // CameraX for hands-free auto-capture
-    private var imageCapture: ImageCapture? = null
-    private val cameraExecutor = Executors.newSingleThreadExecutor()
-    private var isCameraXStarted = false
-
-    // Hoisted here so launchVoiceReporter() (called from wake-word OR FAB) can use it
-    private lateinit var speechLauncherMain: androidx.activity.result.ActivityResultLauncher<android.content.Intent>
-    private lateinit var takeAIPicture: androidx.activity.result.ActivityResultLauncher<android.net.Uri>
-
-    // State holders for the voice + camera flow
-    private var aiVoiceTranscript = ""
-    private var aiImageFileMain: java.io.File? = null
-    private var aiCameraUriMain: android.net.Uri? = null
-    
-    // Custom SpeechRecognizer
-    private var customSpeechRecognizer: android.speech.SpeechRecognizer? = null
-    private var isVoiceAnimating = false
-
-    // ── Wake-Word Receiver ────────────────────────────────────────────────────
-    // Receives a local broadcast from WakeWordService when "Hey Mapzy" is heard,
-    // then triggers the same voice pipeline as tapping the mic FAB.
-    private val wakeWordReceiver = object : android.content.BroadcastReceiver() {
-        override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
-            if (intent?.action == WakeWordService.ACTION_WAKE_WORD_DETECTED) {
-                android.util.Log.i("WakeWord", "🔔 'Hey Mapzy' detected — launching voice reporter")
-                launchVoiceReporter()
-            }
-        }
-    }
-
-    /** Bind CameraX with the chosen lens (back or front) for silent auto-capture. */
-    private fun startCameraX(lens: String) {
-        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
-        cameraProviderFuture.addListener({
-            val cameraProvider = cameraProviderFuture.get()
-            imageCapture = ImageCapture.Builder()
-                .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-                .build()
-            val selector = if (lens == "front")
-                CameraSelector.DEFAULT_FRONT_CAMERA
-            else
-                CameraSelector.DEFAULT_BACK_CAMERA
-            try {
-                cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(this, selector, imageCapture!!)
-                isCameraXStarted = true
-                Log.d("CameraX", "✅ CameraX bound with $lens lens")
-            } catch (e: Exception) {
-                Log.e("CameraX", "Failed to bind CameraX", e)
-            }
-        }, androidx.core.content.ContextCompat.getMainExecutor(this))
-    }
-
-    /**
-     * Shared entry point for the AI voice reporter.
-     * Called by: (1) Mic FAB tap, (2) Wake-word 'Hey Mapzy' broadcast.
-     * Checks permissions first, then launches Android speech recognition.
-     */
-    internal fun launchVoiceReporter() {
-        val neededPerms = mutableListOf<String>()
-        if (androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA)
-            != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            neededPerms.add(android.Manifest.permission.CAMERA)
-        }
-        if (androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO)
-            != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            neededPerms.add(android.Manifest.permission.RECORD_AUDIO)
-        }
-        if (neededPerms.isNotEmpty()) {
-            ActivityCompat.requestPermissions(this, neededPerms.toTypedArray(), 999)
-            Toast.makeText(this, "Please grant camera & mic permissions.", Toast.LENGTH_LONG).show()
-            return
-        }
-
-        // ── CRITICAL FIX: Stop WakeWordService FIRST to free the microphone ────
-        // Porcupine holds an AudioRecord open. If both run simultaneously, Android
-        // silences the SpeechRecognizer stream → NO_SPEECH_DETECTED (-1) every time.
-        stopService(android.content.Intent(this, WakeWordService::class.java))
-        android.util.Log.d("Zwap", "WakeWordService stopped — mic is now free for SpeechRecognizer")
-
-        // Destroy and recreate recognizer every call for a fresh, clean session
-        customSpeechRecognizer?.destroy()
-        customSpeechRecognizer = android.speech.SpeechRecognizer.createSpeechRecognizer(this)
-
-        customSpeechRecognizer?.setRecognitionListener(object : android.speech.RecognitionListener {
-            override fun onReadyForSpeech(params: Bundle?) {
-                startVoiceAnimation()
-                Toast.makeText(this@MainActivity, "🎙 Listening...", Toast.LENGTH_SHORT).show()
-            }
-            override fun onBeginningOfSpeech() {}
-            override fun onRmsChanged(rmsdB: Float) {}
-            override fun onBufferReceived(buffer: ByteArray?) {}
-            override fun onEndOfSpeech() { stopVoiceAnimation() }
-
-            override fun onError(error: Int) {
-                stopVoiceAnimation()
-                restartWakeWordServiceIfEnabled()
-                // Only surface meaningful user-facing errors; silently swallow the rest
-                val msg = when (error) {
-                    android.speech.SpeechRecognizer.ERROR_NO_MATCH,
-                    android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No speech detected — try again"
-                    android.speech.SpeechRecognizer.ERROR_AUDIO          -> "Microphone error — try again"
-                    android.speech.SpeechRecognizer.ERROR_NETWORK,
-                    android.speech.SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Network error — check connection"
-                    android.speech.SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Voice recognizer busy — try again"
-                    android.speech.SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Mic permission needed"
-                    else -> null  // Silently ignore ERROR_CLIENT (-5) and other internal errors
-                }
-                msg?.let { Toast.makeText(this@MainActivity, it, Toast.LENGTH_SHORT).show() }
-            }
-
-            override fun onResults(results: Bundle?) {
-                stopVoiceAnimation()
-                restartWakeWordServiceIfEnabled()
-                val matches = results?.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION)
-                if (!matches.isNullOrEmpty()) {
-                    processVoiceTranscript(matches[0])
-                }
-            }
-            override fun onPartialResults(partialResults: Bundle?) {}
-            override fun onEvent(eventType: Int, params: Bundle?) {}
-        })
-
-        val recognizerIntent = android.content.Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
-            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
-        }
-        try {
-            customSpeechRecognizer?.startListening(recognizerIntent)
-        } catch (e: Exception) {
-            android.util.Log.e("Zwap", "SpeechRecognizer failed to start: ${e.message}", e)
-            stopVoiceAnimation()
-            restartWakeWordServiceIfEnabled()
-        }
-    }
-
-    /** Restarts WakeWordService after the SpeechRecognizer has released the mic,
-     *  but only if the user has the "Hey Mapzy" feature enabled in preferences. */
-    private fun restartWakeWordServiceIfEnabled() {
-        val prefs = getSharedPreferences("zwap_prefs", android.content.Context.MODE_PRIVATE)
-        if (prefs.getBoolean("wake_word_enabled", false)) {
-            val audioPerm = androidx.core.content.ContextCompat.checkSelfPermission(
-                this, android.Manifest.permission.RECORD_AUDIO
-            )
-            if (audioPerm == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                startForegroundService(android.content.Intent(this, WakeWordService::class.java))
-                android.util.Log.d("Zwap", "WakeWordService restarted — mic returned to Porcupine")
-            }
-        }
-    }
-
-    private fun processVoiceTranscript(transcript: String) {
-        aiVoiceTranscript = transcript
-        // ── Read camera preference ─────────────────────────────
-        val prefs = getSharedPreferences("zwap_prefs", android.content.Context.MODE_PRIVATE)
-        val cameraMode = prefs.getString("voice_camera_mode", "manual")
-        val cameraLens = prefs.getString("voice_camera_lens", "back") ?: "back"
-
-        if (cameraMode == "auto") {
-            // ── AUTO: silently capture with CameraX ────────────
-            Toast.makeText(this, "⏳ Scanning road for hazards...", Toast.LENGTH_SHORT).show()
-            val captureLat = mapplsMap?.cameraPosition?.target?.latitude  ?: 0.0
-            val captureLng = mapplsMap?.cameraPosition?.target?.longitude ?: 0.0
-            if (!isCameraXStarted) startCameraX(cameraLens)
-            val captureHandler = android.os.Handler(mainLooper)
-            captureHandler.postDelayed({
-                val ic = imageCapture
-                if (ic == null) {
-                    Toast.makeText(this, "⚠️ Camera not ready, retrying...", Toast.LENGTH_SHORT).show()
-                    return@postDelayed
-                }
-                aiImageFileMain = java.io.File(cacheDir, "ai_auto_${System.currentTimeMillis()}.jpg")
-                val outputOptions = ImageCapture.OutputFileOptions.Builder(aiImageFileMain!!).build()
-                ic.takePicture(
-                    outputOptions,
-                    cameraExecutor,
-                    object : ImageCapture.OnImageSavedCallback {
-                        override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                            sendToAiAndSubmit(aiImageFileMain!!, aiVoiceTranscript, captureLat, captureLng)
-                        }
-                        override fun onError(exc: ImageCaptureException) {
-                            runOnUiThread {
-                                Toast.makeText(this@MainActivity, "📷 Auto-capture failed: ${exc.message}", Toast.LENGTH_LONG).show()
-                            }
-                        }
-                    }
-                )
-            }, 800)
-        } else {
-            // ── MANUAL: open system camera ─────────────────────
-            Toast.makeText(this, "🎙 \"$aiVoiceTranscript\" — Taking photo...", Toast.LENGTH_SHORT).show()
-            try {
-                aiImageFileMain = java.io.File(cacheDir, "ai_main_${System.currentTimeMillis()}.jpg")
-                aiCameraUriMain = androidx.core.content.FileProvider.getUriForFile(
-                    this,
-                    "$packageName.fileprovider",
-                    aiImageFileMain!!
-                )
-                takeAIPicture.launch(aiCameraUriMain!!)
-            } catch (e: Exception) {
-                Toast.makeText(this, "Camera failed to start", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
+        
         // Initialize Firebase Auth
         auth = FirebaseAuth.getInstance()
-
+        
         // Ensure keys are set before inflation
         Mappls.getInstance(this)
-
+        
         setContentView(R.layout.activity_main)
 
-        // ── Initialize HazardViewModel ────────────────────────────────────────
-        hazardViewModel = ViewModelProvider(this)[HazardViewModel::class.java]
-
-        // Observe speed limit changes and update tv_limit automatically.
-        // This runs on the Main thread, is lifecycle-safe, and replaces the
-        // old runOnUiThread { currentSpeedLimitKmh = ... } pattern.
-        hazardViewModel.speedLimitKmh.observe(this, Observer { limitKmh ->
-            val tvLimit = findViewById<TextView>(R.id.tv_limit)
-            tvLimit?.text = if (limitKmh > 0) "$limitKmh" else "--"
-        })
-
-        // Register launchers strictly here while in CREATED state
-        initLaunchers()
+        // Initialize FusedLocationProviderClient
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+        setupLocationCallback()
 
         mapView = findViewById(R.id.map_view)
         mapView?.onCreate(savedInstanceState)
         mapView?.getMapAsync(this)
 
         tts = TextToSpeech(this, this)
-
+        
         // Check if user is already logged in
         if (auth.currentUser != null) {
             currentUserId = auth.currentUser!!.uid
-            Log.d("Zwap", "User already logged in: $currentUserId")
+            Log.d("Zwap", "✅ MainActivity: User ID $currentUserId")
+            // Noisy toast removed
             setupUI()
         } else {
-            // Show login/signup dialog
-            showAuthDialog()
+            Log.d("Zwap", "❌ MainActivity: No user detected, redirecting back to Login")
+            startActivity(Intent(this, AuthActivity::class.java))
+            finish()
+        }
+
+        // Native Gesture Handling: Modern OnBackPressedDispatcher for Edge-Swipe Support
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                val overlay = findViewById<View>(R.id.search_overlay)
+                if (overlay?.visibility == View.VISIBLE) {
+                    overlay.visibility = View.GONE
+                    return
+                }
+                
+                if (supportFragmentManager.backStackEntryCount > 0) {
+                    supportFragmentManager.popBackStack()
+                    return
+                }
+                
+                // Allow default system back to exit if no UI/Fragments are layered
+                isEnabled = false
+                onBackPressedDispatcher.onBackPressed()
+                isEnabled = true
+            }
+        })
+    }
+
+    private fun setupLocationCallback() {
+        locationCallback = object : LocationCallback() {
+            override fun onLocationResult(locationResult: LocationResult) {
+                locationResult.lastLocation?.let { location ->
+                    // Filter by accuracy: ignore worse than 20m
+                    if (location.accuracy <= 20.0f) {
+                        handleLocationUpdate(location)
+                    } else {
+                        Log.d("ZwapLoc", "Ignoring low accuracy location: ${location.accuracy}m")
+                    }
+                }
+            }
         }
     }
     
@@ -426,83 +226,6 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     private var osmRunnable: Runnable? = null
 
     
-    private fun showAuthDialog() {
-        val builder = androidx.appcompat.app.AlertDialog.Builder(this)
-        builder.setTitle("Sign In / Sign Up")
-        builder.setMessage("Enter your email and password")
-        
-        val layout = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-            setPadding(50, 40, 50, 40)
-        }
-        
-        val emailInput = EditText(this).apply {
-            hint = "Email"
-            inputType = android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = 20 }
-        }
-        
-        val passwordInput = EditText(this).apply {
-            hint = "Password (min 6 chars)"
-            inputType = android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        }
-        
-        layout.addView(emailInput)
-        layout.addView(passwordInput)
-        
-        builder.setView(layout)
-        builder.setPositiveButton("Sign Up / Sign In") { _, _ ->
-            val email = emailInput.text.toString().trim()
-            val password = passwordInput.text.toString().trim()
-            
-            if (email.isEmpty() || password.isEmpty()) {
-                Toast.makeText(this, "Email and password required", Toast.LENGTH_SHORT).show()
-                showAuthDialog()
-                return@setPositiveButton
-            }
-            
-            if (password.length < 6) {
-                Toast.makeText(this, "Password must be at least 6 characters", Toast.LENGTH_SHORT).show()
-                showAuthDialog()
-                return@setPositiveButton
-            }
-            
-            // Try to sign in first, if fails then create new account
-            auth.signInWithEmailAndPassword(email, password)
-                .addOnSuccessListener {
-                    currentUserId = auth.currentUser!!.uid
-                    Log.d("Zwap", "✅ Signed in: $currentUserId")
-                    Toast.makeText(this@MainActivity, "Welcome back!", Toast.LENGTH_SHORT).show()
-                    setupUI()
-                }
-                .addOnFailureListener { signInException ->
-                    Log.d("Zwap", "Sign in failed, trying to create account...")
-                    // If sign in fails, try to create new account
-                    auth.createUserWithEmailAndPassword(email, password)
-                        .addOnSuccessListener {
-                            currentUserId = auth.currentUser!!.uid
-                            Log.d("Zwap", "✅ Account created: $currentUserId")
-                            Toast.makeText(this@MainActivity, "Account created successfully!", Toast.LENGTH_SHORT).show()
-                            setupUI()
-                        }
-                        .addOnFailureListener { signUpException ->
-                            Log.e("Zwap", "Sign up failed: ${signUpException.message}")
-                            Toast.makeText(this@MainActivity, "Error: ${signUpException.message}", Toast.LENGTH_SHORT).show()
-                            showAuthDialog()
-                        }
-                }
-        }
-        
-        builder.setCancelable(false)
-        builder.show()
-    }
     
     private fun listenToFirebaseMapHazards() {
         Log.d("Zwap", "Starting Firebase map_hazards live listener")
@@ -575,39 +298,33 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         setupHazardAlertPanel()
         findViewById<View>(R.id.search_trigger).setOnClickListener { showSearchOverlay(null) }
         findViewById<View>(R.id.btn_voice_search).setOnClickListener { performVoiceSearch() }
-        findViewById<View>(R.id.btn_directions).setOnClickListener { 
-            // If already previewing a route, just start it
-            if (currentRoute != null && currentPrimaryRoute != null) {
-                startNavigation()
-            } else {
-                getDirections() 
-            }
-        }
+        // Ensure GPS/recenter FAB is always visible during standard map exploration
+        findViewById<View>(R.id.fab_recenter).visibility = View.VISIBLE
         findViewById<View>(R.id.fab_recenter).setOnClickListener { enableFollowMode() }
         findViewById<View>(R.id.btn_show_nearby).setOnClickListener { showNearbySearchDialog() }
         
-        // Compass button - reset map orientation to north
+        // Compass button - toggle 2D / 3D tilt
         findViewById<View>(R.id.fab_compass)?.setOnClickListener {
-            Log.d("Zwap", "Compass button clicked - resetting map bearing to north")
+            isMapTilted = !isMapTilted
+            val targetTilt = if (isMapTilted) 45.0 else 0.0
+            val label = if (isMapTilted) "3D" else "2D"
+            Log.d("Zwap", "Compass tilt toggle -> $label (tilt=$targetTilt)")
+
+            val currentPosition = mapplsMap?.cameraPosition
             mapplsMap?.animateCamera(
                 com.mappls.sdk.maps.camera.CameraUpdateFactory.newCameraPosition(
                     com.mappls.sdk.maps.camera.CameraPosition.Builder()
-                        .target(mapplsMap?.cameraPosition?.target)
-                        .zoom(mapplsMap?.cameraPosition?.zoom ?: 14.0)
-                        .bearing(0.0)  // Reset to north
-                        .tilt(0.0)     // Reset tilt
+                        .target(currentPosition?.target)          // keep same map centre — no drift
+                        .zoom(currentPosition?.zoom ?: 14.0)      // keep same zoom level
+                        .bearing(currentPosition?.bearing ?: 0.0) // keep current bearing
+                        .tilt(targetTilt)
                         .build()
                 ),
-                300  // Animation duration in ms
+                350  // Smooth animation duration in ms
             )
         }
         
-        // More from recent history button
-        findViewById<View>(R.id.btn_more_history)?.setOnClickListener {
-            Log.d("Zwap", "More history button clicked")
-            fetchHistoryFromFirestore(limit = 20) // Show more items instead of just 5
-        }
-        
+        // More history removed
         try {
             findViewById<View>(R.id.btn_toggle_osm)?.setOnClickListener { 
                 Log.d("Zwap", "Hazard toggle button clicked!")
@@ -617,132 +334,11 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         } catch (e: Exception) {
             Log.e("Zwap", "Error setting up hazard button", e)
         }
-        // Mic FAB click → shared method used by both FAB and wake-word
-        try {
-            val aiVoiceBtn = findViewById<View>(R.id.fab_ai_voice)
-            aiVoiceBtn?.setOnClickListener {
-                launchVoiceReporter()
-            }
-        } catch (e: Exception) {
-            Log.e("Zwap", "Error setting up AI voice button", e)
-        }
         
         setupBottomNavigation()
         setupSearchOverlay()
     }
-
-    private fun startVoiceAnimation() {
-        val aiVoiceBtn = findViewById<View>(R.id.fab_ai_voice) ?: return
-        if (isVoiceAnimating) return
-        isVoiceAnimating = true
-        pulseAnim(aiVoiceBtn)
-    }
-
-    private fun pulseAnim(btn: View) {
-        if (!isVoiceAnimating) return
-        btn.animate().scaleX(1.15f).scaleY(1.15f).setDuration(600).withEndAction {
-            if (!isVoiceAnimating) return@withEndAction
-            btn.animate().scaleX(1.0f).scaleY(1.0f).setDuration(600).withEndAction {
-                if (isVoiceAnimating) pulseAnim(btn)
-            }.start()
-        }.start()
-    }
-
-    private fun stopVoiceAnimation() {
-        isVoiceAnimating = false
-        val aiVoiceBtn = findViewById<View>(R.id.fab_ai_voice)
-        aiVoiceBtn?.animate()?.cancel()
-        aiVoiceBtn?.animate()?.scaleX(1.0f)?.scaleY(1.0f)?.setDuration(200)?.start()
-    }
     
-    /**
-     * Shared AI pipeline: upload image + transcript to the assistant backend,
-     * then silently submit the detected hazard to the main backend.
-     * Called by both Manual (TakePicture) and Auto (CameraX) capture paths.
-     */
-    /**
-     * One-Shot Hybrid AI Voice Report.
-     * The Assistant Backend handles everything: AI, Cloudinary, Supabase insert,
-     * and for Path C: Firebase rejection notification.
-     * This function just fires the POST and shows a smart toast.
-     */
-    private fun sendToAiAndSubmit(imageFile: java.io.File, transcript: String, lat: Double, lng: Double) {
-        val userId = auth.currentUser?.uid ?: "anonymous"
-        lifecycleScope.launch {
-            try {
-                val client = okhttp3.OkHttpClient.Builder()
-                    .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-                    .readTimeout(90, java.util.concurrent.TimeUnit.SECONDS)
-                    .build()
-
-                val requestBody = okhttp3.MultipartBody.Builder()
-                    .setType(okhttp3.MultipartBody.FORM)
-                    .addFormDataPart("transcript", transcript)
-                    .addFormDataPart("user_id", userId)
-                    .addFormDataPart("latitude", lat.toString())
-                    .addFormDataPart("longitude", lng.toString())
-                    .addFormDataPart(
-                        "image", imageFile.name,
-                        imageFile.readBytes().toRequestBody("image/jpeg".toMediaTypeOrNull())
-                    )
-                    .build()
-
-                val assistantUrl = com.swapmap.zwap.demo.config.AppConfig.get(
-                    "ASSISTANT_BACKEND_URL", "http://192.168.0.102:8001"
-                )
-                val request = okhttp3.Request.Builder()
-                    .url("$assistantUrl/api/v1/reports/ai-draft")
-                    .post(requestBody)
-                    .build()
-
-                val response = withContext(Dispatchers.IO) { client.newCall(request).execute() }
-                val body = response.body?.string()
-
-                if (response.isSuccessful && body != null) {
-                    val json = org.json.JSONObject(body)
-                    val success    = json.optBoolean("success", false)
-                    val hazardType = json.optString("hazard_type", "")
-                    val status     = json.optString("status", "")
-                    val path       = json.optString("path", "")
-
-                    withContext(Dispatchers.Main) {
-                        when {
-                            success && path == "A" ->
-                                Toast.makeText(this@MainActivity,
-                                    "✅ $hazardType detected visually — report submitted!",
-                                    Toast.LENGTH_LONG).show()
-
-                            success && path == "B" ->
-                                Toast.makeText(this@MainActivity,
-                                    "🎙️ $hazardType captured from voice — report submitted!",
-                                    Toast.LENGTH_LONG).show()
-
-                            success && path == "C" ->
-                                Toast.makeText(this@MainActivity,
-                                    "🎙️ No hazard found — logged for your history.",
-                                    Toast.LENGTH_LONG).show()
-
-                            else -> {
-                                val error = json.optString("error", "Unknown error")
-                                Toast.makeText(this@MainActivity, "🚫 $error", Toast.LENGTH_LONG).show()
-                            }
-                        }
-                    }
-                } else {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(this@MainActivity,
-                            "AI Server error: ${response.code}", Toast.LENGTH_SHORT).show()
-                    }
-                }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(this@MainActivity, "Error: ${e.message}", Toast.LENGTH_LONG).show()
-                }
-                Log.e("AI_Main", "Exception in sendToAiAndSubmit", e)
-            }
-        }
-    }
-
     private fun setupBottomNavigation() {
         val bottomNav = findViewById<BottomNavigationView>(R.id.bottom_navigation)
         val fragmentContainer = findViewById<View>(R.id.fragment_container)
@@ -756,6 +352,14 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                     findViewById<View>(R.id.search_card)?.visibility = View.VISIBLE
                     findViewById<View>(R.id.fab_recenter)?.visibility = View.VISIBLE
                     findViewById<View>(R.id.fab_compass)?.visibility = View.VISIBLE
+                    findViewById<View>(R.id.fab_stack_container)?.visibility = View.VISIBLE
+                    // Show speedometer on Explore tab
+                    findViewById<View>(R.id.speed_limit_widget)?.visibility = View.VISIBLE
+                    // Restore directions panels if a route is active
+                    if (currentRoute != null && !isNavigating) {
+                        findViewById<View>(R.id.directions_header_card)?.visibility = View.VISIBLE
+                        findViewById<View>(R.id.directions_bottom_panel)?.visibility = View.VISIBLE
+                    }
                     Log.d("Zwap", "Switched to Explore tab")
                     true
                 }
@@ -788,6 +392,12 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         findViewById<View>(R.id.fab_recenter)?.visibility = View.GONE
         findViewById<View>(R.id.fab_compass)?.visibility = View.GONE
         findViewById<View>(R.id.search_overlay)?.visibility = View.GONE
+        // Fix 6: Hide navigation panels on non-Explore tabs
+        findViewById<View>(R.id.directions_header_card)?.visibility = View.GONE
+        findViewById<View>(R.id.directions_bottom_panel)?.visibility = View.GONE
+        findViewById<View>(R.id.fab_stack_container)?.visibility = View.GONE
+        // Hide speedometer on non-Explore tabs
+        findViewById<View>(R.id.speed_limit_widget)?.visibility = View.GONE
         
         // Show fragment container
         fragmentContainer.visibility = View.VISIBLE
@@ -795,6 +405,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         // Replace fragment
         supportFragmentManager.beginTransaction()
             .replace(R.id.fragment_container, fragment, tag)
+            .addToBackStack(tag)
             .commit()
         
         Log.d("Zwap", "Switched to $tag tab")
@@ -819,6 +430,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         val layout = android.widget.LinearLayout(context).apply {
             orientation = android.widget.LinearLayout.VERTICAL
             setPadding(40, 40, 40, 40)
+            setBackgroundColor(android.graphics.Color.parseColor("#1E1E1E"))
             layoutParams = android.view.ViewGroup.LayoutParams(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT, 
                 android.view.ViewGroup.LayoutParams.WRAP_CONTENT
@@ -830,7 +442,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             textSize = 20f
             setTypeface(null, android.graphics.Typeface.BOLD)
             setPadding(0, 0, 0, 40)
-            setTextColor(android.graphics.Color.BLACK)
+            setTextColor(android.graphics.Color.WHITE)
         }
         layout.addView(titleView)
         
@@ -844,7 +456,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                 text = item
                 textSize = 16f
                 setPadding(0, 30, 0, 30)
-                setTextColor(android.graphics.Color.DKGRAY)
+                setTextColor(android.graphics.Color.WHITE)
                 setOnClickListener {
                     dialog.dismiss()
                     onClick(index)
@@ -857,7 +469,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                 layoutParams = android.widget.LinearLayout.LayoutParams(
                     android.view.ViewGroup.LayoutParams.MATCH_PARENT, 1
                 )
-                setBackgroundColor(android.graphics.Color.LTGRAY)
+                setBackgroundColor(android.graphics.Color.parseColor("#333333"))
             }
             listLayout.addView(divider)
         }
@@ -1009,11 +621,15 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     private fun toggleOSMOverlay() {
         Log.d("Zwap", "toggleOSMOverlay called, current state: $osmOverlayEnabled")
         osmOverlayEnabled = !osmOverlayEnabled
-        val button = findViewById<com.google.android.material.button.MaterialButton>(R.id.btn_toggle_osm)
+        val button = findViewById<com.google.android.material.floatingactionbutton.FloatingActionButton>(R.id.btn_toggle_osm)
         
         if (osmOverlayEnabled) {
             // Active state - orange/amber color with scale animation
             button.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#FF6B00"))
+            button.imageTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
+            // Ensure circular clipping during animation
+            button.clipToOutline = true
+            button.outlineProvider = android.view.ViewOutlineProvider.BACKGROUND
             button.animate().scaleX(1.1f).scaleY(1.1f).setDuration(100).withEndAction {
                 button.animate().scaleX(1.0f).scaleY(1.0f).setDuration(100).start()
             }.start()
@@ -1046,8 +662,9 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             */
             fetchAndDisplayOSMFeatures()
         } else {
-            // Inactive state - white background
-            button.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
+            // Inactive state - grey muted background
+            button.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#40444B"))
+            button.imageTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#B9BBBE"))
             Log.d("Zwap", "Hazards overlay disabled, clearing markers")
             clearOSMMarkers()
         }
@@ -1111,14 +728,12 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                     var hazardCount = 0
                     
                     elements.forEachIndexed { index, element ->
-                        // Skip elements with no usable coordinates (ways without center)
-                        val eLat = element.lat ?: element.center?.lat
-                        val eLon = element.lon ?: element.center?.lon
-                        if (eLat == null || eLon == null || (eLat == 0.0 && eLon == 0.0)) {
-                            Log.d("Zwap", "Skipping element ${element.id} with invalid/missing coords")
+                        // Skip invalid coordinates
+                        if (element.lat == 0.0 && element.lon == 0.0) {
+                            Log.d("Zwap", "Skipping element ${element.id} with invalid coords")
                             return@forEachIndexed
                         }
-
+                        
                         element.tags?.forEach { (key, value) ->
                             FeatureType.fromOSMTag(key, value)?.let { featureType ->
                                 // Show cameras at lower zoom (country level), hazards at higher zoom (state level)
@@ -1127,25 +742,25 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                                 } else {
                                     zoom >= 5.0  // Hazards visible at state level only
                                 }
-
+                                
                                 // DETAILED LOGGING FOR DEBUGGING
                                 if (featureType == FeatureType.SPEED_CAMERA) {
-                                    Log.d("Zwap", "🎥 CAMERA DETECTED: id=${element.id}, lat=$eLat, lon=$eLon, zoom=$zoom, shouldShow=$shouldShow")
+                                    Log.d("Zwap", "🎥 CAMERA DETECTED: id=${element.id}, lat=${element.lat}, lon=${element.lon}, zoom=$zoom, shouldShow=$shouldShow")
                                 } else {
                                     Log.d("Zwap", "⚠️ HAZARD DETECTED: ${featureType.name}, zoom=$zoom, shouldShow=$shouldShow")
                                 }
-
+                                
                                 if (shouldShow) {
                                     val feature = OSMFeature(
                                         id = element.id,
-                                        lat = eLat,
-                                        lon = eLon,
+                                        lat = element.lat,
+                                        lon = element.lon,
                                         type = featureType,
                                         name = element.tags["name"],
                                         tags = element.tags
                                     )
                                     osmFeatures.add(feature)
-
+                                    
                                     if (featureType == FeatureType.SPEED_CAMERA) {
                                         cameraCount++
                                         Log.d("Zwap", "✅ CAMERA ADDED: total cameras now = $cameraCount")
@@ -1153,13 +768,16 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                                         hazardCount++
                                         Log.d("Zwap", "✅ HAZARD ADDED: ${featureType.name}, total hazards now = $hazardCount")
                                     }
-
-                                    // Add marker on UI thread immediately (no artificial delay)
+                                    
+                                    // Add marker on UI thread with small delay for smooth loading animation
                                     runOnUiThread {
                                         addOSMMarker(feature)
                                         processedCount++
-                                        Log.d("Zwap", "🎨 MARKER RENDERED: ${featureType.name} at ($eLat, $eLon) - ${osmFeatures.size} total")
+                                        Log.d("Zwap", "🎨 MARKER RENDERED: ${featureType.name} at (${element.lat}, ${element.lon}) - ${osmFeatures.size} total")
                                     }
+                                    
+                                    // Small delay between markers to show loading animation
+                                    Thread.sleep(20)
                                 }
                             }
                         }
@@ -1342,7 +960,6 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     private fun setupSearchOverlay() {
         val overlay = findViewById<View>(R.id.search_overlay)
         val etInput = findViewById<EditText>(R.id.et_search_input)
-        val btnBack = findViewById<View>(R.id.btn_search_back)
         val btnClear = findViewById<android.widget.ImageView>(R.id.btn_search_clear)
         val rvResults = findViewById<RecyclerView>(R.id.rv_search_results)
         val rvHistory = findViewById<RecyclerView>(R.id.rv_history)
@@ -1353,7 +970,6 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             selectedELoc = location.mapplsPin
             selectedPlace = location  // Store full place details
             findViewById<TextView>(R.id.search_trigger).text = location.placeName
-            findViewById<View>(R.id.btn_directions).visibility = View.VISIBLE
             
             location.mapplsPin?.let { pin ->
                 isFollowMode = false
@@ -1382,36 +998,108 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             imm.hideSoftInputFromWindow(etInput.windowToken, 0)
         }
         
-        val currentLocation = mapplsMap?.locationComponent?.lastKnownLocation
-        
         findViewById<View>(R.id.btn_cat_rest)?.setOnClickListener { 
             hideKb()
             overlay.visibility = View.GONE
-            currentLocation?.let { searchNearbyPlaces("Restaurant", "Restaurant", "🍴", it) }
+            val currentLoc = mapplsMap?.locationComponent?.lastKnownLocation
+            currentLoc?.let { searchNearbyPlaces("Restaurant", "Restaurant", "🍴", it) }
                 ?: Toast.makeText(this, "Location not found", Toast.LENGTH_SHORT).show()
         }
         findViewById<View>(R.id.btn_cat_petrol)?.setOnClickListener {
              hideKb()
              overlay.visibility = View.GONE
-             currentLocation?.let { searchNearbyPlaces("Petrol Pump", "Petrol Pump", "⛽", it) }
+             val currentLoc = mapplsMap?.locationComponent?.lastKnownLocation
+             currentLoc?.let { searchNearbyPlaces("Petrol Pump", "Petrol Pump", "⛽", it) }
                 ?: Toast.makeText(this, "Location not found", Toast.LENGTH_SHORT).show()
         }
         findViewById<View>(R.id.btn_cat_ev)?.setOnClickListener {
              hideKb()
              overlay.visibility = View.GONE
-             currentLocation?.let { searchNearbyPlaces("Charging Station", "EV Charging", "⚡", it) }
+             val currentLoc = mapplsMap?.locationComponent?.lastKnownLocation
+             currentLoc?.let { searchNearbyPlaces("Charging Station", "EV Charging", "⚡", it) }
                 ?: Toast.makeText(this, "Location not found", Toast.LENGTH_SHORT).show()
         }
-        findViewById<View>(R.id.btn_cat_more)?.setOnClickListener {
+        findViewById<View>(R.id.btn_search_more)?.setOnClickListener {
              hideKb()
              showNearbySearchDialog()
         }
 
-        findViewById<View>(R.id.layout_home)?.setOnClickListener {
-             Toast.makeText(this, "Home Shortcut: Search for address and select it.", Toast.LENGTH_SHORT).show()
+        findViewById<View>(R.id.layout_saved)?.setOnClickListener {
+            hideKb()
+            showSavedPlaces()
         }
+
+        findViewById<View>(R.id.layout_home)?.setOnClickListener {
+             val prefs = getSharedPreferences("user_locations", android.content.Context.MODE_PRIVATE)
+             val lat = prefs.getFloat("Home_lat", Float.MAX_VALUE)
+             val lng = prefs.getFloat("Home_lng", Float.MAX_VALUE)
+             if (lat != Float.MAX_VALUE && lng != Float.MAX_VALUE) {
+                 overlay.visibility = View.GONE
+                 getDirections(com.mappls.sdk.maps.geometry.LatLng(lat.toDouble(), lng.toDouble()))
+             } else {
+                 supportFragmentManager.beginTransaction()
+                     .add(R.id.fragment_container, LocationPickerFragment.newInstance("Home"))
+                     .addToBackStack(null)
+                     .commit()
+                 findViewById<View>(R.id.fragment_container)?.visibility = View.VISIBLE
+                 findViewById<View>(R.id.search_overlay)?.visibility = View.GONE
+             }
+        }
+        findViewById<View>(R.id.layout_home)?.setOnLongClickListener {
+             supportFragmentManager.beginTransaction()
+                 .add(R.id.fragment_container, LocationPickerFragment.newInstance("Home"))
+                 .addToBackStack(null)
+                 .commit()
+             findViewById<View>(R.id.fragment_container)?.visibility = View.VISIBLE
+             findViewById<View>(R.id.search_overlay)?.visibility = View.GONE
+             Toast.makeText(this, "Edit Address", Toast.LENGTH_SHORT).show()
+             true
+        }
+        
         findViewById<View>(R.id.layout_work)?.setOnClickListener {
-             Toast.makeText(this, "Work Shortcut: Search for address and select it.", Toast.LENGTH_SHORT).show()
+             val prefs = getSharedPreferences("user_locations", android.content.Context.MODE_PRIVATE)
+             val lat = prefs.getFloat("Work_lat", Float.MAX_VALUE)
+             val lng = prefs.getFloat("Work_lng", Float.MAX_VALUE)
+             if (lat != Float.MAX_VALUE && lng != Float.MAX_VALUE) {
+                 overlay.visibility = View.GONE
+                 getDirections(com.mappls.sdk.maps.geometry.LatLng(lat.toDouble(), lng.toDouble()))
+             } else {
+                 supportFragmentManager.beginTransaction()
+                     .add(R.id.fragment_container, LocationPickerFragment.newInstance("Work"))
+                     .addToBackStack(null)
+                     .commit()
+                 findViewById<View>(R.id.fragment_container)?.visibility = View.VISIBLE
+                 findViewById<View>(R.id.search_overlay)?.visibility = View.GONE
+             }
+        }
+        findViewById<View>(R.id.layout_work)?.setOnLongClickListener {
+             supportFragmentManager.beginTransaction()
+                 .add(R.id.fragment_container, LocationPickerFragment.newInstance("Work"))
+                 .addToBackStack(null)
+                 .commit()
+             findViewById<View>(R.id.fragment_container)?.visibility = View.VISIBLE
+             findViewById<View>(R.id.search_overlay)?.visibility = View.GONE
+             Toast.makeText(this, "Edit Address", Toast.LENGTH_SHORT).show()
+             true
+        }
+        
+        findViewById<View>(R.id.btn_clear_history)?.setOnClickListener {
+            if (::historyAdapter.isInitialized) {
+                historyAdapter.submitList(emptyList())
+            }
+            getSharedPreferences("search_history", android.content.Context.MODE_PRIVATE).edit().clear().apply()
+            val userId = auth.currentUser?.uid
+            if (userId != null) {
+                db.collection("users").document(userId).collection("searchHistory")
+                    .get()
+                    .addOnSuccessListener { snapshot ->
+                        for (doc in snapshot.documents) {
+                            doc.reference.delete()
+                        }
+                    }
+            }
+            findViewById<View>(R.id.layout_recent_history)?.visibility = View.GONE
+            Toast.makeText(this, "Recent searches cleared", Toast.LENGTH_SHORT).show()
         }
 
         etInput.addTextChangedListener(object : TextWatcher {
@@ -1438,12 +1126,6 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                 }
             }
         })
-
-        btnBack.setOnClickListener { 
-            overlay.visibility = View.GONE
-            val imm = getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
-            imm.hideSoftInputFromWindow(etInput.windowToken, 0)
-        }
         
         btnClear.setOnClickListener { 
             if (etInput.text.toString().isEmpty()) {
@@ -1491,9 +1173,35 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     }
     
     private fun saveHistoryToFirestore(location: ELocation) {
+        // Save locally first
+        val prefs = getSharedPreferences("search_history", android.content.Context.MODE_PRIVATE)
+        val historyStr = prefs.getString("history", "[]")
+        try {
+            val jsonArray = org.json.JSONArray(historyStr)
+            val newArray = org.json.JSONArray()
+            
+            val newItem = org.json.JSONObject()
+            newItem.put("placeName", location.placeName ?: "Unknown")
+            newItem.put("placeAddress", location.placeAddress ?: "")
+            newItem.put("mapplsPin", location.mapplsPin ?: "")
+            newArray.put(newItem)
+            
+            var count = 1
+            for (i in 0 until jsonArray.length()) {
+                if (count >= 10) break
+                val item = jsonArray.getJSONObject(i)
+                if (item.getString("mapplsPin") != (location.mapplsPin ?: "")) {
+                    newArray.put(item)
+                    count++
+                }
+            }
+            prefs.edit().putString("history", newArray.toString()).apply()
+        } catch (e: Exception) {
+            Log.e("Zwap", "Error saving local history", e)
+        }
+
         if (currentUserId == null) {
-            Log.e("Zwap", "❌ User not authenticated, cannot save history")
-            Toast.makeText(this@MainActivity, "Please log in to save history", Toast.LENGTH_SHORT).show()
+            Log.e("Zwap", "❌ User not authenticated, cannot save history to Firebase")
             return
         }
         
@@ -1565,9 +1273,44 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     }
     
     private fun fetchHistoryFromFirestore(limit: Long = 5) {
+        // Fetch locally first
+        val prefs = getSharedPreferences("search_history", android.content.Context.MODE_PRIVATE)
+        val historyStr = prefs.getString("history", "[]")
+        val localList = mutableListOf<ELocation>()
+        try {
+            val jsonArray = org.json.JSONArray(historyStr)
+            for (i in 0 until jsonArray.length()) {
+                if (i >= limit) break
+                val item = jsonArray.getJSONObject(i)
+                val loc = ELocation()
+                loc.placeName = item.optString("placeName", "Unknown")
+                loc.placeAddress = item.optString("placeAddress", "")
+                loc.mapplsPin = item.optString("mapplsPin", "")
+                localList.add(loc)
+            }
+        } catch (e: Exception) {
+            Log.e("Zwap", "Error parsing local history", e)
+        }
+        
+        if (localList.isNotEmpty()) {
+            runOnUiThread {
+                if (::historyAdapter.isInitialized) {
+                    historyAdapter.submitList(localList)
+                }
+                findViewById<View>(R.id.layout_recent_history)?.visibility = View.VISIBLE
+            }
+        } else {
+             runOnUiThread {
+                 if (::historyAdapter.isInitialized) {
+                     historyAdapter.submitList(emptyList())
+                 }
+                 findViewById<View>(R.id.layout_recent_history)?.visibility = View.GONE
+             }
+        }
+
         if (currentUserId == null) {
-            Log.e("Zwap", "❌ User not authenticated, cannot fetch history")
-            if (::historyAdapter.isInitialized) {
+            Log.e("Zwap", "❌ User not authenticated, cannot fetch history from Firebase")
+            if (localList.isEmpty() && ::historyAdapter.isInitialized) {
                 historyAdapter.submitList(emptyList())
             }
             return
@@ -1730,49 +1473,6 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             symbolManager = SymbolManager(mapView!!, map, style)
             lineManager = LineManager(mapView!!, map, style)
             
-            // Click listener for interactive route selection via duration label markers
-            map.setOnMarkerClickListener { marker ->
-                markerToRouteMap[marker.id]?.let { selectedRoute ->
-                    Log.d("Zwap", "User tapped a route label — switching...")
-                    switchToRoute(selectedRoute)
-                    return@setOnMarkerClickListener true
-                }
-                false
-            }
-            
-            // Map click listener to detect taps on gray route LINES
-            map.addOnMapClickListener { tapLatLng ->
-                val routes = currentRoute?.routes()
-                if (routes != null && routes.size > 1) {
-                    // Find the route whose line is closest to the tap point
-                    var closestRoute: DirectionsRoute? = null
-                    var closestDistanceM = Double.MAX_VALUE
-                    
-                    allRouteGeometries.forEach { (route, points) ->
-                        // Check distance from tap to each segment of this route
-                        for (i in 0 until points.size - 1) {
-                            val dist = distanceToSegmentMeters(
-                                tapLatLng,
-                                points[i],
-                                points[i + 1]
-                            )
-                            if (dist < closestDistanceM) {
-                                closestDistanceM = dist
-                                closestRoute = route
-                            }
-                        }
-                    }
-                    
-                    // Only switch if tap is within 30m of a route line AND it's not already the active one
-                    if (closestDistanceM < 30.0 && closestRoute != null && closestRoute != currentPrimaryRoute) {
-                        Log.d("Zwap", "Tap detected ${closestDistanceM.toInt()}m from a route — switching to it")
-                        switchToRoute(closestRoute!!)
-                        return@addOnMapClickListener true
-                    }
-                }
-                false
-            }
-            
             enableLocationComponent(style)
         }
         
@@ -1834,62 +1534,113 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     }
 
     @SuppressLint("MissingPermission")
-    private fun initLocationEngine() {
-        locationEngine = LocationEngineProvider.getBestLocationEngine(this)
-        val request = LocationEngineRequest.Builder(1000L)
-            .setPriority(LocationEngineRequest.PRIORITY_HIGH_ACCURACY)
-            .setMaxWaitTime(5000L)
-            .build()
+    private fun startLocationUpdates() {
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            return
+        }
         
-        locationEngine?.requestLocationUpdates(request, callback, mainLooper)
-        locationEngine?.getLastLocation(callback)
+        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1000L).apply {
+            setMinUpdateIntervalMillis(500L)
+            setWaitForAccurateLocation(false)
+        }.build()
+
+        fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, mainLooper)
+        Log.d("ZwapLoc", "Aggressive Location Updates Started (Hardware GPS Force)")
+    }
+
+    private fun stopLocationUpdates() {
+        fusedLocationClient.removeLocationUpdates(locationCallback)
+        Log.d("ZwapLoc", "Location Updates Stopped")
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun initLocationEngine() {
+        // We now use FusedLocationClient for speed but Mappls still needs its internal engine for rendering
+        // but we manage the lifecycle ourselves.
+        startLocationUpdates()
     }
 
     private fun enableFollowMode() {
-        isFollowMode = true
-        mapplsMap?.locationComponent?.cameraMode = CameraMode.TRACKING_GPS
-        mapplsMap?.animateCamera(CameraUpdateFactory.zoomTo(18.0))
+        try {
+            isFollowMode = true
+            val loc = mapplsMap?.locationComponent?.lastKnownLocation ?: lastLocationForSpeed
+            if (loc != null) {
+                mapplsMap?.animateCamera(
+                    com.mappls.sdk.maps.camera.CameraUpdateFactory.newLatLngZoom(
+                        com.mappls.sdk.maps.geometry.LatLng(loc.latitude, loc.longitude),
+                        18.0
+                    ),
+                    300,
+                    object : com.mappls.sdk.maps.MapplsMap.CancelableCallback {
+                        override fun onCancel() {}
+                        override fun onFinish() {
+                            mapplsMap?.locationComponent?.cameraMode =
+                                com.mappls.sdk.maps.location.modes.CameraMode.TRACKING_GPS
+                        }
+                    }
+                )
+            } else {
+                mapplsMap?.locationComponent?.cameraMode = com.mappls.sdk.maps.location.modes.CameraMode.TRACKING_GPS
+            }
+        } catch (e: Exception) {
+            Log.e("ZwapLoc", "Recenter error", e)
+        }
     }
 
     fun handleLocationUpdate(location: Location) {
-        val speedKmh = (location.speed * 3.6).toInt()
-
-        // ── Update current speed display ──────────────────────────────────────
+        // Calculate speed safely: Priority 1 is hardware reported speed, fallback is distance/time math.
+        var speedKmh = 0
+        
+        if (location.hasSpeed()) {
+            speedKmh = (location.speed * 3.6).toInt()
+        } else if (lastLocationForSpeed != null) {
+            val dist = location.distanceTo(lastLocationForSpeed!!)
+            val timeSec = (location.time - lastLocationForSpeed!!.time) / 1000.0
+            if (timeSec > 0) {
+                val speedMs = dist / timeSec
+                speedKmh = (speedMs * 3.6).toInt()
+                Log.d("ZwapLoc", "Fallback Speed Calculation: $speedKmh km/h (dist=$dist, time=$timeSec)")
+            }
+        }
+        
+        lastLocationForSpeed = location
+        
+        // Pass to Mappls for rendering (internal component)
+        mapplsMap?.locationComponent?.forceLocationUpdate(location)
+        
         val tvSpeed = findViewById<TextView>(R.id.tv_speed)
-        tvSpeed.text = "$speedKmh"
-
-        // ── Speed limit HUD coloring — driven by HazardViewModel LiveData ─────
-        // tv_limit text is updated by the LiveData observer in onCreate().
-        // Here we just read the latest observed value to decide colours.
         val tvLimit = findViewById<TextView>(R.id.tv_limit)
-        val isOver = hazardViewModel.checkOverSpeed(speedKmh, tts)
-        val limitKnown = (hazardViewModel.speedLimitKmh.value ?: 0) > 0
-        tvSpeed.setTextColor(if (isOver) Color.RED else Color.WHITE)
-        tvLimit.setTextColor(
-            if (isOver) Color.RED
-            else android.graphics.Color.parseColor("#FFA726")
-        )
-        if (!limitKnown) tvLimit.text = "--"
-
-        // ── Delegate 300m speed limit polling to HazardViewModel ─────────────
-        hazardViewModel.onLocationChanged(location)
-
-        // ── Check hazard proximity (during overlay mode OR navigation) ─────────
+        
+        if (tvSpeed != null) {
+            tvSpeed.text = "$speedKmh"
+            // Dynamic limit check
+            val currentLimit = 20 
+            
+            if (tvLimit != null) {
+                tvLimit.text = "$currentLimit"
+            }
+            
+            // Visual dynamic behavior: red if speeding
+            if (speedKmh > currentLimit) {
+                tvSpeed.setTextColor(Color.parseColor("#FF5252")) 
+            } else {
+                tvSpeed.setTextColor(Color.WHITE)
+            }
+        }
+        
+        // Check hazard proximity
         if (osmOverlayEnabled || isNavigating) {
             checkHazardProximity(location.latitude, location.longitude)
         }
 
-        // ── Refresh OSM overlay data every 1km ────────────────────────────────
+        // Refresh OSM data if moved > 500m (aggressive fetch for navigation)
         if (osmOverlayEnabled) {
-            if (lastOSMFetchLocation == null || location.distanceTo(lastOSMFetchLocation!!) > 1000) {
+            if (lastOSMFetchLocation == null || location.distanceTo(lastOSMFetchLocation!!) > 500) {
                 lastOSMFetchLocation = location
                 fetchAndDisplayOSMFeatures()
             }
         }
     }
-
-    // fetchSpeedLimitNearby() has been moved to HazardViewModel.kt
-    // MainActivity no longer owns speed limit logic — it only observes LiveData.
 
 
 
@@ -1903,8 +1654,6 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     }
 
     private fun checkHazardProximity(userLat: Double, userLon: Double) {
-        if (isPreviewMode) return // No audio/visual popups during route preview
-        
         osmFeatures.forEach { feature ->
             val results = FloatArray(1)
             android.location.Location.distanceBetween(userLat, userLon, feature.lat, feature.lon, results)
@@ -1986,7 +1735,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             activeHazards.removeIf { it.id == id }
         }
         countView?.text = activeHazards.size.toString()
-        if (activeHazards.isNotEmpty()) {
+        if (isNavigating && activeHazards.isNotEmpty()) {
             panel?.visibility = View.VISIBLE
             panel?.bringToFront()
         } else {
@@ -2007,7 +1756,11 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             hazardAlertAdapter?.notifyDataSetChanged()
             val panel = findViewById<View>(R.id.hazard_alert_panel)
             val countView = findViewById<TextView>(R.id.tv_hazard_count)
-            panel?.visibility = View.VISIBLE
+            if (isNavigating) {
+                panel?.visibility = View.VISIBLE
+            } else {
+                panel?.visibility = View.GONE
+            }
             panel?.elevation = 150f
             panel?.translationZ = 150f
             panel?.bringToFront()
@@ -2024,7 +1777,6 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             if (place != null) {
                 selectedELoc = place.mapplsPin
                 findViewById<TextView>(R.id.search_trigger).text = place.placeName
-                findViewById<View>(R.id.btn_directions).visibility = View.VISIBLE
                 
                 place.mapplsPin?.let { pin ->
                     isFollowMode = false
@@ -2040,34 +1792,66 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         }
     }
 
-    private fun getDirections(autoStart: Boolean = false) {
-        // Check if destination is selected
-        if (selectedELoc.isNullOrEmpty()) {
-            Toast.makeText(this, "Please select a destination first", Toast.LENGTH_SHORT).show()
-            return
+    private fun showSavedPlaces() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val db = com.swapmap.zwap.demo.db.AppDatabase.getDatabase(this@MainActivity)
+            db.savedPlaceDao().getAllSavedPlaces().collect { savedList ->
+                withContext(Dispatchers.Main) {
+                    if (savedList.isEmpty()) {
+                        Toast.makeText(this@MainActivity, "No saved places yet", Toast.LENGTH_SHORT).show()
+                    } else {
+                        val displayList = savedList.map { "${it.name}\n${it.address}" }.toTypedArray()
+                        showBottomSheetList("Saved Places", displayList) { index ->
+                            val saved = savedList[index]
+                            val target = com.mappls.sdk.maps.geometry.LatLng(saved.latitude, saved.longitude)
+                            mapplsMap?.animateCamera(CameraUpdateFactory.newLatLngZoom(target, 16.0))
+                            
+                            // Mock ELocation for following logic
+                            val loc = ELocation()
+                            loc.placeName = saved.name
+                            loc.placeAddress = saved.address
+                            loc.latitude = saved.latitude
+                            loc.longitude = saved.longitude
+                            selectedPlace = loc
+                            
+                            showPlaceDetailsBottomSheet(loc)
+                        }
+                    }
+                }
+            }
         }
-        
+    }
+
+    private fun getDirections(targetPoint: com.mappls.sdk.maps.geometry.LatLng? = null, originPoint: com.mappls.sdk.maps.geometry.LatLng? = null) {
         val lastLocation = mapplsMap?.locationComponent?.lastKnownLocation
-        if (lastLocation == null) {
-            Toast.makeText(this, "Getting your location...", Toast.LENGTH_SHORT).show()
-            return
+        
+        val origin = when {
+            originPoint != null -> Point.fromLngLat(originPoint.longitude, originPoint.latitude)
+            lastLocation != null -> Point.fromLngLat(lastLocation.longitude, lastLocation.latitude)
+            else -> {
+                Toast.makeText(this, "Getting your location...", Toast.LENGTH_SHORT).show()
+                return
+            }
         }
         
         Toast.makeText(this, "Calculating route...", Toast.LENGTH_SHORT).show()
         
-        val origin = Point.fromLngLat(lastLocation.longitude, lastLocation.latitude)
-        
-        isPreviewMode = true // Start in preview mode so alerts are muted initially
-        
-        Log.d("Zwap", "Getting directions from (${lastLocation.latitude}, ${lastLocation.longitude}) to $selectedELoc")
-        
-        val builder = MapplsDirections.builder()
+        val buildr = MapplsDirections.builder()
             .origin(origin)
-            .destination(selectedELoc!!)
+            
+        if (targetPoint != null) {
+            buildr.destination(Point.fromLngLat(targetPoint.longitude, targetPoint.latitude))
+        } else if (!selectedELoc.isNullOrEmpty()) {
+            buildr.destination(selectedELoc!!)
+        } else {
+            Toast.makeText(this, "Please select a destination first", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        val builder = buildr
             .profile(DirectionsCriteria.PROFILE_DRIVING)
-            .resource(DirectionsCriteria.RESOURCE_ROUTE)
+            .resource(DirectionsCriteria.RESOURCE_ROUTE_ETA)
             .steps(true)
-            .alternatives(true)
             .overview(DirectionsCriteria.OVERVIEW_FULL)
             .annotations(DirectionsCriteria.ANNOTATION_CONGESTION, DirectionsCriteria.ANNOTATION_DISTANCE)
             .build()
@@ -2076,28 +1860,19 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             override fun onSuccess(response: DirectionsResponse?) {
                 if (response != null && response.routes().isNotEmpty()) {
                     currentRoute = response
-                    val allRoutes = response.routes()
+                    val route = response.routes()[0]
                     
-                    // The primary route (shortest)
-                    val primaryRoute = allRoutes.minByOrNull { it.distance() ?: Double.MAX_VALUE } ?: allRoutes[0]
-                    currentPrimaryRoute = primaryRoute
+                    Log.d("Zwap", "Route found: ${route.distance()}m, ${route.duration()}s")
                     
-                    Log.d("Zwap", "Found ${allRoutes.size} routes. Primary distance: ${primaryRoute.distance()}m")
-                    
-                    drawRoute(allRoutes, primaryRoute)
-                    extractHazardsFromRoute(primaryRoute.legs()?.get(0)?.steps())
+                    drawRoute(route.geometry())
+                    extractHazardsFromRoute(route.legs()?.get(0)?.steps())
                     
                     // Show directions UI (Google Maps style)
-                    showDirectionsUI(primaryRoute.distance()!!, primaryRoute.duration()!!)
-                    showTripBriefingScanning()  // Show briefing card in scanning state
+                    showDirectionsUI(route.distance()!!, route.duration()!!)
                     
                     enableFollowMode()
                     
                     Toast.makeText(this@MainActivity, "Route ready!", Toast.LENGTH_SHORT).show()
-                    
-                    if (autoStart) {
-                        startNavigation()
-                    }
                 } else {
                     Log.e("Zwap", "No routes found in response")
                     Toast.makeText(this@MainActivity, "No route found", Toast.LENGTH_SHORT).show()
@@ -2121,21 +1896,31 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         
         // Setup swap locations button
         findViewById<View>(R.id.btn_swap_locations).setOnClickListener {
-            Toast.makeText(this, "Swap not available - route starts from your location", Toast.LENGTH_SHORT).show()
+            val originText = findViewById<TextView>(R.id.tv_origin_name).text.toString()
+            val destText = findViewById<TextView>(R.id.tv_destination_name).text.toString()
+            
+            // Swap the text
+            findViewById<TextView>(R.id.tv_origin_name).text = destText
+            findViewById<TextView>(R.id.tv_destination_name).text = originText
+            
+            // Toggle swap state and re-route with swapped origin/destination
+            isRouteSwapped = !isRouteSwapped
+            if (isRouteSwapped) {
+                // Use selected place as origin, GPS as destination
+                val gpsLoc = mapplsMap?.locationComponent?.lastKnownLocation
+                val placeLat = selectedPlace?.latitude ?: return@setOnClickListener
+                val placeLon = selectedPlace?.longitude ?: return@setOnClickListener
+                if (gpsLoc != null) {
+                    val originPt = com.mappls.sdk.maps.geometry.LatLng(placeLat, placeLon)
+                    val destPt = com.mappls.sdk.maps.geometry.LatLng(gpsLoc.latitude, gpsLoc.longitude)
+                    getDirections(targetPoint = destPt, originPoint = originPt)
+                }
+            } else {
+                // Normal: GPS as origin, selected place as destination
+                getDirections()
+            }
         }
         
-        // Setup menu button
-        findViewById<View>(R.id.btn_directions_menu).setOnClickListener {
-            val popup = android.widget.PopupMenu(this, it)
-            popup.menu.add("Route options")
-            popup.menu.add("Add stop")
-            popup.menu.add("Set departure time")
-            popup.setOnMenuItemClickListener { item ->
-                Toast.makeText(this, "${item.title} - Coming soon", Toast.LENGTH_SHORT).show()
-                true
-            }
-            popup.show()
-        }
         
         // Show directions bottom panel
         findViewById<View>(R.id.directions_bottom_panel).visibility = View.VISIBLE
@@ -2149,6 +1934,21 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         findViewById<TextView>(R.id.tv_route_duration).text = durationText
         findViewById<TextView>(R.id.tv_route_distance).text = "%.1f km".format(distance / 1000.0)
         
+        // Calculate ETA
+        try {
+            val etaCalendar = Calendar.getInstance()
+            etaCalendar.add(Calendar.SECOND, duration.toInt())
+            val sdf = SimpleDateFormat("h:mm a", Locale.getDefault())
+            findViewById<TextView>(R.id.tv_route_eta).text = "ETA ${sdf.format(etaCalendar.time)}"
+            findViewById<TextView>(R.id.tv_route_eta).visibility = View.VISIBLE
+        } catch (e: Exception) {
+            Log.e("Zwap", "ETA calc error", e)
+            findViewById<TextView>(R.id.tv_route_eta).visibility = View.GONE
+        }
+        
+        // Ensure actions layout is visible during preview
+        findViewById<View>(R.id.directions_actions_layout).visibility = View.VISIBLE
+        
         // Setup close button
         findViewById<View>(R.id.btn_close_directions).setOnClickListener {
             closeDirectionsUI()
@@ -2156,7 +1956,61 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         
         // Setup start navigation button
         findViewById<View>(R.id.btn_start_navigation).setOnClickListener {
-            startNavigation()
+            Toast.makeText(this, "Navigation started!", Toast.LENGTH_SHORT).show()
+            isNavigating = true
+            isMapTilted = true  // Sync tilt state with camera
+            enableFollowMode()
+            // Set camera to tilted 3D view for better navigation feel
+            mapplsMap?.animateCamera(com.mappls.sdk.maps.camera.CameraUpdateFactory.tiltTo(45.0))
+            
+            // Hide views that aren't needed during active navigation
+            findViewById<View>(R.id.directions_header_card).visibility = View.GONE
+            findViewById<View>(R.id.directions_actions_layout).visibility = View.GONE
+            findViewById<View>(R.id.search_card).visibility = View.GONE
+            findViewById<View>(R.id.bottom_navigation).visibility = View.GONE
+            
+            // Re-anchor FAB stack to bottom of screen (since bottom_navigation is now GONE)
+            val fabStack = findViewById<View>(R.id.fab_stack_container)
+            fabStack?.let {
+                val fabParams = it.layoutParams as? RelativeLayout.LayoutParams
+                fabParams?.removeRule(RelativeLayout.ABOVE)
+                fabParams?.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM)
+                fabParams?.bottomMargin = (16 * resources.displayMetrics.density).toInt()
+                it.layoutParams = fabParams
+                it.visibility = View.VISIBLE
+                it.bringToFront()
+            }
+            
+            // Fix 5: Animate bottom panel from bottom to top with smooth slide
+            val panel = findViewById<View>(R.id.directions_bottom_panel)
+            val rootLayout = panel.parent as ViewGroup
+            TransitionManager.beginDelayedTransition(rootLayout, ChangeBounds().setDuration(400))
+            val params = panel.layoutParams as RelativeLayout.LayoutParams
+            params.removeRule(RelativeLayout.ABOVE)
+            params.addRule(RelativeLayout.ALIGN_PARENT_TOP)
+            panel.layoutParams = params
+            // Switch background to flush-top (flat top, rounded bottom)
+            panel.setBackgroundResource(R.drawable.bg_nav_card_top)
+            
+            // Adjust map margin to fill bottom bar space
+            val mapParams = findViewById<View>(R.id.map_view).layoutParams as? ViewGroup.MarginLayoutParams
+            mapParams?.let {
+                it.bottomMargin = 0
+                findViewById<View>(R.id.map_view).layoutParams = it
+            }
+            
+            // Show speedometer widget properly "UP UP UP"
+            findViewById<View>(R.id.speed_limit_widget).visibility = View.VISIBLE
+            // Show the Stop/Close button
+            findViewById<View>(R.id.btn_stop_navigation).visibility = View.VISIBLE
+            
+            // Trigger immediate hazard panel check for active navigation
+            updateHazardPanel(lastLocationForSpeed?.latitude ?: 0.0, lastLocationForSpeed?.longitude ?: 0.0)
+        }
+
+        // Setup stop navigation button
+        findViewById<View>(R.id.btn_stop_navigation).setOnClickListener {
+            closeDirectionsUI()
         }
         
         // Setup share button
@@ -2168,60 +2022,49 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             startActivity(android.content.Intent.createChooser(shareIntent, "Share route"))
         }
         
-        // Setup options button
-        findViewById<View>(R.id.btn_route_options)?.setOnClickListener {
-            Toast.makeText(this, "Route options - Coming soon", Toast.LENGTH_SHORT).show()
-        }
         
         // Hide old route info layout
         findViewById<View>(R.id.route_info_layout).visibility = View.GONE
     }
     
-    private fun startNavigation() {
-        isPreviewMode = false
-        
-        // Hide the preview UI elements for a clean navigation view
-        findViewById<View>(R.id.directions_bottom_panel).visibility = View.GONE
-        findViewById<View>(R.id.directions_header_card)?.visibility = View.GONE
-        findViewById<View>(R.id.search_card)?.visibility = View.GONE
-        findViewById<View>(R.id.trip_briefing_card)?.visibility = View.GONE
-        
-        // Re-apply follow mode to snap camera back
-        isFollowMode = true
-        enableFollowMode()
-        
-        // Tilt the camera for true navigation 3D view centering on the user
-        val userLocation = mapplsMap?.locationComponent?.lastKnownLocation
-        val targetPos = if (userLocation != null) {
-            com.mappls.sdk.maps.geometry.LatLng(userLocation.latitude, userLocation.longitude)
-        } else {
-            mapplsMap?.cameraPosition?.target
-        }
-        
-        mapplsMap?.animateCamera(
-            com.mappls.sdk.maps.camera.CameraUpdateFactory.newCameraPosition(
-                com.mappls.sdk.maps.camera.CameraPosition.Builder()
-                    .target(targetPos)
-                    .zoom(18.0)
-                    .tilt(60.0)
-                    .build()
-            ),
-            1000
-        )
-        
-        // Trigger a proximity check now that preview is off to show immediate hazards
-        mapplsMap?.locationComponent?.lastKnownLocation?.let { loc ->
-            checkHazardProximity(loc.latitude, loc.longitude)
-        }
-    }
-    
     private fun closeDirectionsUI() {
-        // Show search bar
+        // Restore UI
         findViewById<View>(R.id.search_card).visibility = View.VISIBLE
+        findViewById<View>(R.id.bottom_navigation).visibility = View.VISIBLE
         
-        // Hide directions panels
+        // Restore FAB stack anchor to above bottom_navigation
+        val fabStack = findViewById<View>(R.id.fab_stack_container)
+        fabStack?.let {
+            val fabParams = it.layoutParams as? RelativeLayout.LayoutParams
+            fabParams?.removeRule(RelativeLayout.ALIGN_PARENT_BOTTOM)
+            fabParams?.addRule(RelativeLayout.ABOVE, R.id.bottom_navigation)
+            fabParams?.bottomMargin = (16 * resources.displayMetrics.density).toInt()
+            it.layoutParams = fabParams
+        }
+        
+        val mapParams = findViewById<View>(R.id.map_view).layoutParams as? ViewGroup.MarginLayoutParams
+        mapParams?.let {
+            it.bottomMargin = (72 * resources.displayMetrics.density).toInt()
+            findViewById<View>(R.id.map_view).layoutParams = it
+        }
+        
+        // Fix 5: Restore bottom panel position and background
+        val panel = findViewById<View>(R.id.directions_bottom_panel)
+        val panelParams = panel.layoutParams as? RelativeLayout.LayoutParams
+        panelParams?.let {
+            it.removeRule(RelativeLayout.ALIGN_PARENT_TOP)
+            it.addRule(RelativeLayout.ABOVE, R.id.bottom_navigation)
+            panel.layoutParams = it
+        }
+        panel.setBackgroundResource(R.drawable.bg_nav_card_bottom)
+        
+        // Hide navigation panels
         findViewById<View>(R.id.directions_header_card).visibility = View.GONE
         findViewById<View>(R.id.directions_bottom_panel).visibility = View.GONE
+        findViewById<View>(R.id.directions_actions_layout).visibility = View.VISIBLE
+        findViewById<View>(R.id.speed_limit_widget).visibility = View.VISIBLE
+        findViewById<View>(R.id.btn_stop_navigation).visibility = View.GONE
+        findViewById<View>(R.id.hazard_alert_panel).visibility = View.GONE
         
         // Clear route
         lineManager?.clearAll()
@@ -2231,143 +2074,59 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         // Reset state
         currentRoute = null
         isNavigating = false
+        isFollowMode = false
+        isMapTilted = false  // Sync tilt state with camera
+        isRouteSwapped = false
+        
+        // Tilt camera back to flat
+        mapplsMap?.animateCamera(com.mappls.sdk.maps.camera.CameraUpdateFactory.tiltTo(0.0))
     }
     
     private fun showPlaceDetailsBottomSheet(location: ELocation) {
         val dialog = com.google.android.material.bottomsheet.BottomSheetDialog(this)
         
-        val layout = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-            setPadding(48, 32, 48, 48)
-            layoutParams = android.view.ViewGroup.LayoutParams(
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            setBackgroundColor(Color.parseColor("#1E1E1E"))
+        val view = layoutInflater.inflate(R.layout.fragment_location_details, null)
+        
+        view.findViewById<TextView>(R.id.tv_detail_title).text = location.placeName ?: "Unknown Place"
+        view.findViewById<TextView>(R.id.tv_detail_type).text = location.orderIndex?.toString() ?: location.type ?: "Location"
+        view.findViewById<TextView>(R.id.tv_detail_address).text = "📍 ${location.placeAddress ?: "Address not available"}"
+        
+        val distanceView = view.findViewById<TextView>(R.id.tv_detail_distance)
+        if (location.distance != null) {
+            distanceView.text = "📏 ${location.distance!!.toInt()}m away"
+            distanceView.visibility = View.VISIBLE
+        } else {
+            distanceView.visibility = View.GONE
         }
         
-        // Drag handle
-        val dragHandle = View(this).apply {
-            layoutParams = android.widget.LinearLayout.LayoutParams(80, 10).apply {
-                gravity = android.view.Gravity.CENTER_HORIZONTAL
-                bottomMargin = 32
-            }
-            setBackgroundColor(Color.parseColor("#666666"))
-        }
-        layout.addView(dragHandle)
-        
-        // Place name (large title)
-        val titleView = TextView(this).apply {
-            text = location.placeName ?: "Unknown Place"
-            textSize = 24f
-            setTextColor(Color.WHITE)
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = 8 }
-        }
-        layout.addView(titleView)
-        
-        // Place type/category
-        val typeView = TextView(this).apply {
-            text = location.orderIndex?.toString() ?: location.type ?: "Location"
-            textSize = 14f
-            setTextColor(Color.parseColor("#AAAAAA"))
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = 16 }
-        }
-        layout.addView(typeView)
-        
-        // Address
-        val addressView = TextView(this).apply {
-            text = "📍 ${location.placeAddress ?: "Address not available"}"
-            textSize = 14f
-            setTextColor(Color.parseColor("#CCCCCC"))
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = 8 }
-        }
-        layout.addView(addressView)
-        
-        // Distance (if available)
-        location.distance?.let { dist ->
-            val distanceView = TextView(this).apply {
-                text = "📏 ${dist.toInt()}m away"
-                textSize = 14f
-                setTextColor(Color.parseColor("#CCCCCC"))
-                layoutParams = android.widget.LinearLayout.LayoutParams(
-                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply { bottomMargin = 24 }
-            }
-            layout.addView(distanceView)
+        view.findViewById<View>(R.id.btn_detail_directions).setOnClickListener {
+            dialog.dismiss()
+            getDirections()
         }
         
-        // Action buttons row
-        val buttonsLayout = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.HORIZONTAL
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = 16 }
+        view.findViewById<View>(R.id.btn_detail_start).setOnClickListener {
+            dialog.dismiss()
+            getDirections()
+            Toast.makeText(this@MainActivity, "Starting navigation...", Toast.LENGTH_SHORT).show()
         }
         
-        // Directions button
-        val directionsBtn = com.google.android.material.button.MaterialButton(this).apply {
-            text = "Directions"
-            setIconResource(android.R.drawable.ic_menu_directions)
-            setBackgroundColor(Color.parseColor("#00BFA5"))
-            setTextColor(Color.WHITE)
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f
-            ).apply { marginEnd = 8 }
-            setOnClickListener {
-                dialog.dismiss()
-                getDirections()
+        view.findViewById<View>(R.id.btn_detail_save).setOnClickListener {
+            lifecycleScope.launch(Dispatchers.IO) {
+                val db = com.swapmap.zwap.demo.db.AppDatabase.getDatabase(this@MainActivity)
+                val savedPlace = com.swapmap.zwap.demo.db.SavedPlace(
+                    name = location.placeName ?: "Saved Place",
+                    address = location.placeAddress ?: "Address not available",
+                    latitude = location.latitude ?: 0.0,
+                    longitude = location.longitude ?: 0.0
+                )
+                db.savedPlaceDao().insertSavedPlace(savedPlace)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, "${location.placeName} saved!", Toast.LENGTH_SHORT).show()
+                }
             }
         }
-        buttonsLayout.addView(directionsBtn)
         
-        // Start button
-        val startBtn = com.google.android.material.button.MaterialButton(this).apply {
-            text = "Start"
-            setIconResource(android.R.drawable.ic_media_play)
-            setBackgroundColor(Color.parseColor("#4FC3F7"))
-            setTextColor(Color.WHITE)
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f
-            ).apply { marginStart = 8; marginEnd = 8 }
-            setOnClickListener {
-                dialog.dismiss()
-                getDirections(autoStart = true)
-            }
-        }
-        buttonsLayout.addView(startBtn)
-        
-        // Save button
-        val saveBtn = com.google.android.material.button.MaterialButton(this).apply {
-            text = "Save"
-            setIconResource(android.R.drawable.ic_menu_save)
-            setBackgroundColor(Color.parseColor("#333333"))
-            setTextColor(Color.WHITE)
-            strokeColor = android.content.res.ColorStateList.valueOf(Color.parseColor("#666666"))
-            strokeWidth = 2
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f
-            ).apply { marginStart = 8 }
-            setOnClickListener {
-                Toast.makeText(this@MainActivity, "Place saved!", Toast.LENGTH_SHORT).show()
-            }
-        }
-        buttonsLayout.addView(saveBtn)
-        
-        layout.addView(buttonsLayout)
-        
-        dialog.setContentView(layout)
+        dialog.setContentView(view)
         dialog.show()
     }
 
@@ -2383,119 +2142,38 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         Log.d("Zwap", "Extracted ${routeHazards.size} potential hazard points from route")
     }
 
-    // Switch to a selected route: redraw, update hazards and UI
-    private fun switchToRoute(selectedRoute: DirectionsRoute) {
-        currentPrimaryRoute = selectedRoute
-        drawRoute(currentRoute?.routes(), selectedRoute)
-        extractHazardsFromRoute(selectedRoute.legs()?.get(0)?.steps())
-        showDirectionsUI(selectedRoute.distance()!!, selectedRoute.duration()!!)
-        showTripBriefingScanning()  // Show briefing card in scanning state
-    }
-
-    // Returns the perpendicular (or endpoint) distance in meters from 'point' to the segment [a, b]
-    private fun distanceToSegmentMeters(
-        point: com.mappls.sdk.maps.geometry.LatLng,
-        a: com.mappls.sdk.maps.geometry.LatLng,
-        b: com.mappls.sdk.maps.geometry.LatLng
-    ): Double {
-        // Convert to a rough flat-earth coordinate system (meters)
-        val mPerLatDeg = 111_320.0
-        val mPerLngDeg = 111_320.0 * Math.cos(Math.toRadians(a.latitude))
-
-        val px = (point.longitude - a.longitude) * mPerLngDeg
-        val py = (point.latitude  - a.latitude)  * mPerLatDeg
-        val dx = (b.longitude - a.longitude) * mPerLngDeg
-        val dy = (b.latitude  - a.latitude)  * mPerLatDeg
-
-        val lenSq = dx * dx + dy * dy
-        if (lenSq == 0.0) return Math.hypot(px, py)
-
-        val t = ((px * dx + py * dy) / lenSq).coerceIn(0.0, 1.0)
-        val nearX = px - t * dx
-        val nearY = py - t * dy
-        return Math.hypot(nearX, nearY)
-    }
-
-    private fun drawRoute(routes: List<DirectionsRoute>?, primaryRoute: DirectionsRoute? = null) {
-        if (routes.isNullOrEmpty()) return
+    private fun drawRoute(geometry: String?) {
+        if (geometry == null) return
         
         lineManager?.clearAll()
         symbolManager?.clearAll()
+        clearRouteHazards()  // Clear previous route hazards
+        isNavigating = false // ONLY Mark navigation as active when user clicks START
         
-        // Remove previous route metadata markers (labels, destination pin)
-        mapplsMap?.let { map ->
-            map.markers.filter { routeMetaMarkerIds.contains(it.id) }.forEach { 
-                map.removeMarker(it) 
-            }
+        val points = PolylineUtils.decode(geometry, Constants.PRECISION_6)
+        val latLngs = points.map { com.mappls.sdk.maps.geometry.LatLng(it.latitude(), it.longitude()) }
+        
+        // Draw smooth route line with rounded caps
+        val lineOptions = LineOptions()
+            .points(latLngs)
+            .lineColor("#2196F3")  // Google Maps blue
+            .lineWidth(8f)
+            .lineOpacity(0.9f)
+        lineManager?.create(lineOptions)
+        
+        // Add only DESTINATION marker (red pin) - no start marker since current location is already shown
+        if (latLngs.size > 1) {
+            val endPoint = latLngs.last()
+            val endMarker = MarkerOptions()
+                .position(endPoint)
+                .title("Destination")
+                .icon(com.mappls.sdk.maps.annotations.IconFactory.getInstance(this)
+                    .fromBitmap(createRouteMarkerBitmap(false)))
+            mapplsMap?.addMarker(endMarker)
         }
-        routeMetaMarkerIds.clear()
-        markerToRouteMap.clear()
         
-        clearRouteHazards()  // Clear previous hazard points/markers/jobs
-        isNavigating = true  // Mark navigation as active
-        
-        // Use provided primary route or the shortest one as default if null
-        val actualPrimaryRoute = primaryRoute ?: routes.minByOrNull { it.distance() ?: Double.MAX_VALUE } ?: routes[0]
-        
-        // Sort routes: draw alternatives (gray) first, then primary (blue) last (on top)
-        val sortedRoutes = routes.toMutableList()
-        sortedRoutes.remove(actualPrimaryRoute)
-        sortedRoutes.add(actualPrimaryRoute) 
-        
-        sortedRoutes.forEachIndexed { index, route ->
-            val isPrimary = route == actualPrimaryRoute
-            val geometry = route.geometry() ?: return@forEachIndexed
-            
-            val points = PolylineUtils.decode(geometry, Constants.PRECISION_6)
-            val latLngs = points.map { com.mappls.sdk.maps.geometry.LatLng(it.latitude(), it.longitude()) }
-            
-            val lineOptions = LineOptions()
-                .points(latLngs)
-                .lineColor(if (isPrimary) "#2196F3" else "#A9A9A9") 
-                .lineWidth(if (isPrimary) 8f else 6f)
-                .lineOpacity(if (isPrimary) 1.0f else 0.8f)
-            
-            lineManager?.create(lineOptions)
-            
-            // Store this route's geometry for tap-detection
-            allRouteGeometries[route] = latLngs
-            
-            // Add duration label at the midpoint (varying index slightly)
-            if (latLngs.size > 10) {
-                val offset = 0.35 + (index.toDouble() / routes.size) * 0.2
-                val labelIndex = (latLngs.size * offset).toInt()
-                val labelPoint = latLngs[labelIndex]
-                
-                val labelMarkerOptions = MarkerOptions()
-                    .position(labelPoint)
-                    .icon(com.mappls.sdk.maps.annotations.IconFactory.getInstance(this)
-                        .fromBitmap(createRouteLabelBitmap(route.duration()!!, isPrimary)))
-                
-                val marker = mapplsMap?.addMarker(labelMarkerOptions)
-                if (marker != null) {
-                    markerToRouteMap[marker.id] = route
-                    routeMetaMarkerIds.add(marker.id)
-                }
-            }
-            
-            // Add ONLY the destination marker for the primary route (Red pin)
-            if (isPrimary && latLngs.size > 1) {
-                val endPoint = latLngs.last()
-                val endMarkerOptions = MarkerOptions()
-                    .position(endPoint)
-                    .title("Destination")
-                    .icon(com.mappls.sdk.maps.annotations.IconFactory.getInstance(this)
-                        .fromBitmap(createRouteMarkerBitmap(false)))
-                
-                val marker = mapplsMap?.addMarker(endMarkerOptions)
-                if (marker != null) {
-                    routeMetaMarkerIds.add(marker.id)
-                }
-                
-                // Fetch hazards ONLY for the primary route
-                fetchHazardsAlongRouteProgressive(points)
-            }
-        }
+        // Fetch hazards along the route progressively (50km chunks)
+        fetchHazardsAlongRouteProgressive(points)
     }
     
     private fun fetchHazardsAlongRouteProgressive(routePoints: List<Point>) {
@@ -2540,70 +2218,10 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     private fun hideHazardScanProgress() {
         findViewById<View>(R.id.hazard_scan_progress_container)?.visibility = View.GONE
     }
-
-    /** Show the Trip Briefing card in "Scanning..." state immediately when route loads */
-    private fun showTripBriefingScanning() {
-        val card = findViewById<View>(R.id.trip_briefing_card) ?: return
-        val title = findViewById<TextView>(R.id.tv_trip_briefing_title) ?: return
-        val detail = findViewById<TextView>(R.id.tv_trip_briefing_detail) ?: return
-        val dismiss = findViewById<View>(R.id.btn_dismiss_briefing) ?: return
-
-        title.text = "Scanning route..."
-        detail.text = "Checking for cameras and hazards ahead"
-        
-        card.visibility = View.VISIBLE
-        card.alpha = 0f
-        card.animate().alpha(1f).setDuration(300).start()
-
-        dismiss.setOnClickListener { 
-            card.animate().alpha(0f).setDuration(200).withEndAction {
-                card.visibility = View.GONE
-            }.start()
-        }
-    }
-
-    /** Update the Trip Briefing card with the real hazard count summary */
-    private fun showTripBriefingSummary() {
-        val card = findViewById<View>(R.id.trip_briefing_card) ?: return
-        if (card.visibility != View.VISIBLE) return  // User already dismissed it
-        
-        val title = findViewById<TextView>(R.id.tv_trip_briefing_title) ?: return
-        val detail = findViewById<TextView>(R.id.tv_trip_briefing_detail) ?: return
-
-        // Count hazard types from routeHazardMarkerIds using osmFeatures data
-        val cameraCount = routeHazardMarkerIds.count { id ->
-            osmFeatures.any { f -> featureToMarkerMap[f.id]?.id == id && f.type == FeatureType.SPEED_CAMERA }
-        }
-        val hazardCount = routeHazardMarkerIds.count { id ->
-            osmFeatures.any { f -> featureToMarkerMap[f.id]?.id == id && f.type != FeatureType.SPEED_CAMERA }
-        }
-        val totalHazards = routeHazardMarkerIds.size
-
-        if (totalHazards == 0) {
-            title.text = "🟢 Route Clear"
-            detail.text = "No cameras or hazards reported on this route"
-        } else {
-            val parts = mutableListOf<String>()
-            if (cameraCount > 0) parts.add("$cameraCount speed camera${if (cameraCount > 1) "s" else ""}") 
-            if (hazardCount > 0) parts.add("$hazardCount hazard${if (hazardCount > 1) "s" else ""} reported")
-            if (parts.isEmpty()) parts.add("$totalHazards alerts")
-            title.text = "🚨 Heads Up!"
-            detail.text = parts.joinToString(" • ") + " ahead on this route"
-        }
-
-        // Auto-dismiss after 8 seconds
-        card.postDelayed({
-            if (card.isAttachedToWindow) {
-                card.animate().alpha(0f).setDuration(400).withEndAction {
-                    card.visibility = View.GONE
-                }.start()
-            }
-        }, 8000)
-    }
     
     private suspend fun fetchNextHazardChunk() {
-        if (!isNavigating || currentRoutePoints.isEmpty()) {
-            Log.d("Zwap", "Navigation stopped or no route points, stopping hazard fetch")
+        if (currentRoutePoints.isEmpty()) {
+            Log.d("Zwap", "No route points, stopping hazard fetch")
             withContext(Dispatchers.Main) { hideHazardScanProgress() }
             return
         }
@@ -2632,12 +2250,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             Log.d("Zwap", "All hazard chunks fetched!")
             withContext(Dispatchers.Main) {
                 updateHazardScanProgress(100)
-                // Hide after a brief delay to show 100%
-                kotlinx.coroutines.MainScope().launch {
-                    kotlinx.coroutines.delay(1500)
-                    hideHazardScanProgress()
-                    showTripBriefingSummary()
-                }
+                // Keep progress visible at 100% as requested
             }
             return
         }
@@ -2657,126 +2270,140 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             updateHazardScanProgress(progressPercent)
         }
         
-        // Run OSM and Community hazard fetches IN PARALLEL for speed
-        var osmHazards: List<RouteHazard> = emptyList()
-        var communityHazards: List<RouteHazard> = emptyList()
+        // Retry logic for failed requests
+        var retryCount = 0
+        val maxRetries = 2
+        var success = false
         
-        // Compute bbox once — shared by both jobs
-        var bMinLat = Double.MAX_VALUE; var bMaxLat = -Double.MAX_VALUE
-        var bMinLon = Double.MAX_VALUE; var bMaxLon = -Double.MAX_VALUE
-        chunkPoints.forEach { pt ->
-            bMinLat = minOf(bMinLat, pt.latitude()); bMaxLat = maxOf(bMaxLat, pt.latitude())
-            bMinLon = minOf(bMinLon, pt.longitude()); bMaxLon = maxOf(bMaxLon, pt.longitude())
-        }
-        val padding = 0.004
-        val fMinLat = bMinLat - padding; val fMaxLat = bMaxLat + padding
-        val fMinLon = bMinLon - padding; val fMaxLon = bMaxLon + padding
-        val centerLat = (fMinLat + fMaxLat) / 2; val centerLon = (fMinLon + fMaxLon) / 2
-        val latDiff = fMaxLat - fMinLat; val lonDiff = fMaxLon - fMinLon
-        val radiusKm = (Math.sqrt(latDiff * latDiff + lonDiff * lonDiff) * 111.0) / 2
-        
-        kotlinx.coroutines.coroutineScope {
-            // ── 1. OSM Overpass (fired simultaneously)
-            val osmJob = async(Dispatchers.IO) {
-                var result: List<RouteHazard> = emptyList()
-                try {
-                    val query = """
-                        [out:json][timeout:10];
-                        (
-                          node["highway"="speed_camera"]($fMinLat,$fMinLon,$fMaxLat,$fMaxLon);
-                          node["enforcement"="speed"]($fMinLat,$fMinLon,$fMaxLat,$fMaxLon);
-                          node["hazard"]($fMinLat,$fMinLon,$fMaxLat,$fMaxLon);
-                          node["traffic_calming"]($fMinLat,$fMinLon,$fMaxLat,$fMaxLon);
-                          node["barrier"="toll_booth"]($fMinLat,$fMinLon,$fMaxLat,$fMaxLon);
-                        );
-                        out body;
-                    """.trimIndent()
-                    val client = okhttp3.OkHttpClient.Builder()
-                        .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
-                        .readTimeout(12, java.util.concurrent.TimeUnit.SECONDS)
-                        .build()
-                    val response = client.newCall(
-                        okhttp3.Request.Builder()
-                            .url("https://overpass-api.de/api/interpreter")
-                            .post(query.toRequestBody("text/plain".toMediaTypeOrNull()))
-                            .build()
-                    ).execute()
-                    val body = response.body?.string()
-                    if (response.isSuccessful && body != null) {
-                        result = parseOSMHazards(body, chunkPoints)
-                        Log.d("Zwap", "OSM: ${result.size} hazards found")
-                    } else {
-                        Log.w("Zwap", "OSM response: ${response.code}")
-                    }
-                } catch (e: Exception) {
-                    Log.e("Zwap", "OSM fetch error: ${e.message}")
+        // Note: removed isNavigating guard — coroutine lifecycle is managed by hazardFetchJob?.cancel()
+        while (!success && retryCount <= maxRetries) {
+            try {
+                // Build bounding box for this chunk
+                var minLat = Double.MAX_VALUE
+                var maxLat = Double.MIN_VALUE
+                var minLon = Double.MAX_VALUE
+                var maxLon = Double.MIN_VALUE
+                
+                chunkPoints.forEach { point ->
+                    minLat = minOf(minLat, point.latitude())
+                    maxLat = maxOf(maxLat, point.latitude())
+                    minLon = minOf(minLon, point.longitude())
+                    maxLon = maxOf(maxLon, point.longitude())
                 }
-                result
-            }
-
-            // ── 2. Community hazards (our own backend — faster)
-            val communityJob = async(Dispatchers.IO) {
-                var result: List<RouteHazard> = emptyList()
-                try {
-                    val commResponse = kotlinx.coroutines.withTimeoutOrNull(3000L) {
-                        com.swapmap.zwap.demo.network.ApiClient.hazardApiService.getHazards(
+                
+                // Add padding (500m buffer)
+                val padding = 0.005
+                minLat -= padding
+                maxLat += padding
+                minLon -= padding
+                maxLon += padding
+                
+                // OSM Overpass query - full hazard types with longer timeout
+                val query = """
+                    [out:json][timeout:30];
+                    (
+                      node["highway"="speed_camera"]($minLat,$minLon,$maxLat,$maxLon);
+                      node["enforcement"="speed"]($minLat,$minLon,$maxLat,$maxLon);
+                      node["hazard"]($minLat,$minLon,$maxLat,$maxLon);
+                      node["traffic_calming"]($minLat,$minLon,$maxLat,$maxLon);
+                      node["barrier"="toll_booth"]($minLat,$minLon,$maxLat,$maxLon);
+                    );
+                    out body;
+                """.trimIndent()
+                
+                val client = okhttp3.OkHttpClient.Builder()
+                    .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                    .build()
+                
+                val requestBody = query.toRequestBody("text/plain".toMediaTypeOrNull())
+                
+                val request = okhttp3.Request.Builder()
+                    .url("https://overpass-api.de/api/interpreter")
+                    .post(requestBody)
+                    .build()
+                
+                val response = client.newCall(request).execute()
+                val responseBody = response.body?.string()
+                
+                if (response.isSuccessful && responseBody != null) {
+                    val hazards = parseOSMHazards(responseBody, chunkPoints).toMutableList()
+                    Log.d("Zwap", "Found ${hazards.size} OSM hazards in chunk (${progressPercent}%)")
+                    
+                    // Fetch Community Hazards for this chunk
+                    try {
+                        val centerLat = (minLat + maxLat) / 2
+                        val centerLon = (minLon + maxLon) / 2
+                        // Calculate approximate radius (diagonal of bounding box / 2)
+                        val latDiff = maxLat - minLat
+                        val lonDiff = maxLon - minLon
+                        val radiusKm = (Math.sqrt(latDiff * latDiff + lonDiff * lonDiff) * 111.0) / 2
+                        
+                        Log.d("Zwap", "Fetching community hazards: center=($centerLat,$centerLon), radius=${radiusKm}km")
+                        
+                        val commResponse = com.swapmap.zwap.demo.network.ApiClient.hazardApiService.getHazards(
                             centerLat, centerLon, radiusKm
                         )
-                    }
-                    if (commResponse?.isSuccessful == true && commResponse.body() != null) {
-                        result = commResponse.body()!!.hazards.map { cluster ->
-                            RouteHazard(
-                                lat = cluster.latitude, lon = cluster.longitude,
-                                type = if (cluster.status == "NEEDS_REVALIDATION")
-                                    HazardType.COMMUNITY_REVALIDATE else HazardType.COMMUNITY_VERIFIED_HAZARD,
-                                name = "${cluster.hazard_type.replace("_", " ")} (${cluster.verified_image_count} reports)"
-                            )
+                        
+                        if (commResponse.isSuccessful && commResponse.body() != null) {
+                            val communityHazards = commResponse.body()!!.hazards.map { cluster ->
+                                RouteHazard(
+                                    lat = cluster.latitude,
+                                    lon = cluster.longitude,
+                                    type = if (cluster.status == "NEEDS_REVALIDATION") 
+                                        HazardType.COMMUNITY_REVALIDATE 
+                                    else 
+                                        HazardType.COMMUNITY_VERIFIED_HAZARD,
+                                    name = "${cluster.hazard_type.replace("_", " ")} (${cluster.verified_image_count} reports)"
+                                )
+                            }
+                            hazards.addAll(communityHazards)
+                            Log.d("Zwap", "Added ${communityHazards.size} community hazards to chunk")
                         }
-                        Log.d("Zwap", "Community: ${result.size} hazards found")
-                    } else if (commResponse == null) {
-                        Log.w("Zwap", "Community hazard fetch timed out (server unreachable)")
+                    } catch (e: Exception) {
+                        Log.e("Zwap", "Failed to fetch community hazards for chunk: ${e.message}")
                     }
-                } catch (e: Exception) {
-                    Log.e("Zwap", "Community fetch error: ${e.message}")
+                    
+                    withContext(Dispatchers.Main) {
+                        displayRouteHazards(hazards)
+                    }
+                    success = true
+                } else if (response.code == 504 || response.code == 429) {
+                    // Server timeout or rate limit - wait and retry
+                    Log.w("Zwap", "OSM server busy (${response.code}), retry ${retryCount + 1}/$maxRetries")
+                    retryCount++
+                    if (retryCount <= maxRetries) {
+                        kotlinx.coroutines.delay(2000L * retryCount) // Exponential backoff
+                    }
+                } else {
+                    Log.e("Zwap", "OSM request failed: code=${response.code}")
+                    success = true // Don't retry for other errors
                 }
-                result
+            } catch (e: Exception) {
+                Log.e("Zwap", "Error fetching chunk hazards: ${e.message}")
+                retryCount++
+                if (retryCount <= maxRetries) {
+                    kotlinx.coroutines.delay(2000L * retryCount)
+                }
             }
-
-            // Show community hazards IMMEDIATELY as they arrive (fast path)
-            communityHazards = communityJob.await()
-            if (communityHazards.isNotEmpty() && isNavigating) {
-                withContext(Dispatchers.Main) { displayRouteHazards(communityHazards) }
-            }
-
-            // Merge with OSM when done
-            osmHazards = osmJob.await()
         }
-
-        // Display merged final results
-        val allHazards = (osmHazards + communityHazards)
-            .distinctBy { "${(it.lat * 1000).toInt()}_${(it.lon * 1000).toInt()}_${it.type}" }
-        if (isNavigating && allHazards.isNotEmpty()) {
-            withContext(Dispatchers.Main) { displayRouteHazards(allHazards) }
-        }
-
         
         // Update index for next chunk and continue
         currentHazardFetchIndex = endIndex
         
-        // Minimal delay between chunks to be respectful to the API
-        kotlinx.coroutines.delay(100)
+        // Delay between chunks to avoid API rate limiting
+        kotlinx.coroutines.delay(500)
         
-        // Fetch next chunk if still navigating
-        if (isNavigating && currentHazardFetchIndex < currentRoutePoints.size - 1) {
+        // Fetch next chunk if route still exists
+        if (currentRoutePoints.isNotEmpty() && currentHazardFetchIndex < currentRoutePoints.size - 1) {
             fetchNextHazardChunk()
-        } else if (isNavigating) {
-            // Completed scanning  
+        } else if (currentRoutePoints.isNotEmpty()) {
+            // Completed scanning
             withContext(Dispatchers.Main) {
                 updateHazardScanProgress(100)
                 kotlinx.coroutines.MainScope().launch {
                     kotlinx.coroutines.delay(1500)
                     hideHazardScanProgress()
-                    showTripBriefingSummary()
                 }
             }
         }
@@ -2856,7 +2483,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     }
     
     private fun displayRouteHazards(hazards: List<RouteHazard>) {
-        if (!isNavigating) return
+        // Show hazard markers during both preview and active navigation
         
         hazards.forEach { hazard ->
             try {
@@ -2970,31 +2597,16 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         currentRoutePoints = emptyList()
         totalRouteDistanceMeters = 0.0
         
-        // Hide progress and briefing card
+        // Hide progress indicator
         hideHazardScanProgress()
-        runOnUiThread {
-            val card = findViewById<View>(R.id.trip_briefing_card)
-            card?.visibility = View.GONE
-        }
-        
-        // Clear hazard points data
-        routeHazards.clear()
         
         mapplsMap?.let { map ->
-            // Clear hazards markers
             map.markers.filter { routeHazardMarkerIds.contains(it.id) }.forEach { 
-                map.removeMarker(it) 
-            }
-            // Clear route meta markers (labels/pins)
-            map.markers.filter { routeMetaMarkerIds.contains(it.id) }.forEach { 
                 map.removeMarker(it) 
             }
         }
         routeHazardMarkerIds.clear()
-        routeMetaMarkerIds.clear()
-        markerToRouteMap.clear()
-        allRouteGeometries.clear()
-        isNavigating = false
+        // Note: do NOT reset isNavigating here — that's closeDirectionsUI()'s job
     }
     
     // Data classes for route hazards
@@ -3063,68 +2675,6 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         return bitmap
     }
 
-    private fun createRouteLabelBitmap(duration: Double, isPrimary: Boolean): Bitmap {
-        val durationMin = (duration / 60.0).toInt()
-        val durationText = if (durationMin >= 60) {
-            "${durationMin / 60}h ${durationMin % 60}m"
-        } else {
-            "$durationMin min"
-        }
-
-        val paint = Paint().apply {
-            textSize = 28f
-            isAntiAlias = true
-            color = if (isPrimary) Color.WHITE else Color.BLACK
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-        }
-
-        val bounds = android.graphics.Rect()
-        paint.getTextBounds(durationText, 0, durationText.length, bounds)
-
-        val paddingW = 24
-        val paddingH = 16
-        val width = bounds.width() + paddingW * 2
-        val height = bounds.height() + paddingH * 2
-
-        val bitmap = Bitmap.createBitmap(width, height + 12, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-
-        // Draw bubble background
-        val bgPaint = Paint().apply {
-            color = if (isPrimary) Color.parseColor("#1976D2") else Color.WHITE
-            style = Paint.Style.FILL
-            isAntiAlias = true
-            setShadowLayer(4f, 0f, 2f, Color.parseColor("#40000000"))
-        }
-
-        val rectF = android.graphics.RectF(0f, 0f, width.toFloat(), height.toFloat())
-        canvas.drawRoundRect(rectF, 12f, 12f, bgPaint)
-
-        // Draw tiny triangle at bottom
-        val path = android.graphics.Path()
-        path.moveTo(width / 2f - 10, height.toFloat())
-        path.lineTo(width / 2f + 10, height.toFloat())
-        path.lineTo(width / 2f, height.toFloat() + 10)
-        path.close()
-        canvas.drawPath(path, bgPaint)
-
-        // Draw border if not primary
-        if (!isPrimary) {
-            val borderPaint = Paint().apply {
-                color = Color.LTGRAY
-                style = Paint.Style.STROKE
-                strokeWidth = 2f
-                isAntiAlias = true
-            }
-            canvas.drawRoundRect(rectF, 12f, 12f, borderPaint)
-        }
-
-        // Draw text
-        canvas.drawText(durationText, paddingW.toFloat(), height / 2f + bounds.height() / 2f, paint)
-
-        return bitmap
-    }
-
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) tts?.setLanguage(Locale.US)
     }
@@ -3144,66 +2694,43 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         override fun onFailure(exception: Exception) {}
     }
 
-    override fun onStart() { super.onStart(); mapView?.onStart() }
+    override fun onStart() {
+        super.onStart()
+        mapView?.onStart()
+    }
 
-    override fun onResume() {
+    override fun onResume() { 
         super.onResume()
         mapView?.onResume()
-        // Register wake-word receiver and re-start service if user has it enabled
-        LocalBroadcastManager.getInstance(this).registerReceiver(
-            wakeWordReceiver,
-            android.content.IntentFilter(WakeWordService.ACTION_WAKE_WORD_DETECTED)
-        )
-        val prefs = getSharedPreferences("zwap_prefs", android.content.Context.MODE_PRIVATE)
-        if (prefs.getBoolean("wake_word_enabled", false)) {
-            val audioPerm = androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO)
-            if (audioPerm == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                startForegroundService(android.content.Intent(this, WakeWordService::class.java))
-            } else {
-                android.util.Log.w("Zwap", "WakeWordService not started: RECORD_AUDIO permission missing")
-            }
-        }
+        startLocationUpdates()
     }
-
-    override fun onPause() {
+    
+    override fun onPause() { 
         super.onPause()
         mapView?.onPause()
-        LocalBroadcastManager.getInstance(this).unregisterReceiver(wakeWordReceiver)
+        stopLocationUpdates()
     }
-
-    override fun onStop() { super.onStop(); mapView?.onStop() }
-    override fun onSaveInstanceState(outState: Bundle) { super.onSaveInstanceState(outState); mapView?.onSaveInstanceState(outState) }
-    override fun onDestroy() {
-        locationEngine?.removeLocationUpdates(callback)
-        tts?.stop(); tts?.shutdown()
-        cameraExecutor.shutdown()
+    
+    override fun onStop() { 
+        super.onStop()
+        mapView?.onStop() 
+    }
+    
+    override fun onSaveInstanceState(outState: Bundle) { 
+        super.onSaveInstanceState(outState)
+        mapView?.onSaveInstanceState(outState) 
+    }
+    
+    override fun onLowMemory() {
+        super.onLowMemory()
+        mapView?.onLowMemory()
+    }
+    
+    override fun onDestroy() { 
+        stopLocationUpdates()
+        tts?.stop()
+        tts?.shutdown()
         super.onDestroy()
-        mapView?.onDestroy()
-    }
-
-    private fun initLaunchers() {
-        // 1. Camera launcher for AI flow (Manual Mode)
-        takeAIPicture = registerForActivityResult(
-            androidx.activity.result.contract.ActivityResultContracts.TakePicture()
-        ) { success ->
-            if (success && aiImageFileMain != null) {
-                Toast.makeText(this, "⏳ Scanning road for hazards...", Toast.LENGTH_SHORT).show()
-                val lat = mapplsMap?.cameraPosition?.target?.latitude  ?: 0.0
-                val lng = mapplsMap?.cameraPosition?.target?.longitude ?: 0.0
-                sendToAiAndSubmit(aiImageFileMain!!, aiVoiceTranscript, lat, lng)
-            }
-        }
-
-        // 2. Speech recognizer launcher (kept for fallback)
-        speechLauncherMain = registerForActivityResult(
-            androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
-        ) { result ->
-            if (result.resultCode == android.app.Activity.RESULT_OK) {
-                val results = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
-                if (!results.isNullOrEmpty()) {
-                    processVoiceTranscript(results[0])
-                }
-            }
-        }
+        mapView?.onDestroy() 
     }
 }

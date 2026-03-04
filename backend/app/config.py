@@ -42,9 +42,9 @@ class Settings(BaseSettings):
     duplicate_threshold: float = 0.95
     
     # Geo-Clustering
-    cluster_radius_meters: int = 50
-    fine_merge_radius_meters: int = 15
-    highway_cluster_radius_meters: int = 100
+    cluster_radius_meters: int = 200
+    fine_merge_radius_meters: int = 100
+    highway_cluster_radius_meters: int = 500
     
     # Confidence Lifecycle
     initial_confirmation_count: int = 2
