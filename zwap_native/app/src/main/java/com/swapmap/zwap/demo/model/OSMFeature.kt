@@ -43,7 +43,14 @@ data class OverpassResponse(
 data class OverpassElement(
     val type: String,
     val id: Long,
-    val lat: Double,
-    val lon: Double,
+    val lat: Double? = null,   // present for nodes; null for ways
+    val lon: Double? = null,   // present for nodes; null for ways
+    val center: OverpassCenter? = null,  // present for ways with 'out center'
     val tags: Map<String, String>? = null
+)
+
+/** Center coordinate returned for way elements when queried with 'out center'. */
+data class OverpassCenter(
+    val lat: Double,
+    val lon: Double
 )

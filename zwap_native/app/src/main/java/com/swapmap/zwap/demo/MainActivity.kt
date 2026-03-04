@@ -72,6 +72,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.Observer
+import com.swapmap.zwap.demo.viewmodel.HazardViewModel
 import android.graphics.BitmapFactory
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -117,6 +120,9 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     private val ALERT_COOLDOWN = 3000L  // 3 seconds
     private val HAZARD_ALERT_DISTANCE = 300.0  // 300 meters
     private val alertedHazardIds = mutableSetOf<Long>()
+
+    // ── ViewModel: owns speed limit state, fetch logic, over-speed TTS ────────
+    private lateinit var hazardViewModel: HazardViewModel
     private var hazardAlertAdapter: HazardAlertAdapter? = null
     private var isHazardPanelExpanded = true
     private val activeHazards = mutableListOf<HazardAlert>()
@@ -161,6 +167,10 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     private var aiVoiceTranscript = ""
     private var aiImageFileMain: java.io.File? = null
     private var aiCameraUriMain: android.net.Uri? = null
+    
+    // Custom SpeechRecognizer
+    private var customSpeechRecognizer: android.speech.SpeechRecognizer? = null
+    private var isVoiceAnimating = false
 
     // ── Wake-Word Receiver ────────────────────────────────────────────────────
     // Receives a local broadcast from WakeWordService when "Hey Mapzy" is heard,
@@ -204,40 +214,176 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
      */
     internal fun launchVoiceReporter() {
         val neededPerms = mutableListOf<String>()
-        if (androidx.core.content.ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+        if (androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA)
             != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            neededPerms.add(Manifest.permission.CAMERA)
+            neededPerms.add(android.Manifest.permission.CAMERA)
         }
-        if (androidx.core.content.ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+        if (androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO)
             != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            neededPerms.add(Manifest.permission.RECORD_AUDIO)
+            neededPerms.add(android.Manifest.permission.RECORD_AUDIO)
         }
         if (neededPerms.isNotEmpty()) {
             ActivityCompat.requestPermissions(this, neededPerms.toTypedArray(), 999)
             Toast.makeText(this, "Please grant camera & mic permissions.", Toast.LENGTH_LONG).show()
             return
         }
-        val intent = android.content.Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+
+        // ── CRITICAL FIX: Stop WakeWordService FIRST to free the microphone ────
+        // Porcupine holds an AudioRecord open. If both run simultaneously, Android
+        // silences the SpeechRecognizer stream → NO_SPEECH_DETECTED (-1) every time.
+        stopService(android.content.Intent(this, WakeWordService::class.java))
+        android.util.Log.d("Zwap", "WakeWordService stopped — mic is now free for SpeechRecognizer")
+
+        // Destroy and recreate recognizer every call for a fresh, clean session
+        customSpeechRecognizer?.destroy()
+        customSpeechRecognizer = android.speech.SpeechRecognizer.createSpeechRecognizer(this)
+
+        customSpeechRecognizer?.setRecognitionListener(object : android.speech.RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {
+                startVoiceAnimation()
+                Toast.makeText(this@MainActivity, "🎙 Listening...", Toast.LENGTH_SHORT).show()
+            }
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() { stopVoiceAnimation() }
+
+            override fun onError(error: Int) {
+                stopVoiceAnimation()
+                restartWakeWordServiceIfEnabled()
+                // Only surface meaningful user-facing errors; silently swallow the rest
+                val msg = when (error) {
+                    android.speech.SpeechRecognizer.ERROR_NO_MATCH,
+                    android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No speech detected — try again"
+                    android.speech.SpeechRecognizer.ERROR_AUDIO          -> "Microphone error — try again"
+                    android.speech.SpeechRecognizer.ERROR_NETWORK,
+                    android.speech.SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Network error — check connection"
+                    android.speech.SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Voice recognizer busy — try again"
+                    android.speech.SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Mic permission needed"
+                    else -> null  // Silently ignore ERROR_CLIENT (-5) and other internal errors
+                }
+                msg?.let { Toast.makeText(this@MainActivity, it, Toast.LENGTH_SHORT).show() }
+            }
+
+            override fun onResults(results: Bundle?) {
+                stopVoiceAnimation()
+                restartWakeWordServiceIfEnabled()
+                val matches = results?.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION)
+                if (!matches.isNullOrEmpty()) {
+                    processVoiceTranscript(matches[0])
+                }
+            }
+            override fun onPartialResults(partialResults: Bundle?) {}
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        })
+
+        val recognizerIntent = android.content.Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_PROMPT, "Describe the road hazard")
+            putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
         }
         try {
-            speechLauncherMain.launch(intent)
+            customSpeechRecognizer?.startListening(recognizerIntent)
         } catch (e: Exception) {
-            Toast.makeText(this, "Speech not supported on this device.", Toast.LENGTH_SHORT).show()
+            android.util.Log.e("Zwap", "SpeechRecognizer failed to start: ${e.message}", e)
+            stopVoiceAnimation()
+            restartWakeWordServiceIfEnabled()
+        }
+    }
+
+    /** Restarts WakeWordService after the SpeechRecognizer has released the mic,
+     *  but only if the user has the "Hey Mapzy" feature enabled in preferences. */
+    private fun restartWakeWordServiceIfEnabled() {
+        val prefs = getSharedPreferences("zwap_prefs", android.content.Context.MODE_PRIVATE)
+        if (prefs.getBoolean("wake_word_enabled", false)) {
+            val audioPerm = androidx.core.content.ContextCompat.checkSelfPermission(
+                this, android.Manifest.permission.RECORD_AUDIO
+            )
+            if (audioPerm == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                startForegroundService(android.content.Intent(this, WakeWordService::class.java))
+                android.util.Log.d("Zwap", "WakeWordService restarted — mic returned to Porcupine")
+            }
+        }
+    }
+
+    private fun processVoiceTranscript(transcript: String) {
+        aiVoiceTranscript = transcript
+        // ── Read camera preference ─────────────────────────────
+        val prefs = getSharedPreferences("zwap_prefs", android.content.Context.MODE_PRIVATE)
+        val cameraMode = prefs.getString("voice_camera_mode", "manual")
+        val cameraLens = prefs.getString("voice_camera_lens", "back") ?: "back"
+
+        if (cameraMode == "auto") {
+            // ── AUTO: silently capture with CameraX ────────────
+            Toast.makeText(this, "⏳ Scanning road for hazards...", Toast.LENGTH_SHORT).show()
+            val captureLat = mapplsMap?.cameraPosition?.target?.latitude  ?: 0.0
+            val captureLng = mapplsMap?.cameraPosition?.target?.longitude ?: 0.0
+            if (!isCameraXStarted) startCameraX(cameraLens)
+            val captureHandler = android.os.Handler(mainLooper)
+            captureHandler.postDelayed({
+                val ic = imageCapture
+                if (ic == null) {
+                    Toast.makeText(this, "⚠️ Camera not ready, retrying...", Toast.LENGTH_SHORT).show()
+                    return@postDelayed
+                }
+                aiImageFileMain = java.io.File(cacheDir, "ai_auto_${System.currentTimeMillis()}.jpg")
+                val outputOptions = ImageCapture.OutputFileOptions.Builder(aiImageFileMain!!).build()
+                ic.takePicture(
+                    outputOptions,
+                    cameraExecutor,
+                    object : ImageCapture.OnImageSavedCallback {
+                        override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                            sendToAiAndSubmit(aiImageFileMain!!, aiVoiceTranscript, captureLat, captureLng)
+                        }
+                        override fun onError(exc: ImageCaptureException) {
+                            runOnUiThread {
+                                Toast.makeText(this@MainActivity, "📷 Auto-capture failed: ${exc.message}", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }
+                )
+            }, 800)
+        } else {
+            // ── MANUAL: open system camera ─────────────────────
+            Toast.makeText(this, "🎙 \"$aiVoiceTranscript\" — Taking photo...", Toast.LENGTH_SHORT).show()
+            try {
+                aiImageFileMain = java.io.File(cacheDir, "ai_main_${System.currentTimeMillis()}.jpg")
+                aiCameraUriMain = androidx.core.content.FileProvider.getUriForFile(
+                    this,
+                    "$packageName.fileprovider",
+                    aiImageFileMain!!
+                )
+                takeAIPicture.launch(aiCameraUriMain!!)
+            } catch (e: Exception) {
+                Toast.makeText(this, "Camera failed to start", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
+
         // Initialize Firebase Auth
         auth = FirebaseAuth.getInstance()
-        
+
         // Ensure keys are set before inflation
         Mappls.getInstance(this)
-        
+
         setContentView(R.layout.activity_main)
+
+        // ── Initialize HazardViewModel ────────────────────────────────────────
+        hazardViewModel = ViewModelProvider(this)[HazardViewModel::class.java]
+
+        // Observe speed limit changes and update tv_limit automatically.
+        // This runs on the Main thread, is lifecycle-safe, and replaces the
+        // old runOnUiThread { currentSpeedLimitKmh = ... } pattern.
+        hazardViewModel.speedLimitKmh.observe(this, Observer { limitKmh ->
+            val tvLimit = findViewById<TextView>(R.id.tv_limit)
+            tvLimit?.text = if (limitKmh > 0) "$limitKmh" else "--"
+        })
 
         // Register launchers strictly here while in CREATED state
         initLaunchers()
@@ -247,7 +393,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         mapView?.getMapAsync(this)
 
         tts = TextToSpeech(this, this)
-        
+
         // Check if user is already logged in
         if (auth.currentUser != null) {
             currentUserId = auth.currentUser!!.uid
@@ -448,10 +594,10 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         } catch (e: Exception) {
             Log.e("Zwap", "Error setting up hazard button", e)
         }
-
         // Mic FAB click → shared method used by both FAB and wake-word
         try {
-            findViewById<View>(R.id.fab_ai_voice)?.setOnClickListener {
+            val aiVoiceBtn = findViewById<View>(R.id.fab_ai_voice)
+            aiVoiceBtn?.setOnClickListener {
                 launchVoiceReporter()
             }
         } catch (e: Exception) {
@@ -460,6 +606,30 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         
         setupBottomNavigation()
         setupSearchOverlay()
+    }
+
+    private fun startVoiceAnimation() {
+        val aiVoiceBtn = findViewById<View>(R.id.fab_ai_voice) ?: return
+        if (isVoiceAnimating) return
+        isVoiceAnimating = true
+        pulseAnim(aiVoiceBtn)
+    }
+
+    private fun pulseAnim(btn: View) {
+        if (!isVoiceAnimating) return
+        btn.animate().scaleX(1.15f).scaleY(1.15f).setDuration(600).withEndAction {
+            if (!isVoiceAnimating) return@withEndAction
+            btn.animate().scaleX(1.0f).scaleY(1.0f).setDuration(600).withEndAction {
+                if (isVoiceAnimating) pulseAnim(btn)
+            }.start()
+        }.start()
+    }
+
+    private fun stopVoiceAnimation() {
+        isVoiceAnimating = false
+        val aiVoiceBtn = findViewById<View>(R.id.fab_ai_voice)
+        aiVoiceBtn?.animate()?.cancel()
+        aiVoiceBtn?.animate()?.scaleX(1.0f)?.scaleY(1.0f)?.setDuration(200)?.start()
     }
     
     /**
@@ -918,12 +1088,14 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                     var hazardCount = 0
                     
                     elements.forEachIndexed { index, element ->
-                        // Skip invalid coordinates
-                        if (element.lat == 0.0 && element.lon == 0.0) {
-                            Log.d("Zwap", "Skipping element ${element.id} with invalid coords")
+                        // Skip elements with no usable coordinates (ways without center)
+                        val eLat = element.lat ?: element.center?.lat
+                        val eLon = element.lon ?: element.center?.lon
+                        if (eLat == null || eLon == null || (eLat == 0.0 && eLon == 0.0)) {
+                            Log.d("Zwap", "Skipping element ${element.id} with invalid/missing coords")
                             return@forEachIndexed
                         }
-                        
+
                         element.tags?.forEach { (key, value) ->
                             FeatureType.fromOSMTag(key, value)?.let { featureType ->
                                 // Show cameras at lower zoom (country level), hazards at higher zoom (state level)
@@ -932,25 +1104,25 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                                 } else {
                                     zoom >= 5.0  // Hazards visible at state level only
                                 }
-                                
+
                                 // DETAILED LOGGING FOR DEBUGGING
                                 if (featureType == FeatureType.SPEED_CAMERA) {
-                                    Log.d("Zwap", "🎥 CAMERA DETECTED: id=${element.id}, lat=${element.lat}, lon=${element.lon}, zoom=$zoom, shouldShow=$shouldShow")
+                                    Log.d("Zwap", "🎥 CAMERA DETECTED: id=${element.id}, lat=$eLat, lon=$eLon, zoom=$zoom, shouldShow=$shouldShow")
                                 } else {
                                     Log.d("Zwap", "⚠️ HAZARD DETECTED: ${featureType.name}, zoom=$zoom, shouldShow=$shouldShow")
                                 }
-                                
+
                                 if (shouldShow) {
                                     val feature = OSMFeature(
                                         id = element.id,
-                                        lat = element.lat,
-                                        lon = element.lon,
+                                        lat = eLat,
+                                        lon = eLon,
                                         type = featureType,
                                         name = element.tags["name"],
                                         tags = element.tags
                                     )
                                     osmFeatures.add(feature)
-                                    
+
                                     if (featureType == FeatureType.SPEED_CAMERA) {
                                         cameraCount++
                                         Log.d("Zwap", "✅ CAMERA ADDED: total cameras now = $cameraCount")
@@ -958,14 +1130,14 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                                         hazardCount++
                                         Log.d("Zwap", "✅ HAZARD ADDED: ${featureType.name}, total hazards now = $hazardCount")
                                     }
-                                    
+
                                     // Add marker on UI thread with small delay for smooth loading animation
                                     runOnUiThread {
                                         addOSMMarker(feature)
                                         processedCount++
-                                        Log.d("Zwap", "🎨 MARKER RENDERED: ${featureType.name} at (${element.lat}, ${element.lon}) - ${osmFeatures.size} total")
+                                        Log.d("Zwap", "🎨 MARKER RENDERED: ${featureType.name} at ($eLat, $eLon) - ${osmFeatures.size} total")
                                     }
-                                    
+
                                     // Small delay between markers to show loading animation
                                     Thread.sleep(20)
                                 }
@@ -1618,15 +1790,33 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
 
     fun handleLocationUpdate(location: Location) {
         val speedKmh = (location.speed * 3.6).toInt()
-        findViewById<TextView>(R.id.tv_speed).text = "$speedKmh"
-        findViewById<TextView>(R.id.tv_speed).setTextColor(if (speedKmh > 50) Color.RED else Color.WHITE)
-        
-        // Check hazard proximity (during overlay mode OR navigation)
+
+        // ── Update current speed display ──────────────────────────────────────
+        val tvSpeed = findViewById<TextView>(R.id.tv_speed)
+        tvSpeed.text = "$speedKmh"
+
+        // ── Speed limit HUD coloring — driven by HazardViewModel LiveData ─────
+        // tv_limit text is updated by the LiveData observer in onCreate().
+        // Here we just read the latest observed value to decide colours.
+        val tvLimit = findViewById<TextView>(R.id.tv_limit)
+        val isOver = hazardViewModel.checkOverSpeed(speedKmh, tts)
+        val limitKnown = (hazardViewModel.speedLimitKmh.value ?: 0) > 0
+        tvSpeed.setTextColor(if (isOver) Color.RED else Color.WHITE)
+        tvLimit.setTextColor(
+            if (isOver) Color.RED
+            else android.graphics.Color.parseColor("#FFA726")
+        )
+        if (!limitKnown) tvLimit.text = "--"
+
+        // ── Delegate 300m speed limit polling to HazardViewModel ─────────────
+        hazardViewModel.onLocationChanged(location)
+
+        // ── Check hazard proximity (during overlay mode OR navigation) ─────────
         if (osmOverlayEnabled || isNavigating) {
             checkHazardProximity(location.latitude, location.longitude)
         }
 
-        // Refresh OSM data if enabled and moved > 1km
+        // ── Refresh OSM overlay data every 1km ────────────────────────────────
         if (osmOverlayEnabled) {
             if (lastOSMFetchLocation == null || location.distanceTo(lastOSMFetchLocation!!) > 1000) {
                 lastOSMFetchLocation = location
@@ -1634,6 +1824,9 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             }
         }
     }
+
+    // fetchSpeedLimitNearby() has been moved to HazardViewModel.kt
+    // MainActivity no longer owns speed limit logic — it only observes LiveData.
 
 
 
@@ -2685,75 +2878,14 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             }
         }
 
-        // 2. Speech recognizer launcher
+        // 2. Speech recognizer launcher (kept for fallback)
         speechLauncherMain = registerForActivityResult(
             androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
         ) { result ->
             if (result.resultCode == android.app.Activity.RESULT_OK) {
                 val results = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
                 if (!results.isNullOrEmpty()) {
-                    aiVoiceTranscript = results[0]
-
-                    // ── Read camera preference ─────────────────────────────
-                    val prefs = getSharedPreferences("zwap_prefs", android.content.Context.MODE_PRIVATE)
-                    val cameraMode = prefs.getString("voice_camera_mode", "manual")
-                    val cameraLens = prefs.getString("voice_camera_lens", "back") ?: "back"
-
-                    if (cameraMode == "auto") {
-                        // ── AUTO: silently capture with CameraX ────────────
-                        Toast.makeText(this, "⏳ Scanning road for hazards...", Toast.LENGTH_SHORT).show()
-
-                        // Capture location immediately
-                        val captureLat = mapplsMap?.cameraPosition?.target?.latitude  ?: 0.0
-                        val captureLng = mapplsMap?.cameraPosition?.target?.longitude ?: 0.0
-
-                        // Ensure CameraX is bound with the correct lens
-                        if (!isCameraXStarted) startCameraX(cameraLens)
-
-                        // Give camera a moment to bind, then capture
-                        val captureHandler = android.os.Handler(mainLooper)
-                        captureHandler.postDelayed({
-                            val ic = imageCapture
-                            if (ic == null) {
-                                Toast.makeText(this, "⚠️ Camera not ready, retrying...", Toast.LENGTH_SHORT).show()
-                                return@postDelayed
-                            }
-                            aiImageFileMain = java.io.File(cacheDir, "ai_auto_${System.currentTimeMillis()}.jpg")
-                            val outputOptions = ImageCapture.OutputFileOptions.Builder(aiImageFileMain!!).build()
-                            ic.takePicture(
-                                outputOptions,
-                                cameraExecutor,
-                                object : ImageCapture.OnImageSavedCallback {
-                                    override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                                        Log.d("CameraX", "📸 Auto-captured: ${aiImageFileMain?.absolutePath}")
-                                        sendToAiAndSubmit(aiImageFileMain!!, aiVoiceTranscript, captureLat, captureLng)
-                                    }
-                                    override fun onError(exc: ImageCaptureException) {
-                                        Log.e("CameraX", "Capture failed", exc)
-                                        runOnUiThread {
-                                            Toast.makeText(this@MainActivity, "📷 Auto-capture failed: ${exc.message}", Toast.LENGTH_LONG).show()
-                                        }
-                                    }
-                                }
-                            )
-                        }, 800) // 800ms gives CameraX time to bind on first use
-
-                    } else {
-                        // ── MANUAL: open system camera ─────────────────────
-                        Toast.makeText(this, "🎙 \"$aiVoiceTranscript\" — Taking photo...", Toast.LENGTH_SHORT).show()
-                        try {
-                            aiImageFileMain = java.io.File(cacheDir, "ai_main_${System.currentTimeMillis()}.jpg")
-                            aiCameraUriMain = androidx.core.content.FileProvider.getUriForFile(
-                                this,
-                                "$packageName.fileprovider",
-                                aiImageFileMain!!
-                            )
-                            takeAIPicture.launch(aiCameraUriMain!!)
-                        } catch (e: Exception) {
-                            Log.e("Zwap", "Failed to launch camera", e)
-                            Toast.makeText(this, "Camera failed to start", Toast.LENGTH_SHORT).show()
-                        }
-                    }
+                    processVoiceTranscript(results[0])
                 }
             }
         }

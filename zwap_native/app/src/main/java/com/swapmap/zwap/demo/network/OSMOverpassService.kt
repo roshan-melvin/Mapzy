@@ -41,7 +41,7 @@ object OSMOverpassService {
         return """
             [out:json][timeout:10];
             way(around:$radius,$lat,$lon)["maxspeed"];
-            out tags;
+            out tags center;
         """.trimIndent()
     }
 }

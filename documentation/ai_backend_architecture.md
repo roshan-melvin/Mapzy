@@ -148,3 +148,14 @@ sequenceDiagram
 5. **Supabase retry on 525 errors** — Cloudflare SSL errors on Supabase's CDN nodes (`Error 525`) are transient. `_insert_report` retries up to 3× with 1-second backoff before giving up.
 
 6. **localhost for inter-backend calls** — `MAIN_BACKEND_URL=http://localhost:8000` (not the LAN IP). Both backends run on the same machine; using localhost avoids network routing failures when the LAN IP changes.
+
+---
+
+## Device-Side Pre-processing
+
+Before the Android app sends a `POST /ai-draft` request, several critical steps occur to ensure data quality and system stability:
+
+1.  **Microphone Conflict Management**: To prevent Android from silencing the input stream, the app explicitly stops the background `WakeWordService` (Porcupine) before initiating the `SpeechRecognizer`. This releases the hardware lock on the microphone.
+2.  **Graceful Recovery**: Once transcription is complete (or if an error occurs), the `WakeWordService` is automatically restarted to resume background "Hey Mapzy" listening.
+3.  **UI Feedback Loop**: The voice button initiates a non-clipped pulsing animation only when the `SpeechRecognizer` is in the `onReadyForSpeech` state, ensuring the user knows exactly when to start talking.
+4.  **Error Filtering**: Internal Android speech errors (e.g. `ERROR_CLIENT`) are filtered out, while user-actionable errors (e.g. `ERROR_NO_MATCH`) are surfaced as friendly toasts to guide the driver.

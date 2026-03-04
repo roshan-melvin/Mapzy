@@ -45,4 +45,8 @@ graph TD
     ProfileTab --> Settings[Settings]
     ProfileTab --> Logout[Logout]
     Logout --> AuthScreen
+
+    %% Voice Trigger
+    VoiceTrigger((Voice Command: 'Hey Mapzy')) -.->|Trigger| LaunchVoice[launchVoiceReporter]
+    LaunchVoice --> CreateReport
 ```
