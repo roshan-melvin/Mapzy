@@ -3,45 +3,57 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#202225"
-    android:fillViewport="true">
+    android:background="@color/mapzy_black"
+    android:fillViewport="true"
+    android:scrollbars="none">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="24dp">
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:paddingTop="20dp"
+        android:paddingBottom="100dp"
+        android:clipToPadding="false">
 
+        <!-- Title -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Report an Issue"
-            android:textColor="#FFFFFF"
-            android:textSize="24sp"
+            android:textColor="@color/premium_text_main"
+            android:textSize="28sp"
             android:textStyle="bold"
-            android:layout_marginBottom="24dp"/>
+            android:fontFamily="sans-serif-medium"
+            android:layout_marginBottom="28dp"
+            android:layout_marginTop="8dp"/>
 
+        <!-- CHANNEL label -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Channel (use # to select)"
-            android:textColor="#B9BBBE"
+            android:text="CHANNEL"
+            android:textColor="@color/premium_text_secondary"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.1"
             android:layout_marginBottom="8dp"/>
 
         <AutoCompleteTextView
             android:id="@+id/et_hashtag_channel"
             android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:background="@drawable/rounded_dark_edittext"
-            android:padding="12dp"
+            android:layout_height="52dp"
+            android:background="@drawable/bg_report_input"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
             android:hint="#accident, #construction, etc."
             android:text="#"
-            android:textColor="#FFFFFF"
-            android:textColorHint="#72767D"
-            android:inputType="text"
-            android:completionThreshold="1"
+            android:textColor="@color/premium_text_main"
+            android:textColorHint="@color/premium_text_secondary"
+            android:textSize="15sp"
             android:dropDownHeight="wrap_content"
-            android:layout_marginBottom="8dp"/>
+            android:layout_marginBottom="20dp"/>
 
         <!-- Most Popular Tags -->
         <LinearLayout
@@ -80,11 +92,15 @@
                 app:chipSpacingHorizontal="6dp"/>
         </HorizontalScrollView>
 
+        <!-- DESCRIPTION label -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Description"
-            android:textColor="#B9BBBE"
+            android:text="DESCRIPTION"
+            android:textColor="@color/premium_text_secondary"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.1"
             android:layout_marginBottom="8dp"/>
 
 
@@ -92,13 +108,17 @@
             android:id="@+id/et_description"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="@drawable/rounded_dark_edittext"
-            android:minHeight="100dp"
-            android:padding="12dp"
+            android:background="@drawable/bg_report_input"
+            android:minHeight="120dp"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:paddingTop="14dp"
+            android:paddingBottom="14dp"
             android:gravity="top|start"
             android:hint="Describe what happened..."
-            android:textColor="#FFFFFF"
-            android:textColorHint="#72767D"
+            android:textColor="@color/premium_text_main"
+            android:textColorHint="@color/premium_text_secondary"
+            android:textSize="15sp"
             android:inputType="textMultiLine"
             android:layout_marginBottom="8dp"/>
 
@@ -115,19 +135,23 @@
                 app:singleLine="true"/>
         </HorizontalScrollView>
 
+        <!-- LOCATION label -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Location"
-            android:textColor="#B9BBBE"
+            android:text="LOCATION"
+            android:textColor="@color/premium_text_secondary"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.1"
             android:layout_marginBottom="8dp"/>
 
         <!-- Map Preview -->
         <FrameLayout
             android:layout_width="match_parent"
             android:layout_height="200dp"
-            android:layout_marginBottom="16dp"
-            android:background="@drawable/rounded_border_bg">
+            android:layout_marginBottom="20dp"
+            android:background="@drawable/bg_report_card">
 
             <com.mappls.sdk.maps.MapView
                 android:id="@+id/map_pick_location"
@@ -148,7 +172,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_gravity="bottom"
-                android:background="#CC000000"
+                android:background="#CC1C1C1E"
                 android:orientation="vertical"
                 android:padding="8dp">
 
@@ -171,11 +195,15 @@
             </LinearLayout>
         </FrameLayout>
 
+        <!-- PROOF label -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Proof (Photo/Video)"
-            android:textColor="#B9BBBE"
+            android:text="PROOF"
+            android:textColor="@color/premium_text_secondary"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.1"
             android:layout_marginBottom="8dp"/>
         
         <FrameLayout
@@ -186,9 +214,9 @@
                 android:id="@+id/iv_media_preview"
                 android:layout_width="match_parent"
                 android:layout_height="200dp"
-                android:background="#2f3136"
+                android:background="@color/premium_surface"
                 android:scaleType="centerCrop"
-                android:src="@android:drawable/ic_menu_camera"/>
+                android:src="@drawable/ic_camera_outlined"/>
                 
             <VideoView
                 android:id="@+id/vv_media_preview"
@@ -208,18 +236,26 @@
         <Button
             android:id="@+id/btn_upload_media"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="56dp"
             android:text="Attach Media"
-            android:backgroundTint="#5865F2"
-            android:layout_marginTop="8dp"
+            android:textColor="@color/premium_text_main"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:background="@drawable/bg_report_button_secondary"
+            android:stateListAnimator="@null"
+            android:layout_marginTop="12dp"
             android:layout_marginBottom="24dp"/>
 
         <Button
             android:id="@+id/btn_submit_report"
             android:layout_width="match_parent"
-            android:layout_height="60dp"
+            android:layout_height="56dp"
             android:text="Submit Report"
-            android:backgroundTint="#43B581"/>
+            android:textColor="@color/mapzy_black"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:background="@drawable/bg_report_button_primary"
+            android:stateListAnimator="@null"/>
 
             
         <ProgressBar

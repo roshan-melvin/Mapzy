@@ -1,77 +1,60 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="wrap_content"
+    android:layout_width="68dp"
     android:layout_height="wrap_content"
-    android:background="@drawable/circle_bg"
-    android:elevation="8dp"
+    android:background="@drawable/bg_speed_pill"
+    android:elevation="12dp"
     android:orientation="vertical"
-    android:padding="12dp">
+    android:paddingTop="16dp"
+    android:paddingBottom="12dp"
+    android:paddingStart="8dp"
+    android:paddingEnd="8dp"
+    android:gravity="center_horizontal">
 
-    <!-- Speed Section -->
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="S"
-        android:textColor="#AAAAAA"
-        android:textSize="10sp"
-        android:gravity="center"
-        android:layout_gravity="center_horizontal"/>
+        android:text="SPEED"
+        android:textColor="#94A3B8"
+        android:textSize="8sp"
+        android:textStyle="bold"
+        android:letterSpacing="0.15"
+        android:layout_marginBottom="2dp" />
 
     <TextView
         android:id="@+id/tv_speed"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="0"
-        android:textColor="@android:color/white"
+        android:textColor="#FFFFFF"
         android:textSize="28sp"
         android:textStyle="bold"
-        android:gravity="center"
-        android:layout_gravity="center_horizontal"/>
+        android:includeFontPadding="false" />
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="km/h"
-        android:textColor="#AAAAAA"
+        android:text="KM/H"
+        android:textColor="#94A3B8"
         android:textSize="8sp"
-        android:gravity="center"
-        android:layout_gravity="center_horizontal"
-        android:layout_marginBottom="8dp"/>
-
-    <!-- Divider -->
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="#333333"
-        android:layout_marginVertical="4dp"/>
-
-    <!-- Limit Section -->
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="L"
-        android:textColor="#AAAAAA"
-        android:textSize="10sp"
-        android:gravity="center"
-        android:layout_gravity="center_horizontal"/>
-
-    <TextView
-        android:id="@+id/tv_limit"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="--"
-        android:textColor="#FFA726"
-        android:textSize="24sp"
         android:textStyle="bold"
-        android:gravity="center"
-        android:layout_gravity="center_horizontal"/>
+        android:layout_marginTop="2dp"
+        android:layout_marginBottom="16dp"/>
 
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="km/h"
-        android:textColor="#AAAAAA"
-        android:textSize="8sp"
-        android:gravity="center"
-        android:layout_gravity="center_horizontal"/>
+    <FrameLayout
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:background="@drawable/bg_speed_limit_circle">
+
+        <TextView
+            android:id="@+id/tv_limit"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="--"
+            android:textColor="#000000"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:layout_gravity="center" />
+    </FrameLayout>
+
 </LinearLayout>

@@ -73,6 +73,8 @@ import com.swapmap.zwap.R
 import com.swapmap.zwap.demo.model.FeatureType
 import com.swapmap.zwap.demo.model.OSMFeature
 import com.swapmap.zwap.demo.network.OSMOverpassService
+import android.animation.ObjectAnimator
+import android.view.animation.LinearInterpolator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -140,15 +142,35 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     
     // OSM Overlay features
     private val osmFeatures = java.util.concurrent.CopyOnWriteArrayList<OSMFeature>()
+    private val toggledOsmFeatureIds = mutableSetOf<Long>()
     private val testMarkerIds = mutableListOf<Long>()
     private val osmMarkerIds = mutableListOf<Long>()
     private var osmOverlayEnabled = false
     private var lastOSMFetchLocation: Location? = null
     private var lastZoomLevel: Double = 0.0
     private var lastFetchedMapCenter: com.mappls.sdk.maps.geometry.LatLng? = null
+
+    // Bounding-box cache: tracks the geographic area already loaded so we don't
+    // wipe and refetch when the user is still looking at the same area.
+    private data class BBox(val south: Double, val west: Double, val north: Double, val east: Double) {
+        fun contains(lat: Double, lon: Double) = lat in south..north && lon in west..east
+        // Shrink the "still valid" zone to 70% of the bbox so we prefetch a
+        // little before the user actually reaches the edge.
+        fun innerContains(lat: Double, lon: Double): Boolean {
+            val latPad = (north - south) * 0.15
+            val lonPad = (east - west) * 0.15
+            return lat in (south + latPad)..(north - latPad) &&
+                   lon in (west + lonPad)..(east - lonPad)
+        }
+    }
+    private var lastFetchedBBox: BBox? = null
+    // Guard: prevents a second parallel fetch from starting while one is already in flight.
+    private var isFetchInProgress = false
+    private var osmLoadingAnimator: ObjectAnimator? = null
     private val routeHazardMarkerIds = mutableListOf<Long>()
     private var isNavigating = false
     private var isPreviewMode = false
+    private var isMapTilted = false  // Tracks 2D (false) vs 3D (true) tilt state
     private var currentRoutePoints: List<Point> = emptyList()  // Store route points for progressive fetching
     private var currentHazardFetchIndex = 0  // Track which chunk we're fetching
     private var hazardFetchJob: kotlinx.coroutines.Job? = null  // Job to cancel if route changes
@@ -554,13 +576,18 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                                 hazardAlertAdapter?.notifyDataSetChanged()
                             }
                             
-                            // Instantly re-render this exact map marker visually
-                            val oldMarker = featureToMarkerMap[hazardId]
-                            if (oldMarker != null) {
-                                oldMarker.remove()
-                                osmMarkerIds.remove(oldMarker.id)
-                                featureToMarkerMap.remove(hazardId)
-                                addOSMMarker(feat)
+                            // CRITICAL: Only re-render the map marker if the hazard overlay
+                            // is currently enabled. Without this guard, a Firebase snapshot
+                            // arriving after the user toggles OFF would silently re-add
+                            // the marker even though the toggle is off.
+                            if (osmOverlayEnabled) {
+                                val oldMarker = featureToMarkerMap[hazardId]
+                                if (oldMarker != null) {
+                                    oldMarker.remove()
+                                    osmMarkerIds.remove(oldMarker.id)
+                                    featureToMarkerMap.remove(hazardId)
+                                    addOSMMarker(feat)
+                                }
                             }
                         }
                     }
@@ -586,19 +613,24 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         findViewById<View>(R.id.fab_recenter).setOnClickListener { enableFollowMode() }
         findViewById<View>(R.id.btn_show_nearby).setOnClickListener { showNearbySearchDialog() }
         
-        // Compass button - reset map orientation to north
+        // Compass button - toggle 2D / 3D tilt
         findViewById<View>(R.id.fab_compass)?.setOnClickListener {
-            Log.d("Zwap", "Compass button clicked - resetting map bearing to north")
+            isMapTilted = !isMapTilted
+            val targetTilt = if (isMapTilted) 45.0 else 0.0
+            val label = if (isMapTilted) "3D" else "2D"
+            Log.d("Zwap", "Compass tilt toggle -> $label (tilt=$targetTilt)")
+
+            val currentPosition = mapplsMap?.cameraPosition
             mapplsMap?.animateCamera(
                 com.mappls.sdk.maps.camera.CameraUpdateFactory.newCameraPosition(
                     com.mappls.sdk.maps.camera.CameraPosition.Builder()
-                        .target(mapplsMap?.cameraPosition?.target)
-                        .zoom(mapplsMap?.cameraPosition?.zoom ?: 14.0)
-                        .bearing(0.0)  // Reset to north
-                        .tilt(0.0)     // Reset tilt
+                        .target(currentPosition?.target)          // keep same map centre — no drift
+                        .zoom(currentPosition?.zoom ?: 14.0)      // keep same zoom level
+                        .bearing(currentPosition?.bearing ?: 0.0) // keep current bearing
+                        .tilt(targetTilt)
                         .build()
                 ),
-                300  // Animation duration in ms
+                350  // Smooth animation duration in ms
             )
         }
         
@@ -756,6 +788,9 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                     findViewById<View>(R.id.search_card)?.visibility = View.VISIBLE
                     findViewById<View>(R.id.fab_recenter)?.visibility = View.VISIBLE
                     findViewById<View>(R.id.fab_compass)?.visibility = View.VISIBLE
+                    findViewById<View>(R.id.speed_limit_widget)?.visibility = View.VISIBLE
+                    findViewById<View>(R.id.fab_ai_voice)?.visibility = View.VISIBLE
+                    findViewById<View>(R.id.fab_stack_container)?.visibility = View.VISIBLE
                     Log.d("Zwap", "Switched to Explore tab")
                     true
                 }
@@ -788,6 +823,9 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         findViewById<View>(R.id.fab_recenter)?.visibility = View.GONE
         findViewById<View>(R.id.fab_compass)?.visibility = View.GONE
         findViewById<View>(R.id.search_overlay)?.visibility = View.GONE
+        findViewById<View>(R.id.speed_limit_widget)?.visibility = View.GONE
+        findViewById<View>(R.id.fab_ai_voice)?.visibility = View.GONE
+        findViewById<View>(R.id.fab_stack_container)?.visibility = View.GONE
         
         // Show fragment container
         fragmentContainer.visibility = View.VISIBLE
@@ -1009,11 +1047,12 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     private fun toggleOSMOverlay() {
         Log.d("Zwap", "toggleOSMOverlay called, current state: $osmOverlayEnabled")
         osmOverlayEnabled = !osmOverlayEnabled
-        val button = findViewById<com.google.android.material.button.MaterialButton>(R.id.btn_toggle_osm)
+        val button = findViewById<com.google.android.material.floatingactionbutton.FloatingActionButton>(R.id.btn_toggle_osm)
         
         if (osmOverlayEnabled) {
-            // Active state - orange/amber color with scale animation
+            // Active state - orange/amber background with white icon and scale animation
             button.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#FF6B00"))
+            button.imageTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
             button.animate().scaleX(1.1f).scaleY(1.1f).setDuration(100).withEndAction {
                 button.animate().scaleX(1.0f).scaleY(1.0f).setDuration(100).start()
             }.start()
@@ -1046,216 +1085,243 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             */
             fetchAndDisplayOSMFeatures()
         } else {
-            // Inactive state - white background
-            button.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
-            Log.d("Zwap", "Hazards overlay disabled, clearing markers")
-            clearOSMMarkers()
+            // Inactive state - dark theme background with grey icon
+            button.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#40444B"))
+            button.imageTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#B9BBBE"))
+            Log.d("Zwap", "Hazards overlay disabled, clearing markers (maintaining cache)")
+            stopOSMLoadingAnimation()  // Stop spinner immediately if fetch is still in-flight
+            // Reset hazard panel state so re-toggling ON gives a fresh result
+            alertedHazardIds.clear()
+            activeHazards.clear()
+            hazardAlertAdapter?.notifyDataSetChanged()
+            findViewById<View>(R.id.hazard_alert_panel)?.visibility = View.GONE
+            clearOSMMarkers(fullWipe = false)
         }
     }
     
     private fun fetchAndDisplayOSMFeatures() {
         val center = mapplsMap?.cameraPosition?.target
         if (center == null) {
-            Log.e("Zwap", "Map center is null!")
+            Log.e("Mapzy", "fetchAndDisplayOSMFeatures: map center is null, aborting")
             return
         }
-        
-        // Check zoom level - show cameras at country view (zoom 3+), hazards at state view (zoom 5+)
+
         val zoom = mapplsMap?.cameraPosition?.zoom ?: 0.0
         val lat = center.latitude
         val lon = center.longitude
-        Log.d("Zwap", "fetchAndDisplayOSMFeatures called: zoom=$zoom, center=($lat,$lon)")
-        
+
         if (zoom < 1.0) {
             clearOSMMarkers()
-            Log.d("Zwap", "Zoom level $zoom too low (need 1+), cleared markers")
+            Log.d("Mapzy", "Zoom $zoom too low (need 1+), skipping fetch")
             return
         }
-        
-        // Larger search radius based on zoom level
-        val delta = when {
-            zoom < 4.0 -> 0.50  // Country view: ~55km radius
-            zoom < 6.0 -> 0.10  // State view: ~11km radius
-            else -> 0.02        // City view: ~2.2km radius
+
+        // ── BBOX CACHE: skip fetch if the viewport is still inside the loaded area ──
+        // This is the primary fix for the glitch: if the user hasn't moved out of the
+        // bounding box we already fetched for, the existing markers are still valid.
+        val cachedBBox = lastFetchedBBox
+        if (cachedBBox != null && cachedBBox.innerContains(lat, lon)) {
+            // CASE 1: Markers are already on the map
+            if (osmMarkerIds.isNotEmpty()) {
+                Log.d("Mapzy", "Camera still inside cached bbox — markers live, skipping refetch")
+                return
+            }
+            
+            // CASE 2: Markers were cleared (toggle off) but we still have the features in memory
+            if (osmFeatures.isNotEmpty()) {
+                Log.d("Mapzy", "Restoring ${osmFeatures.size} markers from memory cache (INSTANT)")
+                osmFeatures.forEach { feature ->
+                    addOSMMarker(feature)
+                }
+                // Always run proximity check after restoring cached features
+                val loc = mapplsMap?.locationComponent?.lastKnownLocation
+                checkHazardProximity(loc?.latitude ?: lat, loc?.longitude ?: lon)
+                return
+            }
         }
-        Log.d("Zwap", "Fetching OSM data: lat=$lat, lon=$lon, zoom=$zoom, radius=${delta*111}km")
-        val south = lat - delta
-        val west = lon - delta
-        val north = lat + delta
-        val east = lon + delta
-        
-        Thread {
+
+        // ── IN-PROGRESS GUARD: prevent duplicate parallel fetches ────────────────
+        if (isFetchInProgress) {
+            Log.d("Mapzy", "Fetch already in progress, ignoring duplicate request")
+            return
+        }
+        isFetchInProgress = true
+
+        val delta = when {
+            zoom < 4.0 -> 0.50
+            zoom < 6.0 -> 0.10
+            else -> 0.02
+        }
+        val south = lat - delta; val west = lon - delta
+        val north = lat + delta; val east = lon + delta
+        Log.d("Mapzy", "Fetch radius: ${delta * 111}km, bbox=($south,$west,$north,$east)")
+
+        // NOTE: We do NOT call clearOSMMarkers() here.
+        // Old markers stay visible on the map while the network request is in flight.
+        // The atomic swap happens inside withContext(Main) only after both responses
+        // arrive — so the map is NEVER blank.
+
+        startOSMLoadingAnimation()
+        lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val fetchStartMs = System.currentTimeMillis()
             try {
-                val query = OSMOverpassService.buildQuery(south, west, north, east)
-                Log.d("Zwap", "📍 OSM Query Parameters: bbox=($south,$west,$north,$east), zoom=$zoom, radius=${delta*111}km")
-                Log.d("Zwap", "📤 Sending OSM Query (first 250 chars): ${query.take(250)}...")
-                val response = OSMOverpassService.instance.queryFeatures(query).execute()
-                
-                Log.d("Zwap", "📥 OSM Response: code=${response.code()}, successful=${response.isSuccessful}, hasBody=${response.body() != null}")
-                
-                if (response.isSuccessful && response.body() != null) {
-                    val elements = response.body()!!.elements
-                    Log.d("Zwap", "📡 OSM API RESPONSE: ${elements.size} elements returned, zoom=$zoom")
-                    if (elements.isEmpty()) {
-                        Log.w("Zwap", "⚠️ NO ELEMENTS in response - Check if OSM has data for this region/zoom")
+                // ── Launch both network calls IN PARALLEL ─────────────────────
+                val osmDeferred = async {
+                    try {
+                        val query = OSMOverpassService.buildQuery(south, west, north, east)
+                        Log.d("Mapzy", "📤 OSM query dispatched (parallel)")
+                        OSMOverpassService.instance.queryFeatures(query).execute()
+                    } catch (e: Exception) {
+                        Log.e("Mapzy", "OSM network error", e)
+                        null
                     }
-                    
-                    // Clear existing markers first
-                    runOnUiThread {
-                        osmFeatures.removeIf { it.id >= 0 }  // Keep test markers (negative IDs)
-                        clearOSMMarkers()
-                    }
-                    
-                    var processedCount = 0
-                    var cameraCount = 0
-                    var hazardCount = 0
-                    
-                    elements.forEachIndexed { index, element ->
-                        // Skip elements with no usable coordinates (ways without center)
-                        val eLat = element.lat ?: element.center?.lat
-                        val eLon = element.lon ?: element.center?.lon
-                        if (eLat == null || eLon == null || (eLat == 0.0 && eLon == 0.0)) {
-                            Log.d("Zwap", "Skipping element ${element.id} with invalid/missing coords")
-                            return@forEachIndexed
+                }
+
+                val communityDeferred = async {
+                    try {
+                        Log.d("Mapzy", "🚀 Community hazards dispatched (parallel)")
+                        // Cap at 8s so a down/unreachable backend never delays OSM results
+                        kotlinx.coroutines.withTimeoutOrNull(8_000) {
+                            com.swapmap.zwap.demo.network.ApiClient.hazardApiService.getHazards(
+                                lat, lon, delta * 111.0
+                            )
                         }
+                    } catch (e: Exception) {
+                        Log.e("Mapzy", "Community network error", e)
+                        null
+                    }
+                }
+
+                // ── Await both; they ran concurrently ─────────────────────────
+                val osmResponse       = osmDeferred.await()
+                val communityResponse = communityDeferred.await()
+
+                // ── Process OSM results on the IO thread ──────────────────────
+                val osmFeatureBatch = mutableListOf<OSMFeature>()
+                var cameraCount = 0; var hazardCount = 0
+
+                if (osmResponse != null && osmResponse.isSuccessful && osmResponse.body() != null) {
+                    val elements = osmResponse.body()!!.elements
+                    Log.d("Mapzy", "📡 OSM: ${elements.size} elements returned at zoom=$zoom")
+                    if (elements.isEmpty()) Log.w("Mapzy", "⚠️ No OSM elements for this region/zoom")
+
+                    elements.forEach { element ->
+                        val eLat = element.lat ?: element.center?.lat ?: return@forEach
+                        val eLon = element.lon ?: element.center?.lon ?: return@forEach
+                        if (eLat == 0.0 && eLon == 0.0) return@forEach
 
                         element.tags?.forEach { (key, value) ->
                             FeatureType.fromOSMTag(key, value)?.let { featureType ->
-                                // Show cameras at lower zoom (country level), hazards at higher zoom (state level)
-                                val shouldShow = if (featureType == FeatureType.SPEED_CAMERA) {
-                                    zoom >= 1.0  // Cameras visible at very low zoom (country/continent level)
-                                } else {
-                                    zoom >= 5.0  // Hazards visible at state level only
-                                }
-
-                                // DETAILED LOGGING FOR DEBUGGING
-                                if (featureType == FeatureType.SPEED_CAMERA) {
-                                    Log.d("Zwap", "🎥 CAMERA DETECTED: id=${element.id}, lat=$eLat, lon=$eLon, zoom=$zoom, shouldShow=$shouldShow")
-                                } else {
-                                    Log.d("Zwap", "⚠️ HAZARD DETECTED: ${featureType.name}, zoom=$zoom, shouldShow=$shouldShow")
-                                }
-
+                                val shouldShow = if (featureType == FeatureType.SPEED_CAMERA) zoom >= 1.0 else zoom >= 5.0
                                 if (shouldShow) {
                                     val feature = OSMFeature(
-                                        id = element.id,
-                                        lat = eLat,
-                                        lon = eLon,
+                                        id = element.id, lat = eLat, lon = eLon,
                                         type = featureType,
                                         name = element.tags["name"],
                                         tags = element.tags
                                     )
-                                    osmFeatures.add(feature)
-
-                                    if (featureType == FeatureType.SPEED_CAMERA) {
-                                        cameraCount++
-                                        Log.d("Zwap", "✅ CAMERA ADDED: total cameras now = $cameraCount")
-                                    } else {
-                                        hazardCount++
-                                        Log.d("Zwap", "✅ HAZARD ADDED: ${featureType.name}, total hazards now = $hazardCount")
-                                    }
-
-                                    // Add marker on UI thread immediately (no artificial delay)
-                                    runOnUiThread {
-                                        addOSMMarker(feature)
-                                        processedCount++
-                                        Log.d("Zwap", "🎨 MARKER RENDERED: ${featureType.name} at ($eLat, $eLon) - ${osmFeatures.size} total")
-                                    }
+                                    osmFeatureBatch.add(feature)
+                                    if (featureType == FeatureType.SPEED_CAMERA) cameraCount++ else hazardCount++
                                 }
                             }
                         }
                     }
-                    
-                    // Show final count after all markers loaded
-                    runOnUiThread {
-                        Log.d("Zwap", "Loaded ${osmFeatures.size} total: $cameraCount cameras, $hazardCount hazards")
-                    }
+                    Log.d("Mapzy", "✅ OSM batch ready: $cameraCount cameras, $hazardCount hazards")
                 } else {
-                    val errorMsg = "OSM API error: ${response.code()} - ${response.message()}"
-                    Log.e("Zwap", errorMsg)
-                    runOnUiThread {
-                        Log.e("Zwap", "Failed to load OSM hazards")
-                    }
+                    Log.e("Mapzy", "OSM API error: ${osmResponse?.code()} - ${osmResponse?.message()}")
                 }
 
-                // --- FETCH COMMUNITY HAZARDS ---
-                try {
-                    Log.d("Zwap", "🚀 Fetching Community Hazards from Backend...")
-                    kotlinx.coroutines.runBlocking {
-                        val commResponse = com.swapmap.zwap.demo.network.ApiClient.hazardApiService.getHazards(
-                            lat, lon, delta * 111.0  // Convert degrees to approx km
-                        )
-                        
-                        if (commResponse.isSuccessful && commResponse.body() != null) {
-                            val clusterList = commResponse.body()!!.hazards
-                            Log.d("Zwap", "✅ Received ${clusterList.size} community hazards from Backend")
-                            
-                            var communityCount = 0
-                            clusterList.forEach { cluster ->
-                                try {
-                                    // Generate a stable ID from UUID hash
-                                    val featId = cluster.hazard_id.hashCode().toLong()
-                                    Log.d("Zwap", "Adding Community Hazard ID: \${cluster.hazard_id} -> HashMap ID: \$featId")
-                                    
-                                    val overrideConfidence = liveConfidenceMap[featId] ?: cluster.confidence_score
-                                    val overrideStatus = liveStatusMap[featId] ?: cluster.status
-                                    val type = if (overrideStatus == "NEEDS_REVALIDATION") 
-                                        com.swapmap.zwap.demo.model.FeatureType.COMMUNITY_NEEDS_REVALIDATION 
-                                    else 
-                                        com.swapmap.zwap.demo.model.FeatureType.COMMUNITY_VERIFIED
-                                    
-                                    val feat = com.swapmap.zwap.demo.model.OSMFeature(
-                                        id = featId,
-                                        lat = cluster.latitude,
-                                        lon = cluster.longitude,
-                                        type = type,
-                                        name = "${cluster.hazard_type.replace("_", " ")} ($overrideConfidence% conf, ${cluster.verified_image_count} reports)",
-                                        tags = mapOf(
-                                            "community" to "true",
-                                            "status" to overrideStatus,
-                                            "confidence" to overrideConfidence.toString()
-                                        )
-                                    )
-                                    
-                                    osmFeatures.add(feat)
-                                    communityCount++
-                                    
-                                    runOnUiThread {
-                                        addOSMMarker(feat)
-                                    }
-                                } catch (e: Exception) {
-                                    Log.e("Zwap", "Error processing community hazard: ${cluster.hazard_id}", e)
-                                }
-                            }
-                            
-                            if (communityCount > 0) {
-                                runOnUiThread {
-                                    Log.d("Zwap", "Added $communityCount Community Hazards")
-                                    
-                                    // Trigger immediate proximity check for new hazards
-                                    val loc = mapplsMap?.locationComponent?.lastKnownLocation
-                                    if (loc != null) {
-                                        checkHazardProximity(loc.latitude, loc.longitude)
-                                    } else {
-                                        checkHazardProximity(lat, lon)
-                                    }
-                                }
-                            }
-                        } else {
-                            Log.e("Zwap", "Backend fetch failed: ${commResponse.code()}")
+                // ── Process Community results on the IO thread ────────────────
+                val communityFeatureBatch = mutableListOf<OSMFeature>()
+                var communityCount = 0
+
+                if (communityResponse != null && communityResponse.isSuccessful && communityResponse.body() != null) {
+                    val clusterList = communityResponse.body()!!.hazards
+                    Log.d("Mapzy", "✅ Community: ${clusterList.size} hazards from backend")
+
+                    clusterList.forEach { cluster ->
+                        try {
+                            val featId = cluster.hazard_id.hashCode().toLong()
+                            val overrideConfidence = liveConfidenceMap[featId] ?: cluster.confidence_score
+                            val overrideStatus     = liveStatusMap[featId]     ?: cluster.status
+                            val type = if (overrideStatus == "NEEDS_REVALIDATION")
+                                com.swapmap.zwap.demo.model.FeatureType.COMMUNITY_NEEDS_REVALIDATION
+                            else
+                                com.swapmap.zwap.demo.model.FeatureType.COMMUNITY_VERIFIED
+
+                            val feat = com.swapmap.zwap.demo.model.OSMFeature(
+                                id   = featId,
+                                lat  = cluster.latitude,
+                                lon  = cluster.longitude,
+                                type = type,
+                                name = "${cluster.hazard_type.replace("_", " ")} ($overrideConfidence% conf, ${cluster.verified_image_count} reports)",
+                                tags = mapOf(
+                                    "community"  to "true",
+                                    "status"     to overrideStatus,
+                                    "confidence" to overrideConfidence.toString()
+                                )
+                            )
+                            communityFeatureBatch.add(feat)
+                            communityCount++
+                        } catch (e: Exception) {
+                            Log.e("Mapzy", "Error processing community hazard: ${cluster.hazard_id}", e)
                         }
                     }
-                } catch (e: Exception) {
-                    Log.e("Zwap", "Community fetch exception", e)
+                } else {
+                    Log.e("Mapzy", "Community backend error: ${communityResponse?.code()}")
+                }
+
+                // ── ATOMIC SWAP: clear old markers and add new ones in one Main block ──
+                // This is the key to zero-flicker: old markers are only removed
+                // HERE, immediately before new ones are painted in the same frame.
+                // The map is never in an empty state visible to the user.
+                withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    if (!osmOverlayEnabled) {
+                        Log.d("Mapzy", "Toggle turned off during fetch — discarding results")
+                        stopOSMLoadingAnimation()
+                        isFetchInProgress = false
+                        return@withContext
+                    }
+
+                    // Remove old markers atomically — right before new ones appear
+                    clearOSMMarkers()
+
+                    // Record the new bounding box BEFORE painting so subsequent
+                    // GPS/camera events immediately see the updated cache.
+                    lastFetchedBBox = BBox(south, west, north, east)
+
+                    // Paint OSM features
+                    osmFeatureBatch.forEach { feature ->
+                        osmFeatures.add(feature)
+                        toggledOsmFeatureIds.add(feature.id)
+                        addOSMMarker(feature)
+                    }
+
+                    // Paint Community features
+                    communityFeatureBatch.forEach { feat ->
+                        osmFeatures.add(feat)
+                        toggledOsmFeatureIds.add(feat.id)
+                        addOSMMarker(feat)
+                    }
+
+                    val fetchMs = System.currentTimeMillis() - fetchStartMs
+                    Log.d("Mapzy", "⏱️ Fetch+parse took ${fetchMs}ms | OSM: ${osmFeatureBatch.size} features | Community: ${communityFeatureBatch.size} features")
+
+                    // Always trigger proximity check so the panel shows even if OSM timed out but community data exists
+                    val loc = mapplsMap?.locationComponent?.lastKnownLocation
+                    checkHazardProximity(loc?.latitude ?: lat, loc?.longitude ?: lon)
+
+                    stopOSMLoadingAnimation()
+                    isFetchInProgress = false
                 }
 
             } catch (e: Exception) {
-                Log.e("Zwap", "OSM fetch error", e)
-                runOnUiThread {
-                    Log.e("Zwap", "Network error loading hazards")
-                }
+                Log.e("Mapzy", "fetchAndDisplayOSMFeatures: unexpected error", e)
+                withContext(kotlinx.coroutines.Dispatchers.Main) { stopOSMLoadingAnimation(); isFetchInProgress = false }
             }
-        }.start()
+        }
     }
+
     
     private fun addOSMMarker(feature: OSMFeature) {
         try {
@@ -1330,10 +1396,53 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         return bitmap
     }
     
-    private fun clearOSMMarkers() {
-        mapplsMap?.markers?.filter { osmMarkerIds.contains(it.id) }?.forEach { it.remove() }
+
+    /** Swap icon to spinner and start infinite rotation — call from Main thread */
+    private fun startOSMLoadingAnimation() {
+        val btn = findViewById<com.google.android.material.floatingactionbutton.FloatingActionButton>(R.id.btn_toggle_osm) ?: return
+        btn.setImageResource(R.drawable.ic_osm_spinner)
+        osmLoadingAnimator?.cancel()
+        osmLoadingAnimator = ObjectAnimator.ofFloat(btn, "rotation", 0f, 360f).apply {
+            duration = 800
+            repeatCount = ObjectAnimator.INFINITE
+            repeatMode = ObjectAnimator.RESTART
+            interpolator = LinearInterpolator()
+            start()
+        }
+    }
+
+    /** Stop rotation and restore the hazard triangle icon — call from Main thread */
+    private fun stopOSMLoadingAnimation() {
+        osmLoadingAnimator?.cancel()
+        osmLoadingAnimator = null
+        val btn = findViewById<com.google.android.material.floatingactionbutton.FloatingActionButton>(R.id.btn_toggle_osm) ?: return
+        btn.rotation = 0f
+        btn.setImageResource(R.drawable.ic_hazard_waze)
+    }
+
+    private fun clearOSMMarkers(fullWipe: Boolean = true) {
+        try {
+            mapplsMap?.let { map ->
+                val markersToRemove = map.markers.filter { osmMarkerIds.contains(it.id) }
+                markersToRemove.forEach { map.removeMarker(it) }
+            }
+        } catch (e: Exception) {
+            Log.e("Mapzy", "Error removing OSM markers from map", e)
+        }
         osmMarkerIds.clear()
         featureToMarkerMap.clear()
+        
+        if (fullWipe) {
+            // Wipe the full state (used for true refresh or low zoom)
+            osmFeatures.clear()
+            toggledOsmFeatureIds.clear()
+            lastFetchedBBox = null
+            Log.d("Mapzy", "clearOSMMarkers: full state wiped (markers + cache)")
+        } else {
+            // Only hide markers (used for toggle OFF)
+            // We keep osmFeatures so they can be restored instantly if toggled back ON.
+            Log.d("Mapzy", "clearOSMMarkers: markers removed but cache RETAINED")
+        }
     }
 
     private lateinit var searchAdapter: SearchAdapter
@@ -1384,28 +1493,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         
         val currentLocation = mapplsMap?.locationComponent?.lastKnownLocation
         
-        findViewById<View>(R.id.btn_cat_rest)?.setOnClickListener { 
-            hideKb()
-            overlay.visibility = View.GONE
-            currentLocation?.let { searchNearbyPlaces("Restaurant", "Restaurant", "🍴", it) }
-                ?: Toast.makeText(this, "Location not found", Toast.LENGTH_SHORT).show()
-        }
-        findViewById<View>(R.id.btn_cat_petrol)?.setOnClickListener {
-             hideKb()
-             overlay.visibility = View.GONE
-             currentLocation?.let { searchNearbyPlaces("Petrol Pump", "Petrol Pump", "⛽", it) }
-                ?: Toast.makeText(this, "Location not found", Toast.LENGTH_SHORT).show()
-        }
-        findViewById<View>(R.id.btn_cat_ev)?.setOnClickListener {
-             hideKb()
-             overlay.visibility = View.GONE
-             currentLocation?.let { searchNearbyPlaces("Charging Station", "EV Charging", "⚡", it) }
-                ?: Toast.makeText(this, "Location not found", Toast.LENGTH_SHORT).show()
-        }
-        findViewById<View>(R.id.btn_cat_more)?.setOnClickListener {
-             hideKb()
-             showNearbySearchDialog()
-        }
+        // Removed references to deleted category buttons (btn_cat_rest, etc.)
 
         findViewById<View>(R.id.layout_home)?.setOnClickListener {
              Toast.makeText(this, "Home Shortcut: Search for address and select it.", Toast.LENGTH_SHORT).show()
@@ -1846,9 +1934,34 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     }
 
     private fun enableFollowMode() {
-        isFollowMode = true
-        mapplsMap?.locationComponent?.cameraMode = CameraMode.TRACKING_GPS
-        mapplsMap?.animateCamera(CameraUpdateFactory.zoomTo(18.0))
+        try {
+            isFollowMode = true
+            val loc = mapplsMap?.locationComponent?.lastKnownLocation
+            if (loc != null) {
+                val targetTilt = if (isMapTilted) 45.0 else 0.0
+                mapplsMap?.animateCamera(
+                    com.mappls.sdk.maps.camera.CameraUpdateFactory.newCameraPosition(
+                        com.mappls.sdk.maps.camera.CameraPosition.Builder()
+                            .target(com.mappls.sdk.maps.geometry.LatLng(loc.latitude, loc.longitude))
+                            .zoom(18.0)
+                            .tilt(targetTilt)
+                            .build()
+                    ),
+                    300,
+                    object : com.mappls.sdk.maps.MapplsMap.CancelableCallback {
+                        override fun onCancel() {}
+                        override fun onFinish() {
+                            mapplsMap?.locationComponent?.cameraMode =
+                                com.mappls.sdk.maps.location.modes.CameraMode.TRACKING_GPS
+                        }
+                    }
+                )
+            } else {
+                mapplsMap?.locationComponent?.cameraMode = com.mappls.sdk.maps.location.modes.CameraMode.TRACKING_GPS
+            }
+        } catch (e: Exception) {
+            Log.e("Zwap", "Recenter error", e)
+        }
     }
 
     fun handleLocationUpdate(location: Location) {
@@ -1903,7 +2016,8 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     }
 
     private fun checkHazardProximity(userLat: Double, userLon: Double) {
-        if (isPreviewMode) return // No audio/visual popups during route preview
+        // Note: we no longer block the panel during preview mode;
+        // only audio (TTS) is suppressed below if isPreviewMode is true.
         
         osmFeatures.forEach { feature ->
             val results = FloatArray(1)
@@ -1923,7 +2037,10 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                     else -> "Hazard ahead in ${distance.toInt()} meters"
                 }
                 Log.d("Zwap", "HAZARD ALERT: $msg")
-                Toast.makeText(this, msg, Toast.LENGTH_SHORT).show(); tts?.speak(msg, TextToSpeech.QUEUE_ADD, null, null)
+                if (!isPreviewMode) {
+                    Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+                    tts?.speak(msg, TextToSpeech.QUEUE_ADD, null, null)
+                }
                 addHazardToPanel(feature, distance.toInt())
             } else if (alertedHazardIds.contains(feature.id) && distance < HAZARD_ALERT_DISTANCE) {
                 // If already alerted but still close, ensure it's visually added if not already
@@ -2110,9 +2227,50 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         })
     }
     
+    private var isPanelCollapsed = false
+
+    private fun repositionFabsAbovePanel() {
+        val panel = findViewById<View>(R.id.directions_bottom_panel) ?: return
+        val bottomNav = findViewById<View>(R.id.bottom_navigation) ?: return
+        // Measure synchronously — caller must ensure panel is laid out
+        val doReposition = Runnable {
+            val panelHeight = panel.height
+            val navHeight = bottomNav.height
+            if (panelHeight == 0) return@Runnable  // not yet measured, skip
+            val gap = (8 * resources.displayMetrics.density)  // 8dp fixed gap
+            val targetTranslation = -(panelHeight.toFloat() - navHeight.toFloat() + gap)
+            val fabStack = findViewById<View>(R.id.fab_stack_container)
+            val aiVoice = findViewById<View>(R.id.fab_ai_voice)
+            val speedWidget = findViewById<View>(R.id.speed_limit_widget)
+            fabStack?.animate()?.translationY(targetTranslation)?.setDuration(200)?.start()
+            aiVoice?.animate()?.translationY(targetTranslation)?.setDuration(200)?.start()
+            speedWidget?.animate()?.translationY(targetTranslation)?.setDuration(200)?.start()
+        }
+        if (panel.height > 0) {
+            doReposition.run()
+        } else {
+            // First time — panel not measured yet, wait for layout
+            panel.addOnLayoutChangeListener(object : View.OnLayoutChangeListener {
+                override fun onLayoutChange(v: View, l: Int, t: Int, r: Int, b: Int,
+                    ol: Int, ot: Int, or2: Int, ob: Int) {
+                    panel.removeOnLayoutChangeListener(this)
+                    doReposition.run()
+                }
+            })
+        }
+    }
+
+    private fun resetFabPositions() {
+        listOf(R.id.fab_stack_container, R.id.fab_ai_voice, R.id.speed_limit_widget).forEach { id ->
+            findViewById<View>(id)?.animate()?.translationY(0f)?.setDuration(250)?.start()
+        }
+    }
+
     private fun showDirectionsUI(distance: Double, duration: Double) {
-        // Hide search bar
+        // Hide search bar, hazard toggle and compass for clean directions view (like Google Maps)
         findViewById<View>(R.id.search_card).visibility = View.GONE
+        findViewById<View>(R.id.btn_toggle_osm)?.visibility = View.GONE
+        findViewById<View>(R.id.fab_compass)?.visibility = View.GONE
         
         // Show directions header card
         findViewById<View>(R.id.directions_header_card).visibility = View.VISIBLE
@@ -2139,6 +2297,44 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         
         // Show directions bottom panel
         findViewById<View>(R.id.directions_bottom_panel).visibility = View.VISIBLE
+        isPanelCollapsed = false
+        repositionFabsAbovePanel()
+
+        // Setup collapse/expand toggle
+        val collapseBtn = findViewById<android.widget.ImageButton>(R.id.btn_collapse_panel)
+        val panelContainer = findViewById<View>(R.id.directions_bottom_panel_container)
+        collapseBtn?.setOnClickListener {
+            val panel = findViewById<View>(R.id.directions_bottom_panel) ?: return@setOnClickListener
+            if (isPanelCollapsed) {
+                // Expand: show all children
+                panelContainer?.let { container ->
+                    for (i in 0 until (container as android.view.ViewGroup).childCount) {
+                        container.getChildAt(i).visibility = View.VISIBLE
+                    }
+                }
+                collapseBtn.rotation = 0f
+                isPanelCollapsed = false
+            } else {
+                // Collapse: hide all except drag handle row + stats row
+                panelContainer?.let { container ->
+                    val vg = container as android.view.ViewGroup
+                    for (i in 2 until vg.childCount) {
+                        vg.getChildAt(i).visibility = View.GONE
+                    }
+                }
+                collapseBtn.rotation = 180f
+                isPanelCollapsed = true
+            }
+            // Wait for layout pass then reposition — requestLayout forces re-measure
+            panel.requestLayout()
+            panel.addOnLayoutChangeListener(object : View.OnLayoutChangeListener {
+                override fun onLayoutChange(v: View, l: Int, t: Int, r: Int, b: Int,
+                    ol: Int, ot: Int, or2: Int, ob: Int) {
+                    panel.removeOnLayoutChangeListener(this)
+                    repositionFabsAbovePanel()
+                }
+            })
+        }
         
         val durationMin = (duration / 60.0).toInt()
         val durationText = if (durationMin >= 60) {
@@ -2180,6 +2376,9 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     private fun startNavigation() {
         isPreviewMode = false
         
+        // Reset FAB positions since directions panel is being hidden
+        resetFabPositions()
+        
         // Hide the preview UI elements for a clean navigation view
         findViewById<View>(R.id.directions_bottom_panel).visibility = View.GONE
         findViewById<View>(R.id.directions_header_card)?.visibility = View.GONE
@@ -2216,8 +2415,12 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     }
     
     private fun closeDirectionsUI() {
-        // Show search bar
+        // Show search bar and reset FABs to original positions
         findViewById<View>(R.id.search_card).visibility = View.VISIBLE
+        resetFabPositions()
+        // Restore hazard toggle and compass
+        findViewById<View>(R.id.btn_toggle_osm)?.visibility = View.VISIBLE
+        findViewById<View>(R.id.fab_compass)?.visibility = View.VISIBLE
         
         // Hide directions panels
         findViewById<View>(R.id.directions_header_card).visibility = View.GONE
@@ -2231,143 +2434,51 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         // Reset state
         currentRoute = null
         isNavigating = false
+        isPreviewMode = false  // Ensure hazard proximity alerts work after directions closed
     }
     
     private fun showPlaceDetailsBottomSheet(location: ELocation) {
-        val dialog = com.google.android.material.bottomsheet.BottomSheetDialog(this)
-        
-        val layout = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-            setPadding(48, 32, 48, 48)
-            layoutParams = android.view.ViewGroup.LayoutParams(
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            setBackgroundColor(Color.parseColor("#1E1E1E"))
+        // Hide FABs while place details sheet is open
+        val fabIds = listOf(R.id.fab_ai_voice, R.id.fab_stack_container, R.id.speed_limit_widget)
+        fabIds.forEach { id -> findViewById<View>(id)?.visibility = View.GONE }
+
+        val dialog = com.google.android.material.bottomsheet.BottomSheetDialog(this, R.style.BottomSheetDialogTheme)
+        dialog.setOnDismissListener {
+            // Restore FABs when sheet dismissed
+            fabIds.forEach { id -> findViewById<View>(id)?.visibility = View.VISIBLE }
         }
         
-        // Drag handle
-        val dragHandle = View(this).apply {
-            layoutParams = android.widget.LinearLayout.LayoutParams(80, 10).apply {
-                gravity = android.view.Gravity.CENTER_HORIZONTAL
-                bottomMargin = 32
-            }
-            setBackgroundColor(Color.parseColor("#666666"))
-        }
-        layout.addView(dragHandle)
+        val view = layoutInflater.inflate(R.layout.fragment_location_details, null)
         
-        // Place name (large title)
-        val titleView = TextView(this).apply {
-            text = location.placeName ?: "Unknown Place"
-            textSize = 24f
-            setTextColor(Color.WHITE)
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = 8 }
-        }
-        layout.addView(titleView)
+        view.findViewById<TextView>(R.id.tv_detail_title).text = location.placeName ?: "Unknown Place"
+        view.findViewById<TextView>(R.id.tv_detail_type).text = location.orderIndex?.toString() ?: location.type ?: "Location"
+        view.findViewById<TextView>(R.id.tv_detail_address).text = "📍 ${location.placeAddress ?: "Address not available"}"
         
-        // Place type/category
-        val typeView = TextView(this).apply {
-            text = location.orderIndex?.toString() ?: location.type ?: "Location"
-            textSize = 14f
-            setTextColor(Color.parseColor("#AAAAAA"))
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = 16 }
-        }
-        layout.addView(typeView)
-        
-        // Address
-        val addressView = TextView(this).apply {
-            text = "📍 ${location.placeAddress ?: "Address not available"}"
-            textSize = 14f
-            setTextColor(Color.parseColor("#CCCCCC"))
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = 8 }
-        }
-        layout.addView(addressView)
-        
-        // Distance (if available)
-        location.distance?.let { dist ->
-            val distanceView = TextView(this).apply {
-                text = "📏 ${dist.toInt()}m away"
-                textSize = 14f
-                setTextColor(Color.parseColor("#CCCCCC"))
-                layoutParams = android.widget.LinearLayout.LayoutParams(
-                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply { bottomMargin = 24 }
-            }
-            layout.addView(distanceView)
+        val distanceView = view.findViewById<TextView>(R.id.tv_detail_distance)
+        if (location.distance != null) {
+            distanceView.text = "📏 ${location.distance!!.toInt()}m away"
+            distanceView.visibility = View.VISIBLE
+        } else {
+            distanceView.visibility = View.GONE
         }
         
-        // Action buttons row
-        val buttonsLayout = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.HORIZONTAL
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = 16 }
+        view.findViewById<View>(R.id.btn_detail_directions).setOnClickListener {
+            dialog.dismiss()
+            getDirections()
         }
         
-        // Directions button
-        val directionsBtn = com.google.android.material.button.MaterialButton(this).apply {
-            text = "Directions"
-            setIconResource(android.R.drawable.ic_menu_directions)
-            setBackgroundColor(Color.parseColor("#00BFA5"))
-            setTextColor(Color.WHITE)
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f
-            ).apply { marginEnd = 8 }
-            setOnClickListener {
-                dialog.dismiss()
-                getDirections()
-            }
+        view.findViewById<View>(R.id.btn_detail_start).setOnClickListener {
+            dialog.dismiss()
+            getDirections(autoStart = true)
+            Toast.makeText(this@MainActivity, "Starting navigation...", Toast.LENGTH_SHORT).show()
         }
-        buttonsLayout.addView(directionsBtn)
         
-        // Start button
-        val startBtn = com.google.android.material.button.MaterialButton(this).apply {
-            text = "Start"
-            setIconResource(android.R.drawable.ic_media_play)
-            setBackgroundColor(Color.parseColor("#4FC3F7"))
-            setTextColor(Color.WHITE)
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f
-            ).apply { marginStart = 8; marginEnd = 8 }
-            setOnClickListener {
-                dialog.dismiss()
-                getDirections(autoStart = true)
-            }
+        view.findViewById<View>(R.id.btn_detail_save).setOnClickListener {
+            dialog.dismiss()
+            Toast.makeText(this@MainActivity, "${location.placeName} saved!", Toast.LENGTH_SHORT).show()
         }
-        buttonsLayout.addView(startBtn)
         
-        // Save button
-        val saveBtn = com.google.android.material.button.MaterialButton(this).apply {
-            text = "Save"
-            setIconResource(android.R.drawable.ic_menu_save)
-            setBackgroundColor(Color.parseColor("#333333"))
-            setTextColor(Color.WHITE)
-            strokeColor = android.content.res.ColorStateList.valueOf(Color.parseColor("#666666"))
-            strokeWidth = 2
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f
-            ).apply { marginStart = 8 }
-            setOnClickListener {
-                Toast.makeText(this@MainActivity, "Place saved!", Toast.LENGTH_SHORT).show()
-            }
-        }
-        buttonsLayout.addView(saveBtn)
-        
-        layout.addView(buttonsLayout)
-        
-        dialog.setContentView(layout)
+        dialog.setContentView(view)
         dialog.show()
     }
 

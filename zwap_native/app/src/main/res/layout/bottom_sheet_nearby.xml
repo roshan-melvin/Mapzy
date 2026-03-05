@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@color/premium_surface"
+    android:paddingTop="8dp"
+    android:paddingBottom="16dp">
+
+    <!-- Handle Bar -->
+    <View
+        android:layout_width="48dp"
+        android:layout_height="4dp"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="16dp"
+        android:background="@drawable/rounded_border_bg"
+        android:backgroundTint="@color/premium_text_secondary"
+        android:alpha="0.3" />
+
+    <!-- Title -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Search Nearby"
+        android:textColor="@color/premium_text_main"
+        android:textSize="24sp"
+        android:textStyle="bold"
+        android:layout_marginStart="24dp"
+        android:layout_marginBottom="16dp" />
+
+    <!-- Nearby Items List -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingHorizontal="16dp">
+
+        <!-- Petrol Pump -->
+        <LinearLayout
+            android:id="@+id/item_petrol"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="16dp"
+            android:background="?android:attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true">
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Petrol Pump"
+                android:textColor="@color/premium_text_main"
+                android:textSize="16sp" />
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@color/premium_border"
+            android:layout_marginHorizontal="16dp" />
+
+        <!-- Restaurant -->
+        <LinearLayout
+            android:id="@+id/item_restaurant"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="16dp"
+            android:background="?android:attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true">
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Restaurant"
+                android:textColor="@color/premium_text_main"
+                android:textSize="16sp" />
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@color/premium_border"
+            android:layout_marginHorizontal="16dp" />
+
+        <!-- ATM -->
+        <LinearLayout
+            android:id="@+id/item_atm"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="16dp"
+            android:background="?android:attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true">
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="ATM"
+                android:textColor="@color/premium_text_main"
+                android:textSize="16sp" />
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@color/premium_border"
+            android:layout_marginHorizontal="16dp" />
+
+        <!-- Hospital -->
+        <LinearLayout
+            android:id="@+id/item_hospital"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="16dp"
+            android:background="?android:attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true">
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Hospital"
+                android:textColor="@color/premium_text_main"
+                android:textSize="16sp" />
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@color/premium_border"
+            android:layout_marginHorizontal="16dp" />
+
+        <!-- Pharmacy -->
+        <LinearLayout
+            android:id="@+id/item_pharmacy"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="16dp"
+            android:background="?android:attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true">
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Pharmacy"
+                android:textColor="@color/premium_text_main"
+                android:textSize="16sp" />
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@color/premium_border"
+            android:layout_marginHorizontal="16dp" />
+
+        <!-- Hotel -->
+        <LinearLayout
+            android:id="@+id/item_hotel"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="16dp"
+            android:background="?android:attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true">
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Hotel"
+                android:textColor="@color/premium_text_main"
+                android:textSize="16sp" />
+        </LinearLayout>
+
+    </LinearLayout>
+
+</LinearLayout>

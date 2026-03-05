@@ -4,21 +4,21 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="horizontal"
-    android:background="#202225">
+    android:background="@color/premium_bg">
 
     <!-- Server List (Left Sidebar) -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rv_servers"
         android:layout_width="72dp"
         android:layout_height="match_parent"
-        android:background="#121212"
+        android:background="@color/premium_bg"
         android:paddingTop="12dp"
         android:clipToPadding="false"/>
 
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#2F3136">
+        android:background="@color/premium_bg">
 
         <!-- Normal Header -->
         <LinearLayout
@@ -27,7 +27,7 @@
             android:layout_height="56dp"
             android:gravity="center_vertical"
             android:paddingHorizontal="16dp"
-            android:background="#36393F"
+            android:background="@color/premium_surface"
             android:elevation="4dp">
 
             <ImageView
@@ -138,7 +138,7 @@
             android:layout_marginTop="56dp"
             android:layout_marginBottom="60dp"
             android:visibility="gone"
-            android:background="#2F3136"/>
+            android:background="@color/premium_bg"/>
 
         <!-- Leaderboard List -->
         <androidx.recyclerview.widget.RecyclerView
@@ -150,7 +150,7 @@
             android:layout_marginTop="56dp"
             android:layout_marginBottom="60dp"
             android:visibility="gone"
-            android:background="#2F3136"/>
+            android:background="@color/premium_bg"/>
 
         <!-- Notifications List -->
         <androidx.recyclerview.widget.RecyclerView
@@ -162,7 +162,7 @@
             android:layout_marginTop="56dp"
             android:layout_marginBottom="60dp"
             android:visibility="gone"
-            android:background="#2F3136"/>
+            android:background="@color/premium_bg"/>
 
         <TextView
             android:id="@+id/tv_empty_feed"

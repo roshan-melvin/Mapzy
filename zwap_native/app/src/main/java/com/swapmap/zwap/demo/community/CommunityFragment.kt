@@ -80,10 +80,10 @@ class CommunityFragment : Fragment() {
         rvServers.layoutManager = LinearLayoutManager(context)
 
         val sidebarItems = listOf(
-            SidebarItem("hazards", android.R.drawable.ic_dialog_alert, "Hazards"),
-            SidebarItem("cameras", android.R.drawable.ic_menu_camera, "Speed Cameras"),
-            SidebarItem("leaderboard", android.R.drawable.btn_star, "Leaderboard"),
-            SidebarItem("notifications", android.R.drawable.ic_popup_reminder, "Notifications"),
+            SidebarItem("hazards", R.drawable.ic_hazard, "Hazards"),
+            SidebarItem("cameras", R.drawable.ic_camera_outlined, "Speed Cameras"),
+            SidebarItem("leaderboard", R.drawable.ic_star_outlined, "Leaderboard"),
+            SidebarItem("notifications", R.drawable.ic_bell_outlined, "Notifications"),
             SidebarItem("add", android.R.drawable.ic_input_add, "Create Report")
         )
 
@@ -409,9 +409,6 @@ class CommunityFragment : Fragment() {
     private fun showThread(report: Report, threadView: View) {
         threadView.visibility = View.VISIBLE
         val postView = threadView.findViewById<View>(R.id.thread_original_post)
-
-        // Hide the vote counter row (arrows + count) — not applicable for personal thread view
-        postView.findViewById<View>(R.id.ll_vote_container)?.visibility = View.GONE
 
         // Pending name while Firestore fetches
         postView.findViewById<TextView>(R.id.tv_username).text = "Loading..."

@@ -11,7 +11,7 @@ object ApiClient {
 
     private val okHttpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS)  // Connection timeout
+            .connectTimeout(5, TimeUnit.SECONDS)   // Fast-fail: if backend unreachable in 5s, skip — was 30s blocking all hazard fetch
             .readTimeout(60, TimeUnit.SECONDS)     // AI processing can take time
             .writeTimeout(60, TimeUnit.SECONDS)    // Image upload can take time
             .build()

@@ -3,14 +3,14 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="horizontal"
-    android:background="#202225">
+    android:background="@color/premium_bg">
 
     <!-- Regions Sidebar (Left) -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rv_regions"
         android:layout_width="72dp"
         android:layout_height="match_parent"
-        android:background="#121212"
+        android:background="@color/premium_bg"
         android:paddingTop="12dp"
         android:clipToPadding="false"/>
 
@@ -19,7 +19,7 @@
         android:id="@+id/chat_content_area"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#2F3136">
+        android:background="@color/premium_bg">
 
         <!-- Header -->
         <LinearLayout
@@ -27,7 +27,7 @@
             android:layout_height="56dp"
             android:gravity="center_vertical"
             android:paddingHorizontal="16dp"
-            android:background="#36393F"
+            android:background="@color/premium_surface"
             android:elevation="4dp">
 
             <ImageView
@@ -76,7 +76,7 @@
             android:orientation="vertical"
             android:layout_marginTop="56dp"
             android:visibility="gone"
-            android:background="#36393F">
+            android:background="@color/premium_bg">
 
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/rv_messages"
@@ -91,7 +91,7 @@
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
                 android:padding="8dp"
-                android:background="#36393F"
+                android:background="@color/premium_surface"
                 android:gravity="center_vertical">
 
                 <ImageView
@@ -108,7 +108,7 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:background="@drawable/rounded_border_bg"
-                    android:backgroundTint="#40444B"
+                    android:backgroundTint="@color/premium_surface"
                     android:padding="10dp"
                     android:hint="Message..."
                     android:textColor="#FFFFFF"
@@ -133,7 +133,7 @@
             android:orientation="vertical"
             android:gravity="center"
             android:visibility="gone"
-            android:background="#2F3136"
+            android:background="@color/premium_bg"
             android:elevation="10dp">
 
             <TextView

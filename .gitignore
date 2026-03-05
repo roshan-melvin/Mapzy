@@ -99,3 +99,6 @@ yarn-error.log*
 .flutter-plugins-dependencies
 .pub-cache/
 .pub/
+
+#UI vertion control
+/zwap_native_ui_enhan/

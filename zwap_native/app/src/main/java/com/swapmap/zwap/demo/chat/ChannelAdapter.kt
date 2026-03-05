@@ -15,7 +15,6 @@ class ChannelAdapter(
 
     class ChannelViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val tvName: TextView = view.findViewById(R.id.tv_channel_name)
-        val tvDesc: TextView = view.findViewById(R.id.tv_channel_desc)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ChannelViewHolder {
@@ -27,7 +26,6 @@ class ChannelAdapter(
     override fun onBindViewHolder(holder: ChannelViewHolder, position: Int) {
         val channel = channels[position]
         holder.tvName.text = channel.name
-        holder.tvDesc.text = channel.description
         
         holder.itemView.setOnClickListener {
             onChannelClick(channel)

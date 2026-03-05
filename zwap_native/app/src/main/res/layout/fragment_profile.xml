@@ -3,14 +3,17 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#202225"
+    android:background="@color/premium_bg"
     android:fillViewport="true">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="24dp">
+        android:paddingStart="24dp"
+        android:paddingEnd="24dp"
+        android:paddingTop="24dp"
+        android:paddingBottom="80dp">
 
         <!-- Title -->
         <TextView
@@ -26,9 +29,9 @@
         <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            app:cardBackgroundColor="#2F3136"
-            app:cardCornerRadius="16dp"
-            app:cardElevation="4dp">
+            app:cardBackgroundColor="@color/premium_surface"
+            app:cardCornerRadius="24dp"
+            app:cardElevation="0dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -42,11 +45,10 @@
                     android:id="@+id/iv_profile_avatar"
                     android:layout_width="96dp"
                     android:layout_height="96dp"
-                    android:src="@android:drawable/sym_def_app_icon"
-                    android:background="@drawable/circle_bg"
-                    android:backgroundTint="#40444B"
-                    android:padding="20dp"
-                    app:tint="#FFFFFF"/>
+                    android:src="@drawable/ic_person_avatar"
+                    android:background="@drawable/avatar_gradient_bg"
+                    android:padding="24dp"
+                    android:clipToOutline="true"/>
 
                 <!-- Name -->
                 <TextView
@@ -96,8 +98,8 @@
                 android:layout_height="100dp"
                 android:layout_weight="1"
                 android:layout_marginEnd="8dp"
-                app:cardBackgroundColor="#2F3136"
-                app:cardCornerRadius="12dp">
+                app:cardBackgroundColor="@color/premium_surface"
+                app:cardCornerRadius="24dp">
                 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -129,8 +131,8 @@
                 android:layout_height="100dp"
                 android:layout_weight="1"
                 android:layout_marginStart="8dp"
-                app:cardBackgroundColor="#2F3136"
-                app:cardCornerRadius="12dp">
+                app:cardBackgroundColor="@color/premium_surface"
+                app:cardCornerRadius="24dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -171,8 +173,8 @@
                 android:layout_height="100dp"
                 android:layout_weight="1"
                 android:layout_marginEnd="8dp"
-                app:cardBackgroundColor="#2F3136"
-                app:cardCornerRadius="12dp">
+                app:cardBackgroundColor="@color/premium_surface"
+                app:cardCornerRadius="24dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -204,8 +206,8 @@
                 android:layout_height="100dp"
                 android:layout_weight="1"
                 android:layout_marginStart="8dp"
-                app:cardBackgroundColor="#2F3136"
-                app:cardCornerRadius="12dp">
+                app:cardBackgroundColor="@color/premium_surface"
+                app:cardCornerRadius="24dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -247,8 +249,8 @@
         <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            app:cardBackgroundColor="#2F3136"
-            app:cardCornerRadius="12dp">
+            app:cardBackgroundColor="@color/premium_surface"
+            app:cardCornerRadius="24dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -312,8 +314,8 @@
         <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            app:cardBackgroundColor="#2F3136"
-            app:cardCornerRadius="12dp">
+            app:cardBackgroundColor="@color/premium_surface"
+            app:cardCornerRadius="24dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -428,8 +430,8 @@
         <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            app:cardBackgroundColor="#2F3136"
-            app:cardCornerRadius="12dp">
+            app:cardBackgroundColor="@color/premium_surface"
+            app:cardCornerRadius="24dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -492,8 +494,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Sign Out"
-            android:textColor="#ED4245"
-            android:backgroundTint="#2F3136"
+            android:textColor="@color/premium_red"
+            android:backgroundTint="@color/premium_surface"
             android:layout_marginTop="24dp"
             android:textAllCaps="false"/>
 
