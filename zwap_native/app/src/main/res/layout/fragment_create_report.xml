@@ -52,6 +52,8 @@
             android:textColor="@color/premium_text_main"
             android:textColorHint="@color/premium_text_secondary"
             android:textSize="15sp"
+            android:inputType="text"
+            android:completionThreshold="1"
             android:dropDownHeight="wrap_content"
             android:layout_marginBottom="20dp"/>
 
@@ -110,17 +112,14 @@
             android:layout_height="wrap_content"
             android:background="@drawable/bg_report_input"
             android:minHeight="120dp"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
-            android:paddingTop="14dp"
-            android:paddingBottom="14dp"
+            android:padding="16dp"
             android:gravity="top|start"
             android:hint="Describe what happened..."
             android:textColor="@color/premium_text_main"
             android:textColorHint="@color/premium_text_secondary"
             android:textSize="15sp"
             android:inputType="textMultiLine"
-            android:layout_marginBottom="8dp"/>
+            android:layout_marginBottom="20dp"/>
 
         <!-- Smart Suggestions Chip Group -->
         <HorizontalScrollView
@@ -151,7 +150,8 @@
             android:layout_width="match_parent"
             android:layout_height="200dp"
             android:layout_marginBottom="20dp"
-            android:background="@drawable/bg_report_card">
+            android:background="@drawable/bg_report_card"
+            android:clipToOutline="true">
 
             <com.mappls.sdk.maps.MapView
                 android:id="@+id/map_pick_location"
@@ -174,14 +174,14 @@
                 android:layout_gravity="bottom"
                 android:background="#CC1C1C1E"
                 android:orientation="vertical"
-                android:padding="8dp">
+                android:padding="10dp">
 
                 <TextView
                     android:id="@+id/tv_location_preview"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="Lat: 0.000000, Lng: 0.000000"
-                    android:textColor="#FFFFFF"
+                    android:textColor="@color/premium_text_main"
                     android:textSize="12sp"
                     android:fontFamily="monospace"/>
 
@@ -189,7 +189,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="Drag map to position pinpoint"
-                    android:textColor="#AAAAAA"
+                    android:textColor="@color/premium_text_secondary"
                     android:textSize="10sp"
                     android:layout_marginTop="2dp"/>
             </LinearLayout>
@@ -199,7 +199,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="PROOF"
+            android:text="PROOF (PHOTO / VIDEO)"
             android:textColor="@color/premium_text_secondary"
             android:textSize="11sp"
             android:textStyle="bold"
@@ -208,22 +208,46 @@
         
         <FrameLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content">
-            
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_report_card"
+            android:clipToOutline="true">
+
+            <!-- Placeholder shown before media is attached -->
+            <LinearLayout
+                android:id="@+id/placeholder_media"
+                android:layout_width="match_parent"
+                android:layout_height="200dp"
+                android:orientation="vertical"
+                android:gravity="center">
+
+                <ImageView
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:src="@android:drawable/ic_menu_camera"
+                    android:tint="@color/premium_text_secondary"/>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Tap to add photo or video"
+                    android:textColor="@color/premium_text_secondary"
+                    android:textSize="13sp"
+                    android:layout_marginTop="10dp"/>
+            </LinearLayout>
+
             <ImageView
                 android:id="@+id/iv_media_preview"
                 android:layout_width="match_parent"
                 android:layout_height="200dp"
-                android:background="@color/premium_surface"
                 android:scaleType="centerCrop"
-                android:src="@drawable/ic_camera_outlined"/>
-                
+                android:visibility="gone"/>
+
             <VideoView
                 android:id="@+id/vv_media_preview"
                 android:layout_width="match_parent"
                 android:layout_height="200dp"
                 android:visibility="gone"/>
-                
+
             <ImageView
                  android:id="@+id/iv_play_preview"
                  android:layout_width="48dp"
@@ -237,14 +261,14 @@
             android:id="@+id/btn_upload_media"
             android:layout_width="match_parent"
             android:layout_height="56dp"
-            android:text="Attach Media"
-            android:textColor="@color/premium_text_main"
-            android:textSize="15sp"
-            android:textStyle="bold"
             android:background="@drawable/bg_report_button_secondary"
+            android:text="Attach Media"
+            android:textColor="@color/mapzy_black"
+            android:textStyle="bold"
+            android:textSize="15sp"
             android:stateListAnimator="@null"
             android:layout_marginTop="12dp"
-            android:layout_marginBottom="24dp"/>
+            android:layout_marginBottom="16dp"/>
 
         <Button
             android:id="@+id/btn_submit_report"

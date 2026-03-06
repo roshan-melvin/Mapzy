@@ -47,6 +47,7 @@ import android.text.Editable
 import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.ViewGroup
+import android.widget.RelativeLayout
 import android.speech.RecognizerIntent
 import android.widget.EditText
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
@@ -616,7 +617,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         // Compass button - toggle 2D / 3D tilt
         findViewById<View>(R.id.fab_compass)?.setOnClickListener {
             isMapTilted = !isMapTilted
-            val targetTilt = if (isMapTilted) 45.0 else 0.0
+            val targetTilt = if (isMapTilted) 60.0 else 0.0
             val label = if (isMapTilted) "3D" else "2D"
             Log.d("Zwap", "Compass tilt toggle -> $label (tilt=$targetTilt)")
 
@@ -659,6 +660,92 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             Log.e("Zwap", "Error setting up AI voice button", e)
         }
         
+        // Native Gesture Handling: Modern OnBackPressedDispatcher for Edge-Swipe Support
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                // 1. Close search overlay if open
+                val overlay = findViewById<View>(R.id.search_overlay)
+                if (overlay?.visibility == View.VISIBLE) {
+                    overlay.visibility = View.GONE
+                    return
+                }
+
+                // 2. If navigating, stop navigation and go back to directions
+                if (isNavigating) {
+                    closeDirectionsUI()
+                    return
+                }
+
+                // 3. If directions panel is showing (preview mode), close it
+                val panel = findViewById<View>(R.id.directions_bottom_panel_container)
+                if (panel?.visibility == View.VISIBLE) {
+                    closeDirectionsUI()
+                    return
+                }
+
+                // 4. Pop fragment back stack if any
+                if (supportFragmentManager.backStackEntryCount > 0) {
+                    supportFragmentManager.popBackStack()
+                    return
+                }
+
+                // 5. If not on Explore tab, switch to Explore
+                val bottomNav = findViewById<com.google.android.material.bottomnavigation.BottomNavigationView>(R.id.bottom_navigation)
+                if (bottomNav != null && bottomNav.selectedItemId != R.id.nav_explore) {
+                    bottomNav.selectedItemId = R.id.nav_explore
+                    return
+                }
+
+                // 6. Allow default system back to exit
+                isEnabled = false
+                onBackPressedDispatcher.onBackPressed()
+                isEnabled = true
+            }
+        })
+
+        // Native Gesture Handling: Modern OnBackPressedDispatcher for Edge-Swipe Support
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                // 1. Close search overlay if open
+                val overlay = findViewById<View>(R.id.search_overlay)
+                if (overlay?.visibility == View.VISIBLE) {
+                    overlay.visibility = View.GONE
+                    return
+                }
+
+                // 2. If navigating, stop navigation and go back to directions
+                if (isNavigating) {
+                    closeDirectionsUI()
+                    return
+                }
+
+                // 3. If directions panel is showing (preview mode), close it
+                val panel = findViewById<View>(R.id.directions_bottom_panel_container)
+                if (panel?.visibility == View.VISIBLE) {
+                    closeDirectionsUI()
+                    return
+                }
+
+                // 4. Pop fragment back stack if any
+                if (supportFragmentManager.backStackEntryCount > 0) {
+                    supportFragmentManager.popBackStack()
+                    return
+                }
+
+                // 5. If not on Explore tab, switch to Explore
+                val bottomNav = findViewById<com.google.android.material.bottomnavigation.BottomNavigationView>(R.id.bottom_navigation)
+                if (bottomNav != null && bottomNav.selectedItemId != R.id.nav_explore) {
+                    bottomNav.selectedItemId = R.id.nav_explore
+                    return
+                }
+
+                // 6. Allow default system back to exit
+                isEnabled = false
+                onBackPressedDispatcher.onBackPressed()
+                isEnabled = true
+            }
+        })
+
         setupBottomNavigation()
         setupSearchOverlay()
     }
@@ -857,6 +944,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         val layout = android.widget.LinearLayout(context).apply {
             orientation = android.widget.LinearLayout.VERTICAL
             setPadding(40, 40, 40, 40)
+            setBackgroundColor(android.graphics.Color.parseColor("#1E1E1E"))
             layoutParams = android.view.ViewGroup.LayoutParams(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT, 
                 android.view.ViewGroup.LayoutParams.WRAP_CONTENT
@@ -868,7 +956,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             textSize = 20f
             setTypeface(null, android.graphics.Typeface.BOLD)
             setPadding(0, 0, 0, 40)
-            setTextColor(android.graphics.Color.BLACK)
+            setTextColor(android.graphics.Color.WHITE)
         }
         layout.addView(titleView)
         
@@ -882,7 +970,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                 text = item
                 textSize = 16f
                 setPadding(0, 30, 0, 30)
-                setTextColor(android.graphics.Color.DKGRAY)
+                setTextColor(android.graphics.Color.WHITE)
                 setOnClickListener {
                     dialog.dismiss()
                     onClick(index)
@@ -895,7 +983,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                 layoutParams = android.widget.LinearLayout.LayoutParams(
                     android.view.ViewGroup.LayoutParams.MATCH_PARENT, 1
                 )
-                setBackgroundColor(android.graphics.Color.LTGRAY)
+                setBackgroundColor(android.graphics.Color.parseColor("#333333"))
             }
             listLayout.addView(divider)
         }
@@ -1804,6 +1892,9 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         }
         
         map.uiSettings?.setCompassEnabled(false)
+        // Default explore view: top-down (0 tilt)
+        isMapTilted = false
+        map.animateCamera(com.mappls.sdk.maps.camera.CameraUpdateFactory.tiltTo(0.0))
         map.uiSettings?.setLogoMargins(0, 0, 0, -200) // Hide logo by moving it off-screen
         
         map.getStyle { style -> 
@@ -1938,7 +2029,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             isFollowMode = true
             val loc = mapplsMap?.locationComponent?.lastKnownLocation
             if (loc != null) {
-                val targetTilt = if (isMapTilted) 45.0 else 0.0
+                val targetTilt = if (isMapTilted) 60.0 else 0.0
                 mapplsMap?.animateCamera(
                     com.mappls.sdk.maps.camera.CameraUpdateFactory.newCameraPosition(
                         com.mappls.sdk.maps.camera.CameraPosition.Builder()
@@ -2103,10 +2194,12 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             activeHazards.removeIf { it.id == id }
         }
         countView?.text = activeHazards.size.toString()
-        if (activeHazards.isNotEmpty()) {
+        val directionsPanel = findViewById<View>(R.id.directions_bottom_panel)
+        val isDirectionsMode = directionsPanel?.visibility == View.VISIBLE
+        if (activeHazards.isNotEmpty() && !isDirectionsMode) {
             panel?.visibility = View.VISIBLE
             panel?.bringToFront()
-        } else {
+        } else if (isDirectionsMode || activeHazards.isEmpty()) {
             panel?.visibility = View.GONE
         }
     }
@@ -2124,12 +2217,15 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             hazardAlertAdapter?.notifyDataSetChanged()
             val panel = findViewById<View>(R.id.hazard_alert_panel)
             val countView = findViewById<TextView>(R.id.tv_hazard_count)
-            panel?.visibility = View.VISIBLE
-            panel?.elevation = 150f
-            panel?.translationZ = 150f
-            panel?.bringToFront()
-            panel?.requestLayout()
-            panel?.invalidate()
+            val dirPanel = findViewById<View>(R.id.directions_bottom_panel)
+            if (dirPanel?.visibility != View.VISIBLE) {
+                panel?.visibility = View.VISIBLE
+                panel?.elevation = 150f
+                panel?.translationZ = 150f
+                panel?.bringToFront()
+                panel?.requestLayout()
+                panel?.invalidate()
+            }
             countView?.text = activeHazards.size.toString()
             Log.d("Zwap", "Visually added hazard to panel, total showing: ${activeHazards.size}")
         }
@@ -2174,6 +2270,8 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         
         val origin = Point.fromLngLat(lastLocation.longitude, lastLocation.latitude)
         
+        // Reset navigation state — fresh route search always shows directions UI
+        isNavigating = false
         isPreviewMode = true // Start in preview mode so alerts are muted initially
         
         Log.d("Zwap", "Getting directions from (${lastLocation.latitude}, ${lastLocation.longitude}) to $selectedELoc")
@@ -2203,15 +2301,15 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                     
                     drawRoute(allRoutes, primaryRoute)
                     extractHazardsFromRoute(primaryRoute.legs()?.get(0)?.steps())
-                    
+
                     // Show directions UI (Google Maps style)
                     showDirectionsUI(primaryRoute.distance()!!, primaryRoute.duration()!!)
                     showTripBriefingScanning()  // Show briefing card in scanning state
-                    
+
                     enableFollowMode()
-                    
+
                     Toast.makeText(this@MainActivity, "Route ready!", Toast.LENGTH_SHORT).show()
-                    
+
                     if (autoStart) {
                         startNavigation()
                     }
@@ -2271,6 +2369,13 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         findViewById<View>(R.id.search_card).visibility = View.GONE
         findViewById<View>(R.id.btn_toggle_osm)?.visibility = View.GONE
         findViewById<View>(R.id.fab_compass)?.visibility = View.GONE
+        // Hide old hazard alert panel — it overlaps directions panel
+        findViewById<View>(R.id.hazard_alert_panel)?.visibility = View.GONE
+        findViewById<View>(R.id.trip_briefing_card)?.visibility = View.GONE
+        
+        // Reset to top-down view for directions preview
+        isMapTilted = false
+        mapplsMap?.animateCamera(com.mappls.sdk.maps.camera.CameraUpdateFactory.tiltTo(0.0), 300)
         
         // Show directions header card
         findViewById<View>(R.id.directions_header_card).visibility = View.VISIBLE
@@ -2295,10 +2400,53 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             popup.show()
         }
         
-        // Show directions bottom panel
-        findViewById<View>(R.id.directions_bottom_panel).visibility = View.VISIBLE
-        isPanelCollapsed = false
+        // Ensure panel is at bottom position (may have been moved to top during navigation)
+        val panel = findViewById<View>(R.id.directions_bottom_panel)
+        val panelParams = panel.layoutParams as? RelativeLayout.LayoutParams
+        panelParams?.let {
+            it.removeRule(RelativeLayout.ALIGN_PARENT_TOP)
+            it.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM)
+            panel.layoutParams = it
+        }
+        panel.setBackgroundResource(R.drawable.bg_nav_card_bottom)
+
+        // Restore elements that may have been hidden during navigation
+        findViewById<View>(R.id.directions_actions_layout)?.visibility = View.VISIBLE
+        findViewById<View>(R.id.panel_drag_handle)?.visibility = View.VISIBLE
+        findViewById<View>(R.id.btn_collapse_panel)?.visibility = View.VISIBLE
+        findViewById<View>(R.id.btn_stop_navigation)?.visibility = View.GONE
+
+        // Show directions bottom panel and scan progress
+        panel.visibility = View.VISIBLE
+        findViewById<View>(R.id.hazard_scan_progress_container)?.visibility = View.VISIBLE
+
+        // Start collapsed by default — hide all children below the stats row (index >= 2)
+        val panelContainerDefault = findViewById<android.view.ViewGroup>(R.id.directions_bottom_panel_container)
+        panelContainerDefault?.let { vg ->
+            for (i in 2 until vg.childCount) {
+                vg.getChildAt(i).visibility = View.GONE
+            }
+        }
+        findViewById<android.widget.ImageButton>(R.id.btn_collapse_panel)?.rotation = 180f
+        isPanelCollapsed = true
+
         repositionFabsAbovePanel()
+
+        // DEBUG: Log FAB positions after repositioning
+        val fabDbg = findViewById<View>(R.id.fab_stack_container)
+        val aiDbg = findViewById<View>(R.id.fab_ai_voice)
+        val spdDbg = findViewById<View>(R.id.speed_limit_widget)
+        val bnDbg = findViewById<View>(R.id.bottom_navigation)
+        val panelDbg = findViewById<View>(R.id.directions_bottom_panel)
+        fabDbg?.post {
+            val fabP = fabDbg.layoutParams as? RelativeLayout.LayoutParams
+            Log.w("FAB_DEBUG", "showDirectionsUI -> fabStack: tY=${fabDbg.translationY}, y=${fabDbg.y}, h=${fabDbg.height}, above=${fabP?.getRule(RelativeLayout.ABOVE)}, alignBot=${fabP?.getRule(RelativeLayout.ALIGN_PARENT_BOTTOM)}")
+            Log.w("FAB_DEBUG", "showDirectionsUI -> aiVoice: tY=${aiDbg?.translationY}, y=${aiDbg?.y}, vis=${aiDbg?.visibility}")
+            Log.w("FAB_DEBUG", "showDirectionsUI -> speedWidget: tY=${spdDbg?.translationY}, y=${spdDbg?.y}, vis=${spdDbg?.visibility}")
+            Log.w("FAB_DEBUG", "showDirectionsUI -> bottomNav: vis=${bnDbg?.visibility}, h=${bnDbg?.height}, y=${bnDbg?.y}")
+            Log.w("FAB_DEBUG", "showDirectionsUI -> panel: vis=${panelDbg?.visibility}, h=${panelDbg?.height}, y=${panelDbg?.y}")
+            Log.w("FAB_DEBUG", "showDirectionsUI -> isNavigating=$isNavigating, isPreviewMode=$isPreviewMode")
+        }
 
         // Setup collapse/expand toggle
         val collapseBtn = findViewById<android.widget.ImageButton>(R.id.btn_collapse_panel)
@@ -2346,7 +2494,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         findViewById<TextView>(R.id.tv_route_distance).text = "%.1f km".format(distance / 1000.0)
         
         // Setup close button
-        findViewById<View>(R.id.btn_close_directions).setOnClickListener {
+        findViewById<View>(R.id.btn_close_directions)?.setOnClickListener {
             closeDirectionsUI()
         }
         
@@ -2363,6 +2511,11 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             }
             startActivity(android.content.Intent.createChooser(shareIntent, "Share route"))
         }
+
+        // Setup stop navigation button (red X)
+        findViewById<View>(R.id.btn_stop_navigation)?.setOnClickListener {
+            closeDirectionsUI()
+        }
         
         // Setup options button
         findViewById<View>(R.id.btn_route_options)?.setOnClickListener {
@@ -2375,66 +2528,143 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     
     private fun startNavigation() {
         isPreviewMode = false
-        
-        // Reset FAB positions since directions panel is being hidden
-        resetFabPositions()
-        
-        // Hide the preview UI elements for a clean navigation view
-        findViewById<View>(R.id.directions_bottom_panel).visibility = View.GONE
-        findViewById<View>(R.id.directions_header_card)?.visibility = View.GONE
-        findViewById<View>(R.id.search_card)?.visibility = View.GONE
-        findViewById<View>(R.id.trip_briefing_card)?.visibility = View.GONE
-        
-        // Re-apply follow mode to snap camera back
+        isNavigating = true
+        isMapTilted = true
+
+        Toast.makeText(this, "Navigation started!", Toast.LENGTH_SHORT).show()
+
+        // Re-apply follow mode
         isFollowMode = true
         enableFollowMode()
-        
-        // Tilt the camera for true navigation 3D view centering on the user
-        val userLocation = mapplsMap?.locationComponent?.lastKnownLocation
-        val targetPos = if (userLocation != null) {
-            com.mappls.sdk.maps.geometry.LatLng(userLocation.latitude, userLocation.longitude)
-        } else {
-            mapplsMap?.cameraPosition?.target
+        // Tilt camera for 3D navigation view
+        mapplsMap?.animateCamera(com.mappls.sdk.maps.camera.CameraUpdateFactory.tiltTo(60.0))
+
+        // Hide views not needed during active navigation
+        findViewById<View>(R.id.directions_header_card)?.visibility = View.GONE
+        findViewById<View>(R.id.directions_actions_layout)?.visibility = View.GONE
+        findViewById<View>(R.id.search_card)?.visibility = View.GONE
+        findViewById<View>(R.id.bottom_navigation)?.visibility = View.GONE
+        findViewById<View>(R.id.hazard_alert_panel)?.visibility = View.GONE
+        findViewById<View>(R.id.trip_briefing_card)?.visibility = View.GONE
+        // Hide drag handle and collapse button for clean nav header
+        findViewById<View>(R.id.panel_drag_handle)?.visibility = View.GONE
+        findViewById<View>(R.id.btn_collapse_panel)?.visibility = View.GONE
+        // Show 100% hazard scan progress circle
+        findViewById<View>(R.id.hazard_scan_progress_container)?.visibility = View.VISIBLE
+        findViewById<android.widget.ProgressBar>(R.id.hazard_scan_progress)?.progress = 100
+        findViewById<android.widget.TextView>(R.id.tv_hazard_scan_percent)?.text = "100%"
+
+        // Reset FAB translationY (was shifted up by repositionFabsAbovePanel) — no layout param changes
+        val fabStack = findViewById<View>(R.id.fab_stack_container)
+        fabStack?.translationY = 0f
+        fabStack?.visibility = View.VISIBLE
+        // Ensure recenter FAB is visible on the start/navigation page
+        findViewById<View>(R.id.fab_recenter)?.visibility = View.VISIBLE
+        findViewById<View>(R.id.fab_ai_voice)?.translationY = 0f
+        findViewById<View>(R.id.speed_limit_widget)?.translationY = 0f
+
+        // Animate bottom panel from bottom to top with smooth slide
+        val panel = findViewById<View>(R.id.directions_bottom_panel)
+        val params = panel.layoutParams as RelativeLayout.LayoutParams
+        params.removeRule(RelativeLayout.ALIGN_PARENT_BOTTOM)
+        params.removeRule(RelativeLayout.ABOVE)
+        params.addRule(RelativeLayout.ALIGN_PARENT_TOP)
+        panel.layoutParams = params
+        // Switch background to flush-top (flat top, rounded bottom)
+        panel.setBackgroundResource(R.drawable.bg_nav_card_top)
+
+        // Adjust map margin to fill bottom bar space
+        val mapParams = findViewById<View>(R.id.map_view).layoutParams as? ViewGroup.MarginLayoutParams
+        mapParams?.let {
+            it.bottomMargin = 0
+            findViewById<View>(R.id.map_view).layoutParams = it
         }
-        
-        mapplsMap?.animateCamera(
-            com.mappls.sdk.maps.camera.CameraUpdateFactory.newCameraPosition(
-                com.mappls.sdk.maps.camera.CameraPosition.Builder()
-                    .target(targetPos)
-                    .zoom(18.0)
-                    .tilt(60.0)
-                    .build()
-            ),
-            1000
-        )
-        
-        // Trigger a proximity check now that preview is off to show immediate hazards
+
+        // Show speed widget and stop button
+        findViewById<View>(R.id.speed_limit_widget)?.visibility = View.VISIBLE
+        findViewById<View>(R.id.btn_stop_navigation)?.visibility = View.VISIBLE
+
+        // DEBUG: Log FAB positions after startNavigation
+        val fabDbgN = findViewById<View>(R.id.fab_stack_container)
+        val fabPN = fabDbgN?.layoutParams as? RelativeLayout.LayoutParams
+        Log.w("FAB_DEBUG", "startNavigation -> fabStack: tY=${fabDbgN?.translationY}, above=${fabPN?.getRule(RelativeLayout.ABOVE)}, alignBot=${fabPN?.getRule(RelativeLayout.ALIGN_PARENT_BOTTOM)}")
+        Log.w("FAB_DEBUG", "startNavigation -> aiVoice: tY=${findViewById<View>(R.id.fab_ai_voice)?.translationY}, speed: tY=${findViewById<View>(R.id.speed_limit_widget)?.translationY}")
+        Log.w("FAB_DEBUG", "startNavigation -> bottomNav vis=${findViewById<View>(R.id.bottom_navigation)?.visibility}")
+
+
+        // Trigger immediate hazard proximity check
         mapplsMap?.locationComponent?.lastKnownLocation?.let { loc ->
             checkHazardProximity(loc.latitude, loc.longitude)
         }
     }
     
     private fun closeDirectionsUI() {
-        // Show search bar and reset FABs to original positions
+        // Restore UI
         findViewById<View>(R.id.search_card).visibility = View.VISIBLE
-        resetFabPositions()
-        // Restore hazard toggle and compass
+        findViewById<View>(R.id.bottom_navigation)?.visibility = View.VISIBLE
+
+        // Ensure FAB stack anchor is ABOVE bottom_navigation (safety restore)
+        val fabStack = findViewById<View>(R.id.fab_stack_container)
+        fabStack?.let {
+            val fabParams = it.layoutParams as? RelativeLayout.LayoutParams
+            fabParams?.removeRule(RelativeLayout.ALIGN_PARENT_BOTTOM)
+            fabParams?.addRule(RelativeLayout.ABOVE, R.id.bottom_navigation)
+            fabParams?.bottomMargin = (16 * resources.displayMetrics.density).toInt()
+            it.translationY = 0f
+            it.layoutParams = fabParams
+        }
+        // Also reset translationY for AI voice and speed widget
+        findViewById<View>(R.id.fab_ai_voice)?.translationY = 0f
+        findViewById<View>(R.id.speed_limit_widget)?.translationY = 0f
+
+        // DEBUG: Log FAB positions after closeDirectionsUI restore
+        val fabDbgC = fabStack
+        val fabPC = fabDbgC?.layoutParams as? RelativeLayout.LayoutParams
+        Log.w("FAB_DEBUG", "closeDirectionsUI -> fabStack: tY=${fabDbgC?.translationY}, above=${fabPC?.getRule(RelativeLayout.ABOVE)}, alignBot=${fabPC?.getRule(RelativeLayout.ALIGN_PARENT_BOTTOM)}")
+        Log.w("FAB_DEBUG", "closeDirectionsUI -> aiVoice tY=${findViewById<View>(R.id.fab_ai_voice)?.translationY}, speed tY=${findViewById<View>(R.id.speed_limit_widget)?.translationY}")
+
+        // Restore map bottom margin for bottom navigation
+        val mapParams = findViewById<View>(R.id.map_view).layoutParams as? ViewGroup.MarginLayoutParams
+        mapParams?.let {
+            it.bottomMargin = (56 * resources.displayMetrics.density).toInt()
+            findViewById<View>(R.id.map_view).layoutParams = it
+        }
+
+        // Restore bottom panel position and background
+        val panel = findViewById<View>(R.id.directions_bottom_panel)
+        val panelParams = panel.layoutParams as? RelativeLayout.LayoutParams
+        panelParams?.let {
+            it.removeRule(RelativeLayout.ALIGN_PARENT_TOP)
+            it.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM)
+            panel.layoutParams = it
+        }
+        panel.setBackgroundResource(R.drawable.bg_nav_card_bottom)
+
+        // Restore hazard toggle, compass, AI voice and speed widget
         findViewById<View>(R.id.btn_toggle_osm)?.visibility = View.VISIBLE
         findViewById<View>(R.id.fab_compass)?.visibility = View.VISIBLE
-        
-        // Hide directions panels
+        findViewById<View>(R.id.fab_ai_voice)?.visibility = View.VISIBLE
+        findViewById<View>(R.id.speed_limit_widget)?.visibility = View.VISIBLE
+        // Restore drag handle and collapse button
+        findViewById<View>(R.id.panel_drag_handle)?.visibility = View.VISIBLE
+        findViewById<View>(R.id.btn_collapse_panel)?.visibility = View.VISIBLE
+
+        // Hide navigation panels and buttons
         findViewById<View>(R.id.directions_header_card).visibility = View.GONE
         findViewById<View>(R.id.directions_bottom_panel).visibility = View.GONE
-        
+        findViewById<View>(R.id.directions_actions_layout)?.visibility = View.VISIBLE
+        findViewById<View>(R.id.btn_stop_navigation)?.visibility = View.GONE
+        findViewById<View>(R.id.hazard_alert_panel)?.visibility = View.GONE
+
         // Clear route
         lineManager?.clearAll()
         mapplsMap?.clear()
         clearRouteHazards()
-        
+
         // Reset state
         currentRoute = null
         isNavigating = false
-        isPreviewMode = false  // Ensure hazard proximity alerts work after directions closed
+        isPreviewMode = false
     }
     
     private fun showPlaceDetailsBottomSheet(location: ELocation) {
@@ -2496,6 +2726,37 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
 
     // Switch to a selected route: redraw, update hazards and UI
     private fun switchToRoute(selectedRoute: DirectionsRoute) {
+        // Block route switching during active navigation (start page)
+        if (isNavigating) return
+
+        // If switching route while in navigation mode, undo startNavigation() layout changes
+        if (false) { // Dead code — kept for reference
+            isNavigating = false
+            isPreviewMode = true
+            // Restore bottom navigation bar (startNavigation hides it)
+            findViewById<View>(R.id.bottom_navigation)?.visibility = View.VISIBLE
+            // Hide navigation-only widgets
+            findViewById<View>(R.id.speed_limit_widget)?.visibility = View.GONE
+            findViewById<View>(R.id.btn_stop_navigation)?.visibility = View.GONE
+            // Restore fab_stack anchor from ALIGN_PARENT_BOTTOM back to ABOVE bottom_navigation
+            val fabStack = findViewById<View>(R.id.fab_stack_container)
+            fabStack?.let {
+                val fabParams = it.layoutParams as? RelativeLayout.LayoutParams
+                fabParams?.removeRule(RelativeLayout.ALIGN_PARENT_BOTTOM)
+                fabParams?.addRule(RelativeLayout.ABOVE, R.id.bottom_navigation)
+                it.translationY = 0f
+                it.layoutParams = fabParams
+            }
+            // Reset AI voice and speed widget translationY
+            findViewById<View>(R.id.fab_ai_voice)?.translationY = 0f
+            findViewById<View>(R.id.speed_limit_widget)?.translationY = 0f
+            // Restore map bottom margin (startNavigation sets it to 0)
+            val mapParams = findViewById<View>(R.id.map_view).layoutParams as? ViewGroup.MarginLayoutParams
+            mapParams?.let {
+                it.bottomMargin = (56 * resources.displayMetrics.density).toInt()
+                findViewById<View>(R.id.map_view).layoutParams = it
+            }
+        }
         currentPrimaryRoute = selectedRoute
         drawRoute(currentRoute?.routes(), selectedRoute)
         extractHazardsFromRoute(selectedRoute.legs()?.get(0)?.steps())
@@ -2543,7 +2804,6 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         markerToRouteMap.clear()
         
         clearRouteHazards()  // Clear previous hazard points/markers/jobs
-        isNavigating = true  // Mark navigation as active
         
         // Use provided primary route or the shortest one as default if null
         val actualPrimaryRoute = primaryRoute ?: routes.minByOrNull { it.distance() ?: Double.MAX_VALUE } ?: routes[0]
@@ -2649,7 +2909,9 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     }
     
     private fun hideHazardScanProgress() {
-        findViewById<View>(R.id.hazard_scan_progress_container)?.visibility = View.GONE
+        // Keep progress visible at 100% as a permanent indicator
+        findViewById<android.widget.ProgressBar>(R.id.hazard_scan_progress)?.progress = 100
+        findViewById<android.widget.TextView>(R.id.tv_hazard_scan_percent)?.text = "100%"
     }
 
     /** Show the Trip Briefing card in "Scanning..." state immediately when route loads */
@@ -2657,7 +2919,6 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         val card = findViewById<View>(R.id.trip_briefing_card) ?: return
         val title = findViewById<TextView>(R.id.tv_trip_briefing_title) ?: return
         val detail = findViewById<TextView>(R.id.tv_trip_briefing_detail) ?: return
-        val dismiss = findViewById<View>(R.id.btn_dismiss_briefing) ?: return
 
         title.text = "Scanning route..."
         detail.text = "Checking for cameras and hazards ahead"
@@ -2665,18 +2926,11 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         card.visibility = View.VISIBLE
         card.alpha = 0f
         card.animate().alpha(1f).setDuration(300).start()
-
-        dismiss.setOnClickListener { 
-            card.animate().alpha(0f).setDuration(200).withEndAction {
-                card.visibility = View.GONE
-            }.start()
-        }
     }
 
     /** Update the Trip Briefing card with the real hazard count summary */
     private fun showTripBriefingSummary() {
         val card = findViewById<View>(R.id.trip_briefing_card) ?: return
-        if (card.visibility != View.VISIBLE) return  // User already dismissed it
         
         val title = findViewById<TextView>(R.id.tv_trip_briefing_title) ?: return
         val detail = findViewById<TextView>(R.id.tv_trip_briefing_detail) ?: return
@@ -2702,14 +2956,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             detail.text = parts.joinToString(" • ") + " ahead on this route"
         }
 
-        // Auto-dismiss after 8 seconds
-        card.postDelayed({
-            if (card.isAttachedToWindow) {
-                card.animate().alpha(0f).setDuration(400).withEndAction {
-                    card.visibility = View.GONE
-                }.start()
-            }
-        }, 8000)
+        // Card stays visible permanently - no auto dismiss
     }
     
     private suspend fun fetchNextHazardChunk() {
@@ -2967,7 +3214,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     }
     
     private fun displayRouteHazards(hazards: List<RouteHazard>) {
-        if (!isNavigating) return
+        // Show hazard markers during both preview and active navigation
         
         hazards.forEach { hazard ->
             try {

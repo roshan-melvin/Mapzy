@@ -511,7 +511,7 @@ class CommunityFragment : Fragment() {
         class ViewHolder(view: View) : RecyclerView.ViewHolder(view) { val textView: TextView = view.findViewById(R.id.tv_channel_name) }
         fun updateData(newItems: List<String>) { items = newItems; notifyDataSetChanged() }
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) = ViewHolder(LayoutInflater.from(parent.context).inflate(R.layout.item_channel, parent, false))
-        override fun onBindViewHolder(holder: ViewHolder, position: Int) { holder.textView.text = "# ${items[position].lowercase()}"; holder.itemView.setOnClickListener { onClick(items[position]) } }
+        override fun onBindViewHolder(holder: ViewHolder, position: Int) { holder.textView.text = items[position].lowercase(); holder.itemView.setOnClickListener { onClick(items[position]) } }
         override fun getItemCount() = items.size
     }
 

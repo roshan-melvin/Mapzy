@@ -522,6 +522,8 @@ class CreateReportFragment : Fragment(R.layout.fragment_create_report) {
             val iv = v.findViewById<android.widget.ImageView>(R.id.iv_media_preview)
             val vv = v.findViewById<android.widget.VideoView>(R.id.vv_media_preview)
             val play = v.findViewById<android.widget.ImageView>(R.id.iv_play_preview)
+            val placeholder = v.findViewById<android.widget.LinearLayout>(R.id.placeholder_media)
+            placeholder?.visibility = View.GONE
             if (isVideo) {
                 iv.visibility = View.GONE
                 vv.visibility = View.VISIBLE

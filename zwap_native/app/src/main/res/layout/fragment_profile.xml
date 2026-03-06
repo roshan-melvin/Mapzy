@@ -4,7 +4,8 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/premium_bg"
-    android:fillViewport="true">
+    android:fillViewport="true"
+    android:clipToPadding="false">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -13,7 +14,7 @@
         android:paddingStart="24dp"
         android:paddingEnd="24dp"
         android:paddingTop="24dp"
-        android:paddingBottom="80dp">
+        android:paddingBottom="200dp">
 
         <!-- Title -->
         <TextView
@@ -354,7 +355,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="Auto (Hands-Free)"
+                        android:text="Hands-Free"
                         android:textColor="#FFFFFF"
                         android:buttonTint="#5865F2"/>
 
