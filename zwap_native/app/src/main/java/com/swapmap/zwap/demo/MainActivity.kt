@@ -113,7 +113,11 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     private var mapView: MapView? = null
     internal var mapplsMap: MapplsMap? = null  // internal for fragment access
     private var selectedELoc: String? = null
-    private var selectedPlace: ELocation? = null  // Store full place details
+    private var selectedPlace: ELocation? = null  // Acts as destinationPlace
+    private var originPlace: ELocation? = null    // null means "Your location"
+    private var isOriginCurrentLocation = true
+    enum class SearchSource { EXPLORE, ORIGIN, DESTINATION }
+    private var currentSearchSource = SearchSource.EXPLORE
     
     // Firestore Database
     private val db = FirebaseFirestore.getInstance()
@@ -608,6 +612,8 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             if (currentRoute != null && currentPrimaryRoute != null) {
                 startNavigation()
             } else {
+                originPlace = null // Reset to default current location for new flow
+                isOriginCurrentLocation = true
                 getDirections() 
             }
         }
@@ -1504,25 +1510,73 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
 
         val onLocationSelected: (ELocation) -> Unit = { location ->
             saveToHistory(location)
-            selectedELoc = location.mapplsPin
-            selectedPlace = location  // Store full place details
-            findViewById<TextView>(R.id.search_trigger).text = location.placeName
-            findViewById<View>(R.id.btn_directions).visibility = View.VISIBLE
             
-            location.mapplsPin?.let { pin ->
-                isFollowMode = false
-                mapplsMap?.animateCamera(CameraMapplsPinUpdateFactory.newMapplsPinZoom(pin, 16.0))
+            when (currentSearchSource) {
+                SearchSource.ORIGIN -> {
+                    originPlace = location
+                    isOriginCurrentLocation = (location.placeName == "Current Location")
+                    findViewById<TextView>(R.id.et_origin_input)?.text = location.placeName
+                    overlay.visibility = View.GONE
+                    
+                    // Immediate camera move for responsiveness
+                    if (!isOriginCurrentLocation && location.latitude != null && location.longitude != null) {
+                        isFollowMode = false
+                        mapplsMap?.locationComponent?.cameraMode = com.mappls.sdk.maps.location.modes.CameraMode.NONE
+                        mapplsMap?.animateCamera(
+                            com.mappls.sdk.maps.camera.CameraUpdateFactory.newCameraPosition(
+                                com.mappls.sdk.maps.camera.CameraPosition.Builder()
+                                    .target(com.mappls.sdk.maps.geometry.LatLng(location.latitude!!, location.longitude!!))
+                                    .tilt(0.0)
+                                    .zoom(15.0)
+                                    .build()
+                            ), 800
+                        )
+                    }
+                    
+                    getDirections() // Redraw route immediately
+                }
+                SearchSource.DESTINATION -> {
+                    selectedPlace = location
+                    selectedELoc = location.mapplsPin
+                    findViewById<TextView>(R.id.et_destination_input)?.text = location.placeName
+                    overlay.visibility = View.GONE
+                    getDirections() // Redraw route immediately
+                }
+                SearchSource.EXPLORE -> {
+                    selectedELoc = location.mapplsPin
+                    selectedPlace = location  // Store full place details
+                    findViewById<TextView>(R.id.search_trigger).text = location.placeName
+                    findViewById<View>(R.id.btn_directions).visibility = View.VISIBLE
+                    
+                    location.mapplsPin?.let { pin ->
+                        isFollowMode = false
+                        mapplsMap?.animateCamera(CameraMapplsPinUpdateFactory.newMapplsPinZoom(pin, 16.0))
+                    }
+                    overlay.visibility = View.GONE
+                    
+                    // Show place details bottom sheet like Google Maps
+                    showPlaceDetailsBottomSheet(location)
+                }
             }
-            overlay.visibility = View.GONE
+            
             val imm = getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
             imm.hideSoftInputFromWindow(etInput.windowToken, 0)
-            
-            // Show place details bottom sheet like Google Maps
-            showPlaceDetailsBottomSheet(location)
         }
 
-        searchAdapter = SearchAdapter(onLocationSelected)
-        historyAdapter = SearchAdapter(onLocationSelected)
+        searchAdapter = SearchAdapter { selection ->
+            if (selection.mapplsPin == "current_location_selection") {
+                resolveCurrentLocationForSearch(onLocationSelected)
+            } else {
+                onLocationSelected(selection)
+            }
+        }
+        historyAdapter = SearchAdapter { selection ->
+            if (selection.mapplsPin == "current_location_selection") {
+                resolveCurrentLocationForSearch(onLocationSelected)
+            } else {
+                onLocationSelected(selection)
+            }
+        }
 
         rvResults.layoutManager = LinearLayoutManager(this)
         rvResults.adapter = searchAdapter
@@ -1587,7 +1641,14 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         }
     }
 
-    private fun showSearchOverlay(query: String?) {
+    private fun showSearchOverlay(query: String?, source: SearchSource = SearchSource.EXPLORE) {
+        currentSearchSource = source
+        val showCurrent = source != SearchSource.EXPLORE
+        searchAdapter.showCurrentLocation = showCurrent
+        historyAdapter.showCurrentLocation = showCurrent
+        searchAdapter.notifyDataSetChanged()
+        historyAdapter.notifyDataSetChanged()
+        
         val overlay = findViewById<View>(R.id.search_overlay)
         val etInput = findViewById<EditText>(R.id.et_search_input)
         val dashboard = findViewById<View>(R.id.search_dashboard)
@@ -1619,7 +1680,27 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         imm.showSoftInput(etInput, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
     }
 
+    private fun resolveCurrentLocationForSearch(callback: (ELocation) -> Unit) {
+        val lastLocation = mapplsMap?.locationComponent?.lastKnownLocation
+        if (lastLocation == null) {
+            Toast.makeText(this, "Location not available", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val currentLoc = ELocation()
+        currentLoc.placeName = "Current Location"
+        currentLoc.placeAddress = "My current GPS position"
+        currentLoc.latitude = lastLocation.latitude
+        currentLoc.longitude = lastLocation.longitude
+        
+        callback(currentLoc)
+    }
+
     private fun saveToHistory(location: ELocation) {
+        if (location.placeName == "Current Location" || location.mapplsPin == "current_location_selection") {
+            Log.d("Zwap", "Skipping history save for Current Location")
+            return
+        }
         saveHistoryToFirestore(location)
     }
     
@@ -1723,6 +1804,12 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                     for (document in documents) {
                         try {
                             val placeName = document.getString("placeName") ?: "Unknown"
+                            
+                            // FILTER: Don't show "Current Location" in history if we are in EXPLORE mode
+                            if (currentSearchSource == SearchSource.EXPLORE && placeName == "Current Location") {
+                                continue
+                            }
+
                             val placeAddress = document.getString("placeAddress") ?: ""
                             val mapplsPin = document.getString("mapplsPin") ?: ""
                             
@@ -1797,33 +1884,60 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     }
 
     private inner class SearchAdapter(private val onItemClick: (ELocation) -> Unit) : 
-        RecyclerView.Adapter<SearchAdapter.ViewHolder>() {
+        RecyclerView.Adapter<RecyclerView.ViewHolder>() {
         
+        var showCurrentLocation = false
         private var items = listOf<ELocation>()
+
+        private val TYPE_CURRENT_LOCATION = 0
+        private val TYPE_RESULT = 1
 
         fun submitList(newItems: List<ELocation>) {
             items = newItems
             notifyDataSetChanged()
         }
 
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
+        override fun getItemViewType(position: Int): Int {
+            return if (showCurrentLocation && position == 0) TYPE_CURRENT_LOCATION else TYPE_RESULT
+        }
+
+        inner class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+            val iconView: android.widget.ImageView = view.findViewById(R.id.iv_icon)
+            val text1: TextView = view.findViewById(R.id.tv_place_name)
+            val text2: TextView = view.findViewById(R.id.tv_place_address)
+        }
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
             val view = LayoutInflater.from(parent.context).inflate(R.layout.layout_search_item, parent, false)
             return ViewHolder(view)
         }
 
-        override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-            val item = items[position]
-            holder.text1.text = item.placeName
-            holder.text2.text = item.placeAddress
-            holder.itemView.setOnClickListener { onItemClick(item) }
+        override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+            val vh = holder as ViewHolder
+            if (getItemViewType(position) == TYPE_CURRENT_LOCATION) {
+                vh.text1.text = "Current Location"
+                vh.text1.setTypeface(null, android.graphics.Typeface.BOLD)
+                vh.text2.text = "Use your current GPS position"
+                vh.iconView.setImageResource(android.R.drawable.ic_menu_mylocation)
+                vh.iconView.setColorFilter(Color.parseColor("#00B0FF"))
+                vh.itemView.setOnClickListener { 
+                    val specialLoc = ELocation()
+                    specialLoc.mapplsPin = "current_location_selection"
+                    onItemClick(specialLoc)
+                }
+            } else {
+                val actualPos = if (showCurrentLocation) position - 1 else position
+                val item = items[actualPos]
+                vh.text1.text = item.placeName
+                vh.text1.setTypeface(null, android.graphics.Typeface.BOLD)
+                vh.text2.text = item.placeAddress
+                vh.iconView.setImageResource(android.R.drawable.ic_dialog_map)
+                vh.iconView.clearColorFilter()
+                vh.itemView.setOnClickListener { onItemClick(item) }
+            }
         }
 
-        override fun getItemCount(): Int = items.size
-
-        inner class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
-            val text1: TextView = view.findViewById(R.id.tv_place_name)
-            val text2: TextView = view.findViewById(R.id.tv_place_address)
-        }
+        override fun getItemCount(): Int = items.size + (if (showCurrentLocation) 1 else 0)
     }
 
     override fun onMapReady(map: MapplsMap) {
@@ -2189,19 +2303,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     }
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == 101 && resultCode == RESULT_OK) {
-            val place: ELocation? = PlaceAutocomplete.getPlace(data)
-            if (place != null) {
-                selectedELoc = place.mapplsPin
-                findViewById<TextView>(R.id.search_trigger).text = place.placeName
-                findViewById<View>(R.id.btn_directions).visibility = View.VISIBLE
-                
-                place.mapplsPin?.let { pin ->
-                    isFollowMode = false
-                    mapplsMap?.animateCamera(CameraMapplsPinUpdateFactory.newMapplsPinZoom(pin, 16.0))
-                }
-            }
-        } else if (requestCode == 202 && resultCode == RESULT_OK) {
+        if (requestCode == 202 && resultCode == RESULT_OK) {
             val results = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
             if (!results.isNullOrEmpty()) {
                 val query = results[0]
@@ -2211,40 +2313,73 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     }
 
     private fun getDirections(autoStart: Boolean = false) {
-        // Check if destination is selected
-        if (selectedELoc.isNullOrEmpty()) {
-            Toast.makeText(this, "Please select a destination first", Toast.LENGTH_SHORT).show()
+        // Check if either origin or destination is at least set (one can be null for "Your location")
+        if (originPlace == null && selectedPlace == null) {
+            Toast.makeText(this, "Please select a destination", Toast.LENGTH_SHORT).show()
             return
         }
         
         val lastLocation = mapplsMap?.locationComponent?.lastKnownLocation
-        if (lastLocation == null) {
+        
+        // Determine Origin
+        val originObj: Any = if (originPlace != null) {
+            val lat = originPlace?.latitude
+            val lng = originPlace?.longitude
+            if (lat != null && lng != null) {
+                Point.fromLngLat(lng, lat)
+            } else {
+                originPlace?.mapplsPin ?: ""
+            }
+        } else if (lastLocation != null) {
+            Point.fromLngLat(lastLocation.longitude, lastLocation.latitude)
+        } else {
             Toast.makeText(this, "Getting your location...", Toast.LENGTH_SHORT).show()
             return
         }
         
+        // Resolve Destination
+        val destObj: Any = if (selectedPlace != null) {
+            val lat = selectedPlace?.latitude
+            val lng = selectedPlace?.longitude
+            if (lat != null && lng != null) {
+                Point.fromLngLat(lng, lat)
+            } else {
+                selectedELoc ?: selectedPlace?.mapplsPin ?: ""
+            }
+        } else if (lastLocation != null) {
+            Point.fromLngLat(lastLocation.longitude, lastLocation.latitude)
+        } else {
+            Toast.makeText(this, "Destination location required", Toast.LENGTH_SHORT).show()
+            return
+        }
+
         Toast.makeText(this, "Calculating route...", Toast.LENGTH_SHORT).show()
-        
-        val origin = Point.fromLngLat(lastLocation.longitude, lastLocation.latitude)
         
         // Reset navigation state — fresh route search always shows directions UI
         isNavigating = false
-        isPreviewMode = true // Start in preview mode so alerts are muted initially
+        isPreviewMode = true 
         
-        Log.d("Zwap", "Getting directions from (${lastLocation.latitude}, ${lastLocation.longitude}) to $selectedELoc")
+        Log.d("Zwap", "Getting directions from $originObj to $destObj")
         
         val builder = MapplsDirections.builder()
-            .origin(origin)
-            .destination(selectedELoc!!)
             .profile(DirectionsCriteria.PROFILE_DRIVING)
             .resource(DirectionsCriteria.RESOURCE_ROUTE)
             .steps(true)
             .alternatives(true)
             .overview(DirectionsCriteria.OVERVIEW_FULL)
-            .annotations(DirectionsCriteria.ANNOTATION_CONGESTION, DirectionsCriteria.ANNOTATION_DISTANCE)
+
+        // Set Origin
+        if (originObj is String) builder.origin(originObj)
+        else if (originObj is Point) builder.origin(originObj)
+        
+        // Set Destination
+        if (destObj is String) builder.destination(destObj)
+        else if (destObj is Point) builder.destination(destObj)
+        
+        val finalizedRequest = builder.annotations(DirectionsCriteria.ANNOTATION_CONGESTION, DirectionsCriteria.ANNOTATION_DISTANCE)
             .build()
             
-        MapplsDirectionManager.newInstance(builder).call(object : OnResponseCallback<DirectionsResponse> {
+        MapplsDirectionManager.newInstance(finalizedRequest).call(object : OnResponseCallback<DirectionsResponse> {
             override fun onSuccess(response: DirectionsResponse?) {
                 if (response != null && response.routes().isNotEmpty()) {
                     currentRoute = response
@@ -2262,8 +2397,6 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                     // Show directions UI (Google Maps style)
                     showDirectionsUI(primaryRoute.distance()!!, primaryRoute.duration()!!)
                     showTripBriefingScanning()  // Show briefing card in scanning state
-
-                    enableFollowMode()
 
                     Toast.makeText(this@MainActivity, "Route ready!", Toast.LENGTH_SHORT).show()
 
@@ -2333,6 +2466,8 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     }
 
     private fun showDirectionsUI(distance: Double, duration: Double) {
+        Log.d("Zwap", "showDirectionsUI called. distance=$distance, isOriginCurrentLocation=$isOriginCurrentLocation")
+        
         // Hide bottom navigation
         findViewById<View>(R.id.bottom_navigation)?.visibility = View.GONE
 
@@ -2344,18 +2479,93 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         findViewById<View>(R.id.hazard_alert_panel)?.visibility = View.GONE
         findViewById<View>(R.id.trip_briefing_card)?.visibility = View.GONE
         
-        // Reset to top-down view for directions preview
+        // 1. IMMEDIATELY Force reset tilt and stop location tracking
         isMapTilted = false
-        mapplsMap?.animateCamera(com.mappls.sdk.maps.camera.CameraUpdateFactory.tiltTo(0.0), 300)
+        isFollowMode = false
+        mapplsMap?.locationComponent?.cameraMode = com.mappls.sdk.maps.location.modes.CameraMode.NONE
+        mapplsMap?.animateCamera(com.mappls.sdk.maps.camera.CameraUpdateFactory.tiltTo(0.0), 200)
+
+        // 2. Resolve Target LatLng (Coord-aware or PIN-aware fallback)
+        var targetLatLng: com.mappls.sdk.maps.geometry.LatLng? = null
+        
+        if (isOriginCurrentLocation) {
+            mapplsMap?.locationComponent?.lastKnownLocation?.let { loc ->
+                targetLatLng = com.mappls.sdk.maps.geometry.LatLng(loc.latitude, loc.longitude)
+                Log.d("Zwap", "Target: Current Location (${targetLatLng?.latitude}, ${targetLatLng?.longitude})")
+            }
+        } else {
+            originPlace?.let { eLoc ->
+                val lat = eLoc.latitude
+                val lng = eLoc.longitude
+                if (lat != null && lng != null) {
+                    targetLatLng = com.mappls.sdk.maps.geometry.LatLng(lat.toDouble(), lng.toDouble())
+                    Log.d("Zwap", "Target: Custom Place Coord (${targetLatLng?.latitude}, ${targetLatLng?.longitude})")
+                }
+            }
+        }
+
+        // Fallback: If no coords (e.g. only eLoc PIN), extract from route geom
+        if (targetLatLng == null) {
+            currentPrimaryRoute?.geometry()?.let { geometry ->
+                val points = PolylineUtils.decode(geometry, com.mappls.sdk.services.utils.Constants.PRECISION_6)
+                if (points.isNotEmpty()) {
+                    targetLatLng = com.mappls.sdk.maps.geometry.LatLng(points[0].latitude(), points[0].longitude())
+                    Log.d("Zwap", "Target: Route Start Fallback (${targetLatLng?.latitude}, ${targetLatLng?.longitude})")
+                }
+            }
+        }
+
+        // 3. Execute Unified Preview Camera Update
+        if (targetLatLng != null) {
+            Log.d("Zwap", "Executing preview camera move to target...")
+            mapplsMap?.animateCamera(
+                com.mappls.sdk.maps.camera.CameraUpdateFactory.newCameraPosition(
+                    com.mappls.sdk.maps.camera.CameraPosition.Builder()
+                        .target(targetLatLng)
+                        .tilt(0.0)
+                        .bearing(0.0)
+                        .zoom(14.5)
+                        .build()
+                ), 800
+            )
+        } else {
+            Log.w("Zwap", "Could not resolve camera target for centering!")
+            // Last ditch: at least ensure it's top-down
+            mapplsMap?.animateCamera(com.mappls.sdk.maps.camera.CameraUpdateFactory.tiltTo(0.0), 300)
+        }
         
         // Show directions header card
         findViewById<View>(R.id.directions_header_card).visibility = View.VISIBLE
-        findViewById<TextView>(R.id.tv_origin_name).text = "Your location"
-        findViewById<TextView>(R.id.tv_destination_name).text = selectedPlace?.placeName ?: "Destination"
+        
+        val etOrigin = findViewById<TextView>(R.id.et_origin_input)
+        val etDest = findViewById<TextView>(R.id.et_destination_input)
+        
+        etOrigin?.text = originPlace?.placeName ?: "Current Location"
+        etDest?.text = selectedPlace?.placeName ?: if (originPlace != null) "Current Location" else "Destination"
+        
+        // Tapping fields opens search overlay
+        etOrigin?.setOnClickListener {
+            showSearchOverlay(null, SearchSource.ORIGIN)
+        }
+        etDest?.setOnClickListener {
+            showSearchOverlay(null, SearchSource.DESTINATION)
+        }
         
         // Setup swap locations button
         findViewById<View>(R.id.btn_swap_locations).setOnClickListener {
-            Toast.makeText(this, "Swap not available - route starts from your location", Toast.LENGTH_SHORT).show()
+            val tempPlace = originPlace
+            originPlace = selectedPlace
+            selectedPlace = tempPlace
+            selectedELoc = selectedPlace?.mapplsPin
+            
+            // UI Update
+            etOrigin?.text = originPlace?.placeName ?: "Current Location"
+            etDest?.text = selectedPlace?.placeName ?: "Current Location"
+            
+            isOriginCurrentLocation = (originPlace == null || originPlace?.placeName == "Current Location")
+            
+            Toast.makeText(this, "Swapping origin and destination", Toast.LENGTH_SHORT).show()
+            getDirections() // Reactively update map path
         }
         
         // Setup menu button
@@ -2509,11 +2719,75 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
 
         Toast.makeText(this, "Navigation started!", Toast.LENGTH_SHORT).show()
 
-        // Re-apply follow mode
-        isFollowMode = true
-        enableFollowMode()
-        // Tilt camera for 3D navigation view
-        mapplsMap?.animateCamera(com.mappls.sdk.maps.camera.CameraUpdateFactory.tiltTo(60.0))
+        // 1. Calculate Initial Bearing from Route and Determine Start Point
+        var routeBearing = 0.0
+        var startLat: Double? = null
+        var startLng: Double? = null
+        
+        currentPrimaryRoute?.geometry()?.let { geometry ->
+            val points = PolylineUtils.decode(geometry, com.mappls.sdk.services.utils.Constants.PRECISION_6)
+            if (points.size >= 2) {
+                val loc1 = android.location.Location("").apply {
+                    latitude = points[0].latitude()
+                    longitude = points[0].longitude()
+                }
+                val loc2 = android.location.Location("").apply {
+                    latitude = points[1].latitude()
+                    longitude = points[1].longitude()
+                }
+                routeBearing = loc1.bearingTo(loc2).toDouble()
+                startLat = points[0].latitude()
+                startLng = points[0].longitude()
+            }
+        }
+
+        // Fallback to current location or selected origin if route geometry failed
+        if (startLat == null || startLng == null) {
+            if (originPlace != null) {
+                startLat = originPlace?.latitude
+                startLng = originPlace?.longitude
+            } else {
+                mapplsMap?.locationComponent?.lastKnownLocation?.let { loc ->
+                    startLat = loc.latitude
+                    startLng = loc.longitude
+                }
+            }
+        }
+
+        // 2. Set Map Padding to shift "puck center" downwards for better forward visibility
+        // This ensures the origin is in the lower portion of the screen (recessed into horizon)
+        val mapHeight = findViewById<View>(R.id.map_view).height
+        if (mapHeight > 0) {
+            mapplsMap?.setPadding(0, (mapHeight * 0.45).toInt(), 0, 0)
+        }
+
+        // 3. Configure Camera for immersive 3D navigation perspective
+        if (startLat != null && startLng != null) {
+            val cameraPosition = com.mappls.sdk.maps.camera.CameraPosition.Builder()
+                .target(com.mappls.sdk.maps.geometry.LatLng(startLat, startLng))
+                .zoom(18.5)   // Street-level detail
+                .tilt(60.0)   // Maximum immersive 3D tilt
+                .bearing(routeBearing) // Facing direction of travel
+                .build()
+
+            mapplsMap?.animateCamera(
+                com.mappls.sdk.maps.camera.CameraUpdateFactory.newCameraPosition(cameraPosition),
+                1200, // Smooth transition to navigation view
+                object : com.mappls.sdk.maps.MapplsMap.CancelableCallback {
+                    override fun onCancel() {}
+                    override fun onFinish() {
+                        // After animation, lock tracking if it's current location
+                        if (isOriginCurrentLocation) {
+                            isFollowMode = true
+                            mapplsMap?.locationComponent?.cameraMode = com.mappls.sdk.maps.location.modes.CameraMode.TRACKING_GPS
+                        } else {
+                            isFollowMode = false
+                            mapplsMap?.locationComponent?.cameraMode = com.mappls.sdk.maps.location.modes.CameraMode.NONE
+                        }
+                    }
+                }
+            )
+        }
 
         // Hide views not needed during active navigation
         findViewById<View>(R.id.directions_header_card)?.visibility = View.GONE
@@ -2594,6 +2868,18 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     }
     
     private fun closeDirectionsUI() {
+        originPlace = null // Reset origin state locally when UI closes
+        isOriginCurrentLocation = true
+        isNavigating = false
+        isPreviewMode = false
+        isMapTilted = false
+        isFollowMode = true // Restore follow mode for map home
+        
+        // Reset map to flat view, reset padding, and start tracking again
+        mapplsMap?.setPadding(0, 0, 0, 0)
+        mapplsMap?.animateCamera(com.mappls.sdk.maps.camera.CameraUpdateFactory.tiltTo(0.0), 300)
+        mapplsMap?.locationComponent?.cameraMode = com.mappls.sdk.maps.location.modes.CameraMode.TRACKING_GPS
+        
         // Restore UI
         findViewById<View>(R.id.search_card).visibility = View.VISIBLE
         findViewById<View>(R.id.bottom_navigation)?.visibility = View.VISIBLE
@@ -2704,12 +2990,16 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         view.findViewById<View>(R.id.btn_detail_directions).setOnClickListener {
             isNavigatingFromSheet = true
             dialog.dismiss()
+            originPlace = null // Reset for new destination
+            isOriginCurrentLocation = true
             getDirections()
         }
         
         view.findViewById<View>(R.id.btn_detail_start).setOnClickListener {
             isNavigatingFromSheet = true
             dialog.dismiss()
+            originPlace = null // Reset for new destination
+            isOriginCurrentLocation = true
             getDirections(autoStart = true)
             Toast.makeText(this@MainActivity, "Starting navigation...", Toast.LENGTH_SHORT).show()
         }
@@ -2833,7 +3123,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             
             val lineOptions = LineOptions()
                 .points(latLngs)
-                .lineColor(if (isPrimary) "#2196F3" else "#A9A9A9") 
+                .lineColor(if (isPrimary) "#00B0FF" else "#A9A9A9") 
                 .lineWidth(if (isPrimary) 8f else 6f)
                 .lineOpacity(if (isPrimary) 1.0f else 0.8f)
             
@@ -2860,7 +3150,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                 }
             }
             
-            // Add ONLY the destination marker for the primary route (Red pin)
+            // Add markers ONLY for the primary route (Red/Green pins)
             if (isPrimary && latLngs.size > 1) {
                 val endPoint = latLngs.last()
                 val endMarkerOptions = MarkerOptions()
@@ -2869,13 +3159,23 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                     .icon(com.mappls.sdk.maps.annotations.IconFactory.getInstance(this)
                         .fromBitmap(createRouteMarkerBitmap(false)))
                 
-                val marker = mapplsMap?.addMarker(endMarkerOptions)
-                if (marker != null) {
-                    routeMetaMarkerIds.add(marker.id)
-                }
+                // Add Origin marker too (Green pin)
+                val startPoint = latLngs.first()
+                val startMarkerOptions = MarkerOptions()
+                    .position(startPoint)
+                    .title("Origin")
+                    .icon(com.mappls.sdk.maps.annotations.IconFactory.getInstance(this)
+                        .fromBitmap(createRouteMarkerBitmap(true)))
+
+                val endMarker = mapplsMap?.addMarker(endMarkerOptions)
+                val startMarker = mapplsMap?.addMarker(startMarkerOptions)
                 
+                if (endMarker != null) routeMetaMarkerIds.add(endMarker.id)
+                if (startMarker != null) routeMetaMarkerIds.add(startMarker.id)
                 // Fetch hazards ONLY for the primary route
-                fetchHazardsAlongRouteProgressive(points)
+                if (isPrimary) {
+                    fetchHazardsAlongRouteProgressive(points)
+                }
             }
         }
     }

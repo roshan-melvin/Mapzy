@@ -185,29 +185,26 @@
                     android:layout_height="44dp"
                     android:orientation="horizontal"
                     android:gravity="center_vertical"
-                    android:background="?attr/selectableItemBackground"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:paddingEnd="4dp">
+                    android:background="@drawable/bg_search_input_dark"
+                    android:layout_marginBottom="4dp"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp">
 
                     <TextView
-                        android:id="@+id/tv_origin_name"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
+                        android:id="@+id/et_origin_input"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:gravity="center_vertical"
+                        android:hint="Search origin"
                         android:text="Your location"
-                        android:textColor="#CCCCCC"
-                        android:textSize="14sp"
+                        android:textColor="#FFFFFF"
+                        android:textColorHint="#8E8E93"
+                        android:textSize="15sp"
+                        android:background="@android:color/transparent"
                         android:singleLine="true"
-                        android:ellipsize="end" />
-
+                        android:focusable="true"
+                        android:clickable="true" />
                 </LinearLayout>
-
-                <!-- Divider -->
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="1dp"
-                    android:background="#2A2A2A" />
 
                 <!-- Destination row -->
                 <LinearLayout
@@ -216,23 +213,25 @@
                     android:layout_height="44dp"
                     android:orientation="horizontal"
                     android:gravity="center_vertical"
-                    android:background="?attr/selectableItemBackground"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:paddingEnd="4dp">
+                    android:background="@drawable/bg_search_input_dark"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp">
 
                     <TextView
-                        android:id="@+id/tv_destination_name"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="Destination"
+                        android:id="@+id/et_destination_input"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:gravity="center_vertical"
+                        android:hint="Search destination"
+                        android:text="Anna Nagar"
                         android:textColor="#FFFFFF"
-                        android:textSize="17sp"
+                        android:textColorHint="#8E8E93"
+                        android:textSize="15sp"
                         android:textStyle="bold"
+                        android:background="@android:color/transparent"
                         android:singleLine="true"
-                        android:ellipsize="end" />
-
+                        android:focusable="true"
+                        android:clickable="true" />
                 </LinearLayout>
             </LinearLayout>
 
