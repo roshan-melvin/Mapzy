@@ -6,6 +6,10 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.location.Location
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import com.mappls.sdk.maps.Mappls
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
@@ -23,10 +27,14 @@ import com.mappls.sdk.maps.MapplsMap
 import com.mappls.sdk.maps.OnMapReadyCallback
 import com.mappls.sdk.maps.Style
 import com.mappls.sdk.maps.annotations.MarkerOptions
+import com.mappls.sdk.maps.annotations.Marker
 import com.mappls.sdk.maps.annotations.PolylineOptions
+import com.mappls.sdk.maps.annotations.IconFactory
 import com.mappls.sdk.maps.camera.CameraMapplsPinUpdateFactory
 import com.mappls.sdk.maps.camera.CameraUpdateFactory
 import com.mappls.sdk.maps.location.LocationComponentActivationOptions
+import com.mappls.sdk.maps.location.LocationComponentOptions
+import androidx.core.content.ContextCompat
 import com.mappls.sdk.maps.location.engine.LocationEngine
 import com.mappls.sdk.maps.location.engine.LocationEngineCallback
 import com.mappls.sdk.maps.location.engine.LocationEngineProvider
@@ -88,6 +96,7 @@ import com.swapmap.zwap.demo.viewmodel.HazardViewModel
 import android.graphics.BitmapFactory
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Matrix
 import android.graphics.Paint
 import android.widget.Button
 import java.lang.ref.WeakReference
@@ -108,7 +117,7 @@ import androidx.camera.core.ImageCaptureException
 import androidx.camera.lifecycle.ProcessCameraProvider
 import java.util.concurrent.Executors
 
-class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnInitListener {
+class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnInitListener, SensorEventListener {
 
     private var mapView: MapView? = null
     internal var mapplsMap: MapplsMap? = null  // internal for fragment access
@@ -117,6 +126,10 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     private var originPlace: ELocation? = null    // null means "Your location"
     private var isOriginCurrentLocation = true
     enum class SearchSource { EXPLORE, ORIGIN, DESTINATION }
+    private var originArrowMarker: Marker? = null  // Arrow marker for origin point
+    private var sensorManager: SensorManager? = null
+    private var rotationSensor: Sensor? = null
+    private var currentDeviceAzimuth: Float = 0f
     private var currentSearchSource = SearchSource.EXPLORE
     
     // Firestore Database
@@ -416,6 +429,10 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         Mappls.getInstance(this)
 
         setContentView(R.layout.activity_main)
+        
+        // Initialize sensor for arrow marker rotation
+        sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
+        rotationSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
 
         // ── Initialize HazardViewModel ────────────────────────────────────────
         hazardViewModel = ViewModelProvider(this)[HazardViewModel::class.java]
@@ -2126,6 +2143,141 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         }
     }
 
+    /**
+     * Apply custom arrow marker for navigation/start screen.
+     * The arrow rotates based on device compass heading.
+     * Only affects navigation screens - not home/search screens.
+     */
+    @SuppressLint("MissingPermission")
+    private fun applyNavigationLocationMarker() {
+        val style = mapplsMap?.style ?: return
+        val locationComponent = mapplsMap?.locationComponent ?: return
+        
+        Log.d("Zwap", "Applying navigation arrow with COMPASS rotation")
+        
+        // Temporarily disable to prevent glitch
+        locationComponent.isLocationComponentEnabled = false
+        
+        // CRITICAL: In COMPASS mode:
+        // - foregroundDrawable does NOT rotate (stays fixed)
+        // - bearingDrawable ROTATES with device compass
+        // So we make foreground transparent and use bearing for the arrow
+        val locationOptions = LocationComponentOptions.builder(this)
+            // Foreground - make transparent so only bearing drawable shows
+            .foregroundDrawable(R.drawable.ic_transparent_marker)
+            .foregroundDrawableStale(R.drawable.ic_transparent_marker)
+            // Bearing drawable - THIS ROTATES with device compass in COMPASS mode
+            .bearingDrawable(R.drawable.ic_navigation_arrow_marker)
+            // GPS drawable - rotates with movement direction in GPS mode
+            .gpsDrawable(R.drawable.ic_navigation_arrow_marker)
+            // Transparent background
+            .backgroundDrawable(R.drawable.ic_transparent_marker_bg)
+            .backgroundDrawableStale(R.drawable.ic_transparent_marker_bg)
+            // Hide accuracy circle
+            .accuracyColor(ContextCompat.getColor(this, android.R.color.transparent))
+            .accuracyAlpha(0.0f)
+            .build()
+        
+        val activationOptions = LocationComponentActivationOptions.builder(this, style)
+            .locationComponentOptions(locationOptions)
+            .build()
+        
+        locationComponent.activateLocationComponent(activationOptions)
+        locationComponent.isLocationComponentEnabled = true
+        
+        // Use COMPASS mode so bearingDrawable rotates with device orientation
+        locationComponent.renderMode = RenderMode.COMPASS
+        Log.d("Zwap", "Arrow marker applied with RenderMode.COMPASS")
+    }
+    
+    /**
+     * Reset location marker to default blue dot (for non-navigation screens).
+     */
+    @SuppressLint("MissingPermission")
+    private fun resetToDefaultLocationMarker() {
+        val style = mapplsMap?.style ?: return
+        val locationComponent = mapplsMap?.locationComponent ?: return
+        
+        // Create default LocationComponentOptions (no custom drawables)
+        val defaultOptions = LocationComponentOptions.builder(this)
+            // Restore default accuracy circle
+            .accuracyColor(ContextCompat.getColor(this, R.color.mappls_blue))
+            .accuracyAlpha(0.15f)
+            .build()
+        
+        // Reactivate with default options
+        val activationOptions = LocationComponentActivationOptions.builder(this, style)
+            .locationComponentOptions(defaultOptions)
+            .build()
+        
+        locationComponent.activateLocationComponent(activationOptions)
+        locationComponent.isLocationComponentEnabled = true
+        locationComponent.renderMode = RenderMode.COMPASS
+    }
+    /**
+     * Updates the origin arrow marker based on whether origin is current location or a custom place.
+     * - If origin is current location: Uses LocationComponent with rotation
+     * - If origin is a custom place: Creates a fixed Marker at that position
+     */
+    private fun updateOriginArrowMarker() {
+        // Remove existing origin arrow marker first
+        originArrowMarker?.let {
+            mapplsMap?.removeMarker(it)
+            originArrowMarker = null
+        }
+        
+        if (isOriginCurrentLocation) {
+            // Origin is current GPS location - use LocationComponent for rotation
+            applyNavigationLocationMarker()
+        } else {
+            // Origin is a custom place - reset LocationComponent to default and add fixed marker
+            resetToDefaultLocationMarker()
+            
+            originPlace?.let { place ->
+                val lat = place.latitude
+                val lng = place.longitude
+                if (lat != null && lng != null) {
+                    val arrowDrawable = ContextCompat.getDrawable(this, R.drawable.ic_navigation_arrow_marker)
+                    arrowDrawable?.let { drawable ->
+                        val bitmap = Bitmap.createBitmap(
+                            drawable.intrinsicWidth,
+                            drawable.intrinsicHeight,
+                            Bitmap.Config.ARGB_8888
+                        )
+                        val canvas = Canvas(bitmap)
+                        drawable.setBounds(0, 0, canvas.width, canvas.height)
+                        drawable.draw(canvas)
+                        
+                        originArrowMarker = mapplsMap?.addMarker(
+                            MarkerOptions()
+                                .position(com.mappls.sdk.maps.geometry.LatLng(lat, lng))
+                                .icon(IconFactory.getInstance(this).fromBitmap(bitmap))
+                        )
+                    }
+                }
+            }
+        }
+    }
+    
+    /**
+     * Removes origin arrow marker and resets location marker to default
+     */
+    private fun clearOriginArrowMarker() {
+        originArrowMarker?.let {
+            mapplsMap?.removeMarker(it)
+            originArrowMarker = null
+        }
+        resetToDefaultLocationMarker()
+    }
+    
+    /**
+     * Updates start button visibility - only show if origin is current location
+     */
+    private fun updateStartButtonVisibility() {
+        val startBtn = findViewById<View>(R.id.btn_start_navigation)
+        startBtn?.visibility = if (isOriginCurrentLocation) View.VISIBLE else View.GONE
+    }
+
     fun handleLocationUpdate(location: Location) {
         val speedKmh = (location.speed * 3.6).toInt()
 
@@ -2566,6 +2718,8 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             
             Toast.makeText(this, "Swapping origin and destination", Toast.LENGTH_SHORT).show()
             getDirections() // Reactively update map path
+            updateOriginArrowMarker() // Update arrow marker position
+            updateStartButtonVisibility() // Update start button visibility
         }
         
         // Setup menu button
@@ -2678,6 +2832,9 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         }
         findViewById<TextView>(R.id.tv_route_duration).text = durationText
         findViewById<TextView>(R.id.tv_route_distance).text = "%.1f km".format(distance / 1000.0)
+
+        // Set initial ETA based on current time + duration
+        updateETADisplay(duration)
         
         // Setup close button
         findViewById<View>(R.id.btn_close_directions)?.setOnClickListener {
@@ -2688,6 +2845,8 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         findViewById<View>(R.id.btn_start_navigation).setOnClickListener {
             startNavigation()
         }
+        // Only show start button if origin is current location
+        updateStartButtonVisibility()
         
         // Setup share button
         findViewById<View>(R.id.btn_share_route)?.setOnClickListener {
@@ -2716,7 +2875,13 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         isPreviewMode = false
         isNavigating = true
         isMapTilted = true
+        
+        // Update ETA for the start of navigation
+        currentPrimaryRoute?.duration()?.let { updateETADisplay(it) }
 
+        
+        // Apply custom arrow marker for navigation
+        updateOriginArrowMarker()
         Toast.makeText(this, "Navigation started!", Toast.LENGTH_SHORT).show()
 
         // 1. Calculate Initial Bearing from Route and Determine Start Point
@@ -2799,10 +2964,8 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         // Hide drag handle and collapse button for clean nav header
         findViewById<View>(R.id.panel_drag_handle)?.visibility = View.GONE
         findViewById<View>(R.id.btn_collapse_panel)?.visibility = View.GONE
-        // Show 100% hazard scan progress circle
+        // Show hazard scan progress circle (it will update dynamically via fetchNextHazardChunk)
         findViewById<View>(R.id.hazard_scan_progress_container)?.visibility = View.VISIBLE
-        findViewById<android.widget.ProgressBar>(R.id.hazard_scan_progress)?.progress = 100
-        findViewById<android.widget.TextView>(R.id.tv_hazard_scan_percent)?.text = "100%"
 
         // Reset FAB stack visibility and layer priority
         val fabStack = findViewById<View>(R.id.fab_stack_container)
@@ -2875,6 +3038,9 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         isMapTilted = false
         isFollowMode = true // Restore follow mode for map home
         
+        
+        // Reset to default blue dot marker
+        resetToDefaultLocationMarker()
         // Reset map to flat view, reset padding, and start tracking again
         mapplsMap?.setPadding(0, 0, 0, 0)
         mapplsMap?.animateCamera(com.mappls.sdk.maps.camera.CameraUpdateFactory.tiltTo(0.0), 300)
@@ -3159,19 +3325,21 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                     .icon(com.mappls.sdk.maps.annotations.IconFactory.getInstance(this)
                         .fromBitmap(createRouteMarkerBitmap(false)))
                 
-                // Add Origin marker too (Green pin)
-                val startPoint = latLngs.first()
-                val startMarkerOptions = MarkerOptions()
-                    .position(startPoint)
-                    .title("Origin")
-                    .icon(com.mappls.sdk.maps.annotations.IconFactory.getInstance(this)
-                        .fromBitmap(createRouteMarkerBitmap(true)))
-
                 val endMarker = mapplsMap?.addMarker(endMarkerOptions)
-                val startMarker = mapplsMap?.addMarker(startMarkerOptions)
-                
                 if (endMarker != null) routeMetaMarkerIds.add(endMarker.id)
-                if (startMarker != null) routeMetaMarkerIds.add(startMarker.id)
+                
+                // Only add green origin pin if origin is a custom place (not current location)
+                // Current location uses the arrow LocationComponent marker instead
+                if (!isOriginCurrentLocation) {
+                    val startPoint = latLngs.first()
+                    val startMarkerOptions = MarkerOptions()
+                        .position(startPoint)
+                        .title("Origin")
+                        .icon(com.mappls.sdk.maps.annotations.IconFactory.getInstance(this)
+                            .fromBitmap(createRouteMarkerBitmap(true)))
+                    val startMarker = mapplsMap?.addMarker(startMarkerOptions)
+                    if (startMarker != null) routeMetaMarkerIds.add(startMarker.id)
+                }
                 // Fetch hazards ONLY for the primary route
                 if (isPrimary) {
                     fetchHazardsAlongRouteProgressive(points)
@@ -3220,9 +3388,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     }
     
     private fun hideHazardScanProgress() {
-        // Keep progress visible at 100% as a permanent indicator
-        findViewById<android.widget.ProgressBar>(R.id.hazard_scan_progress)?.progress = 100
-        findViewById<android.widget.TextView>(R.id.tv_hazard_scan_percent)?.text = "100%"
+        findViewById<View>(R.id.hazard_scan_progress_container)?.visibility = View.GONE
     }
 
     /** Show the Trip Briefing card in "Scanning..." state immediately when route loads */
@@ -3242,6 +3408,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     /** Update the Trip Briefing card with the real hazard count summary */
     private fun showTripBriefingSummary() {
         val card = findViewById<View>(R.id.trip_briefing_card) ?: return
+        if (card.visibility != View.VISIBLE) return  // User already dismissed it
         
         val title = findViewById<TextView>(R.id.tv_trip_briefing_title) ?: return
         val detail = findViewById<TextView>(R.id.tv_trip_briefing_detail) ?: return
@@ -3267,11 +3434,18 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             detail.text = parts.joinToString(" • ") + " ahead on this route"
         }
 
-        // Card stays visible permanently - no auto dismiss
+        // Auto-dismiss after 8 seconds
+        card.postDelayed({
+            if (card.isAttachedToWindow) {
+                card.animate().alpha(0f).setDuration(400).withEndAction {
+                    card.visibility = View.GONE
+                }.start()
+            }
+        }, 8000)
     }
     
     private suspend fun fetchNextHazardChunk() {
-        if (!isNavigating || currentRoutePoints.isEmpty()) {
+        if (!(isNavigating || isPreviewMode) || currentRoutePoints.isEmpty()) {
             Log.d("Zwap", "Navigation stopped or no route points, stopping hazard fetch")
             withContext(Dispatchers.Main) { hideHazardScanProgress() }
             return
@@ -3413,7 +3587,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
 
             // Show community hazards IMMEDIATELY as they arrive (fast path)
             communityHazards = communityJob.await()
-            if (communityHazards.isNotEmpty() && isNavigating) {
+            if (communityHazards.isNotEmpty() && (isNavigating || isPreviewMode)) {
                 withContext(Dispatchers.Main) { displayRouteHazards(communityHazards) }
             }
 
@@ -3424,7 +3598,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         // Display merged final results
         val allHazards = (osmHazards + communityHazards)
             .distinctBy { "${(it.lat * 1000).toInt()}_${(it.lon * 1000).toInt()}_${it.type}" }
-        if (isNavigating && allHazards.isNotEmpty()) {
+        if ((isNavigating || isPreviewMode) && allHazards.isNotEmpty()) {
             withContext(Dispatchers.Main) { displayRouteHazards(allHazards) }
         }
 
@@ -3436,9 +3610,9 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         kotlinx.coroutines.delay(100)
         
         // Fetch next chunk if still navigating
-        if (isNavigating && currentHazardFetchIndex < currentRoutePoints.size - 1) {
+        if ((isNavigating || isPreviewMode) && currentHazardFetchIndex < currentRoutePoints.size - 1) {
             fetchNextHazardChunk()
-        } else if (isNavigating) {
+        } else if (isNavigating || isPreviewMode) {
             // Completed scanning  
             withContext(Dispatchers.Main) {
                 updateHazardScanProgress(100)
@@ -3525,6 +3699,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     }
     
     private fun displayRouteHazards(hazards: List<RouteHazard>) {
+        if (!(isNavigating || isPreviewMode)) return
         // Show hazard markers during both preview and active navigation
         
         hazards.forEach { hazard ->
@@ -3560,6 +3735,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                 )
                 
                 osmFeatures.add(osmFeature)
+                marker?.let { featureToMarkerMap[osmFeature.id] = it }
                 
                 Log.d("Zwap", "Added ${hazard.type} marker + alert at (${hazard.lat}, ${hazard.lon})")
             } catch (e: Exception) {
@@ -3642,8 +3818,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         // Hide progress and briefing card
         hideHazardScanProgress()
         runOnUiThread {
-            val card = findViewById<View>(R.id.trip_briefing_card)
-            card?.visibility = View.GONE
+            findViewById<View>(R.id.trip_briefing_card)?.visibility = View.GONE
         }
         
         // Clear hazard points data
@@ -3654,20 +3829,36 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             map.markers.filter { routeHazardMarkerIds.contains(it.id) }.forEach { 
                 map.removeMarker(it) 
             }
-            // Clear route meta markers (labels/pins)
-            map.markers.filter { routeMetaMarkerIds.contains(it.id) }.forEach { 
-                map.removeMarker(it) 
+        }
+        
+        // Remove route-specific features from the global proximity alert list
+        // and its association map to prevent stale alerts and memory leaks
+        osmFeatures.removeAll { it.tags.containsKey("route_hazard") }
+        val iterator = featureToMarkerMap.entries.iterator()
+        while (iterator.hasNext()) {
+            val entry = iterator.next()
+            if (routeHazardMarkerIds.contains(entry.value.id)) {
+                iterator.remove()
             }
         }
+        
         routeHazardMarkerIds.clear()
-        routeMetaMarkerIds.clear()
-        markerToRouteMap.clear()
-        allRouteGeometries.clear()
-        isNavigating = false
     }
     
     // Data classes for route hazards
     data class RouteHazard(val lat: Double, val lon: Double, val type: HazardType, val name: String)
+    
+    private fun updateETADisplay(durationSeconds: Double) {
+        try {
+            val calendar = java.util.Calendar.getInstance()
+            calendar.add(java.util.Calendar.SECOND, durationSeconds.toInt())
+            val etaTime = java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(calendar.time)
+            findViewById<TextView>(R.id.tv_route_eta)?.text = "ETA $etaTime"
+            Log.d("Zwap", "Updated ETA display to: $etaTime")
+        } catch (e: Exception) {
+            Log.e("Zwap", "Error updating ETA", e)
+        }
+    }
     
     enum class HazardType {
         SPEED_CAMERA, HAZARD, TOLL, TRAFFIC_CALMING, OTHER, COMMUNITY_VERIFIED_HAZARD, COMMUNITY_REVALIDATE
@@ -3798,6 +3989,56 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         if (status == TextToSpeech.SUCCESS) tts?.setLanguage(Locale.US)
     }
 
+    // SensorEventListener implementation for arrow marker rotation
+    override fun onSensorChanged(event: SensorEvent?) {
+        if (event?.sensor?.type == Sensor.TYPE_ROTATION_VECTOR) {
+            val rotationMatrix = FloatArray(9)
+            SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
+            val orientation = FloatArray(3)
+            SensorManager.getOrientation(rotationMatrix, orientation)
+            val azimuthDegrees = Math.toDegrees(orientation[0].toDouble()).toFloat()
+            val newAzimuth = (azimuthDegrees + 360) % 360
+            
+            // Only update if rotation changed significantly (>5 degrees) to reduce redraws
+            if (!isOriginCurrentLocation && kotlin.math.abs(newAzimuth - currentDeviceAzimuth) > 5f) {
+                currentDeviceAzimuth = newAzimuth
+                updateArrowMarkerRotation()
+            }
+        }
+    }
+    
+    private fun updateArrowMarkerRotation() {
+        originArrowMarker?.let { marker ->
+            val position = marker.position
+            mapplsMap?.removeMarker(marker)
+            
+            val arrowDrawable = ContextCompat.getDrawable(this, R.drawable.ic_navigation_arrow_marker) ?: return
+            val originalBitmap = Bitmap.createBitmap(
+                arrowDrawable.intrinsicWidth,
+                arrowDrawable.intrinsicHeight,
+                Bitmap.Config.ARGB_8888
+            )
+            val canvas = Canvas(originalBitmap)
+            arrowDrawable.setBounds(0, 0, canvas.width, canvas.height)
+            arrowDrawable.draw(canvas)
+            
+            // Rotate bitmap
+            val matrix = Matrix()
+            matrix.postRotate(currentDeviceAzimuth, originalBitmap.width / 2f, originalBitmap.height / 2f)
+            val rotatedBitmap = Bitmap.createBitmap(originalBitmap, 0, 0, originalBitmap.width, originalBitmap.height, matrix, true)
+            
+            originArrowMarker = mapplsMap?.addMarker(
+                MarkerOptions()
+                    .position(position)
+                    .icon(IconFactory.getInstance(this).fromBitmap(rotatedBitmap))
+            )
+        }
+    }
+    
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+        // Not needed for rotation
+    }
+
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == 201 && grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
@@ -3818,6 +4059,8 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     override fun onResume() {
         super.onResume()
         mapView?.onResume()
+        // Register rotation sensor for arrow marker rotation
+        rotationSensor?.let { sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_UI) }
         // Register wake-word receiver and re-start service if user has it enabled
         LocalBroadcastManager.getInstance(this).registerReceiver(
             wakeWordReceiver,
@@ -3837,6 +4080,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     override fun onPause() {
         super.onPause()
         mapView?.onPause()
+        sensorManager?.unregisterListener(this)
         LocalBroadcastManager.getInstance(this).unregisterReceiver(wakeWordReceiver)
     }
 
