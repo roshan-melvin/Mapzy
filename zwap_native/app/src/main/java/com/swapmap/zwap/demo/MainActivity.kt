@@ -139,6 +139,8 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     private val callback = LocationChangeCallback(this)
     
     private var isFollowMode = true
+    // FAB Layout Manager for per-page FAB state management
+    private lateinit var fabLayoutManager: FabLayoutManager
     private var tts: TextToSpeech? = null
     
     private var currentRoute: DirectionsResponse? = null
@@ -185,7 +187,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     // Guard: prevents a second parallel fetch from starting while one is already in flight.
     private var isFetchInProgress = false
     private var osmLoadingAnimator: ObjectAnimator? = null
-    private val routeHazardMarkerIds = mutableListOf<Long>()
+    private val routeHazardMarkers = mutableListOf<com.mappls.sdk.maps.annotations.Marker>()
     private var isNavigating = false
     private var isPreviewMode = false
     private var isMapTilted = false  // Tracks 2D (false) vs 3D (true) tilt state
@@ -193,6 +195,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     private var currentHazardFetchIndex = 0  // Track which chunk we're fetching
     private var hazardFetchJob: kotlinx.coroutines.Job? = null  // Job to cancel if route changes
     private var totalRouteDistanceMeters = 0.0  // Total route distance for progress calculation
+    private var isScanningHazards = false // Flag to prevent battery updates from overwriting scanning progress
     
     // Interactive Route selection maps
     private val markerToRouteMap = mutableMapOf<Long, DirectionsRoute>()
@@ -227,6 +230,25 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     // Custom SpeechRecognizer
     private var customSpeechRecognizer: android.speech.SpeechRecognizer? = null
     private var isVoiceAnimating = false
+
+    // ── Battery Receiver ──────────────────────────────────────────────────────
+    private val batteryReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+            val level = intent?.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1) ?: -1
+            val scale = intent?.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, -1) ?: -1
+            if (level != -1 && scale != -1) {
+                val batteryPct = (level * 100 / scale.toFloat()).toInt()
+                if (!isScanningHazards) {
+                    updateBatteryDisplay(batteryPct)
+                }
+            }
+        }
+    }
+
+    private fun updateBatteryDisplay(percent: Int) {
+        findViewById<android.widget.ProgressBar>(R.id.progress_battery)?.progress = percent
+        findViewById<android.widget.TextView>(R.id.tv_active_battery_pct)?.text = "$percent%"
+    }
 
     // ── Wake-Word Receiver ────────────────────────────────────────────────────
     // Receives a local broadcast from WakeWordService when "Hey Mapzy" is heard,
@@ -430,6 +452,10 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
 
         setContentView(R.layout.activity_main)
         
+        
+        // Initialize FAB layout manager for handling FAB positions per page state
+        fabLayoutManager = FabLayoutManager(this)
+        fabLayoutManager.setPageState(PageState.HOME_EXPLORE, immediate = true)
         // Initialize sensor for arrow marker rotation
         sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
         rotationSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
@@ -622,6 +648,13 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         listenToFirebaseMapHazards()
         // Setup hazard alert panel
         setupHazardAlertPanel()
+        
+        // Ensure Explore FABs are visible at start
+        findViewById<View>(R.id.btn_toggle_osm)?.visibility = View.VISIBLE
+        findViewById<View>(R.id.fab_compass)?.visibility = View.VISIBLE
+        findViewById<View>(R.id.fab_recenter)?.visibility = View.VISIBLE
+        findViewById<View>(R.id.speed_limit_widget)?.visibility = View.VISIBLE
+        findViewById<View>(R.id.fab_stack_container)?.visibility = View.VISIBLE
         findViewById<View>(R.id.search_trigger).setOnClickListener { showSearchOverlay(null) }
         findViewById<View>(R.id.btn_voice_search).setOnClickListener { performVoiceSearch() }
         findViewById<View>(R.id.btn_directions).setOnClickListener { 
@@ -853,11 +886,9 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                     fragmentContainer.visibility = View.GONE
                     mapView?.visibility = View.VISIBLE
                     findViewById<View>(R.id.search_card)?.visibility = View.VISIBLE
-                    findViewById<View>(R.id.fab_recenter)?.visibility = View.VISIBLE
-                    findViewById<View>(R.id.fab_compass)?.visibility = View.VISIBLE
-                    findViewById<View>(R.id.speed_limit_widget)?.visibility = View.VISIBLE
-                    findViewById<View>(R.id.fab_ai_voice)?.visibility = View.VISIBLE
-                    findViewById<View>(R.id.fab_stack_container)?.visibility = View.VISIBLE
+                    // FabLayoutManager controls FAB visibility — no manual sets to avoid all-FABs flash
+                    fabLayoutManager.setPageState(PageState.HOME_EXPLORE)
+                    fabLayoutManager.forceUpdateLayout()
                     Log.d("Zwap", "Switched to Explore tab")
                     true
                 }
@@ -2341,14 +2372,30 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             // Only trigger NEW alerts if not alerted yet and within distance
             if (!alertedHazardIds.contains(feature.id) && distance < HAZARD_ALERT_DISTANCE) {
                 alertedHazardIds.add(feature.id)
+                var title = ""
+                var subtitle = ""
                 val msg = when (feature.type) {
-                    FeatureType.SPEED_CAMERA -> "Speed camera ahead in ${distance.toInt()} meters"
-                    FeatureType.TRAFFIC_CALMING -> "Speed bump ahead in ${distance.toInt()} meters"
-                    FeatureType.STOP_SIGN -> "Stop sign ahead in ${distance.toInt()} meters"
-                    FeatureType.GIVE_WAY -> "Give way sign ahead in ${distance.toInt()} meters"
-                    FeatureType.COMMUNITY_VERIFIED -> "Community verified hazard ahead in ${distance.toInt()} meters"
-                    FeatureType.COMMUNITY_NEEDS_REVALIDATION -> "Reported hazard ahead in ${distance.toInt()} meters, needs verification"
-                    else -> "Hazard ahead in ${distance.toInt()} meters"
+                    FeatureType.SPEED_CAMERA -> { title="SPEED CAMERA AHEAD"; subtitle="in ${distance.toInt()} meters"; "Speed camera ahead in ${distance.toInt()} meters" }
+                    FeatureType.TRAFFIC_CALMING -> { title="SPEED BUMP AHEAD"; subtitle="in ${distance.toInt()} meters"; "Speed bump ahead in ${distance.toInt()} meters" }
+                    FeatureType.STOP_SIGN -> { title="STOP SIGN AHEAD"; subtitle="in ${distance.toInt()} meters"; "Stop sign ahead in ${distance.toInt()} meters" }
+                    FeatureType.GIVE_WAY -> { title="GIVE WAY AHEAD"; subtitle="in ${distance.toInt()} meters"; "Give way sign ahead in ${distance.toInt()} meters" }
+                    FeatureType.COMMUNITY_VERIFIED -> { title="HAZARD AHEAD"; subtitle="Community verified, in ${distance.toInt()} meters"; "Community verified hazard ahead in ${distance.toInt()} meters" }
+                    FeatureType.COMMUNITY_NEEDS_REVALIDATION -> { title="REPORTED HAZARD"; subtitle="in ${distance.toInt()} meters"; "Reported hazard ahead in ${distance.toInt()} meters, needs verification" }
+                    else -> { title="HAZARD AHEAD"; subtitle="in ${distance.toInt()} meters"; "Hazard ahead in ${distance.toInt()} meters" }
+                }
+                
+                if (isNavigating) {
+                    runOnUiThread {
+                        val banner = findViewById<View>(R.id.nav_hazard_banner)
+                        findViewById<TextView>(R.id.tv_hazard_banner_title)?.text = title
+                        findViewById<TextView>(R.id.tv_hazard_banner_subtitle)?.text = subtitle
+                        banner?.visibility = View.VISIBLE
+                        
+                        // Auto-hide banner after 10 seconds
+                        banner?.postDelayed({
+                            banner.visibility = View.GONE
+                        }, 10000)
+                    }
                 }
                 Log.d("Zwap", "HAZARD ALERT: $msg")
                 if (!isPreviewMode) {
@@ -2547,13 +2594,22 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                     extractHazardsFromRoute(primaryRoute.legs()?.get(0)?.steps())
 
                     // Show directions UI (Google Maps style)
-                    showDirectionsUI(primaryRoute.distance()!!, primaryRoute.duration()!!)
-                    showTripBriefingScanning()  // Show briefing card in scanning state
+                    // If we are auto-starting, suppress the preview UI cards (prevents glitch)
+                    if (autoStart) {
+                        isNavigating = true
+                    }
+                    
+                    showDirectionsUI(primaryRoute.distance()!!, primaryRoute.duration()!!, skipUI = autoStart)
+                    if (!autoStart) showTripBriefingScanning()  // Skip when jumping straight to navigation
 
                     Toast.makeText(this@MainActivity, "Route ready!", Toast.LENGTH_SHORT).show()
 
                     if (autoStart) {
-                        startNavigation()
+                        // Start navigation without delay — FABs already set to START_NAVIGATION
+                        // by prepareStartPageTransition called inside showDirectionsUI(skipUI=true)
+                        if (!isDestroyed && !isFinishing) {
+                            startNavigation()
+                        }
                     }
                 } else {
                     Log.e("Zwap", "No routes found in response")
@@ -2570,37 +2626,42 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     private var isPanelCollapsed = false
 
     private fun repositionFabsAbovePanel() {
+        // Do not run during Start/Navigation (no panel on that page)
+        if (fabLayoutManager.getCurrentState() == PageState.START_NAVIGATION) return
         val panel = findViewById<View>(R.id.directions_bottom_panel) ?: return
         val bottomNav = findViewById<View>(R.id.bottom_navigation) ?: return
-        // Measure synchronously — caller must ensure panel is laid out
+        val fabStack = findViewById<View>(R.id.fab_stack_container)
+        val aiVoice = findViewById<View>(R.id.fab_ai_voice)
+        val speedWidget = findViewById<View>(R.id.speed_limit_widget)
+
+        // Measure synchronously — caller must ensure panel is laid out.
+        // FABs stay anchored to ALIGN_PARENT_BOTTOM (set in XML).
+        // We only use translationY to lift them above the panel — no layout-param changes.
         val doReposition = Runnable {
             val panelHeight = panel.height
-            // If bottom nav is hidden, we treat its height as 0 for translation purposes
+            // When bottom_nav is GONE its height is 0 — correct for translationY calc
             val navHeight = if (bottomNav.visibility == View.VISIBLE) bottomNav.height else 0
+
+            if (panelHeight == 0) return@Runnable
+            // FABs have marginBottom=96dp in XML, so lift formula must subtract that base
+            // margin so the visual gap above the panel is just `clearance` dp, not 96+gap dp.
+            val fabBaseMargin = (96 * resources.displayMetrics.density)
+            val clearance = (8 * resources.displayMetrics.density)
+            val targetTranslationY = -(panelHeight.toFloat() - navHeight.toFloat() - fabBaseMargin + clearance)
             
-            if (panelHeight == 0) return@Runnable  // not yet measured, skip
-            val gap = (12 * resources.displayMetrics.density)  // Increased gap for visibility
-            
-            // We translate the FABs up by exactly the height of the panel (minus any offset from bottom nav)
-            val targetTranslation = -(panelHeight.toFloat() - navHeight.toFloat() + gap)
-            
-            val fabStack = findViewById<View>(R.id.fab_stack_container)
-            val aiVoice = findViewById<View>(R.id.fab_ai_voice)
-            val speedWidget = findViewById<View>(R.id.speed_limit_widget)
-            
-            // Ensure they are on the top layer (no "underlay")
+            // Bring to front
             fabStack?.bringToFront()
             aiVoice?.bringToFront()
             speedWidget?.bringToFront()
             
-            fabStack?.animate()?.translationY(targetTranslation)?.setDuration(200)?.start()
-            aiVoice?.animate()?.translationY(targetTranslation)?.setDuration(200)?.start()
-            speedWidget?.animate()?.translationY(targetTranslation)?.setDuration(200)?.start()
+            // Vertical translation
+            fabStack?.animate()?.translationY(targetTranslationY)?.setDuration(200)?.start()
+            aiVoice?.animate()?.translationY(targetTranslationY)?.setDuration(200)?.start()
+            speedWidget?.animate()?.translationY(targetTranslationY)?.setDuration(200)?.start()
         }
         if (panel.height > 0) {
             doReposition.run()
         } else {
-            // First time — panel not measured yet, wait for layout
             panel.addOnLayoutChangeListener(object : View.OnLayoutChangeListener {
                 override fun onLayoutChange(v: View, l: Int, t: Int, r: Int, b: Int,
                     ol: Int, ot: Int, or2: Int, ob: Int) {
@@ -2612,13 +2673,22 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     }
 
     private fun resetFabPositions() {
+        // FABs are anchored by XML (ALIGN_PARENT_BOTTOM + fixed margins).
+        // Reset only translationY — no layout-param changes needed.
         listOf(R.id.fab_stack_container, R.id.fab_ai_voice, R.id.speed_limit_widget).forEach { id ->
-            findViewById<View>(id)?.animate()?.translationY(0f)?.setDuration(250)?.start()
+            findViewById<View>(id)?.translationY = 0f
         }
     }
 
-    private fun showDirectionsUI(distance: Double, duration: Double) {
+    private fun showDirectionsUI(distance: Double, duration: Double, skipUI: Boolean = false) {
         Log.d("Zwap", "showDirectionsUI called. distance=$distance, isOriginCurrentLocation=$isOriginCurrentLocation")
+        
+        // Set FAB state: DIRECTIONS normally, START_NAVIGATION immediately when skipUI
+        if (skipUI) {
+            fabLayoutManager.prepareStartPageTransition {}
+        } else {
+            fabLayoutManager.setPageState(PageState.DIRECTIONS)
+        }
         
         // Hide bottom navigation
         findViewById<View>(R.id.bottom_navigation)?.visibility = View.GONE
@@ -2631,11 +2701,19 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         findViewById<View>(R.id.hazard_alert_panel)?.visibility = View.GONE
         findViewById<View>(R.id.trip_briefing_card)?.visibility = View.GONE
         
-        // 1. IMMEDIATELY Force reset tilt and stop location tracking
+        // 1. IMPROVED: Setup map for active navigation context (Stable margins)
+        val mapParams = findViewById<View>(R.id.map_view).layoutParams as? ViewGroup.MarginLayoutParams
+        mapParams?.let {
+            it.topMargin = 0 // Header card floats over the map
+            it.bottomMargin = (85 * resources.displayMetrics.density).toInt() // Room for bottom card
+            findViewById<View>(R.id.map_view).layoutParams = it
+        }
+        
+        mapplsMap?.setPadding(0, 0, 0, 0)
         isMapTilted = false
         isFollowMode = false
         mapplsMap?.locationComponent?.cameraMode = com.mappls.sdk.maps.location.modes.CameraMode.NONE
-        mapplsMap?.animateCamera(com.mappls.sdk.maps.camera.CameraUpdateFactory.tiltTo(0.0), 200)
+        mapplsMap?.animateCamera(com.mappls.sdk.maps.camera.CameraUpdateFactory.tiltTo(0.0), 300)
 
         // 2. Resolve Target LatLng (Coord-aware or PIN-aware fallback)
         var targetLatLng: com.mappls.sdk.maps.geometry.LatLng? = null
@@ -2667,9 +2745,24 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             }
         }
 
-        // 3. Execute Unified Preview Camera Update
-        if (targetLatLng != null) {
-            Log.d("Zwap", "Executing preview camera move to target...")
+        // 3. Execute Unified Preview Camera Update (Standard "Direction Page" Overview)
+        val routePoints = currentPrimaryRoute?.geometry()?.let { geometry ->
+            PolylineUtils.decode(geometry, com.mappls.sdk.services.utils.Constants.PRECISION_6)
+        }
+        
+        if (routePoints != null && routePoints.isNotEmpty()) {
+            val builder = com.mappls.sdk.maps.geometry.LatLngBounds.Builder()
+            routePoints.forEach { pt -> builder.include(com.mappls.sdk.maps.geometry.LatLng(pt.latitude(), pt.longitude())) }
+            
+            val bounds = builder.build()
+            val zoomPadding = (60 * resources.displayMetrics.density).toInt()
+            
+            Log.d("Zwap", "Zooming to route bounds overview")
+            mapplsMap?.animateCamera(
+                com.mappls.sdk.maps.camera.CameraUpdateFactory.newLatLngBounds(bounds, zoomPadding), 1000
+            )
+        } else if (targetLatLng != null) {
+            Log.d("Zwap", "Executing preview camera move to target (Fallback)...")
             mapplsMap?.animateCamera(
                 com.mappls.sdk.maps.camera.CameraUpdateFactory.newCameraPosition(
                     com.mappls.sdk.maps.camera.CameraPosition.Builder()
@@ -2686,8 +2779,10 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             mapplsMap?.animateCamera(com.mappls.sdk.maps.camera.CameraUpdateFactory.tiltTo(0.0), 300)
         }
         
-        // Show directions header card
-        findViewById<View>(R.id.directions_header_card).visibility = View.VISIBLE
+        // Show directions header card (only if not skipping UI for direct navigation)
+        if (!skipUI) {
+            findViewById<View>(R.id.directions_header_card).visibility = View.VISIBLE
+        }
         
         val etOrigin = findViewById<TextView>(R.id.et_origin_input)
         val etDest = findViewById<TextView>(R.id.et_destination_input)
@@ -2752,7 +2847,9 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         findViewById<View>(R.id.btn_stop_navigation)?.visibility = View.GONE
 
         // Show directions bottom panel and scan progress
-        panel.visibility = View.VISIBLE
+        if (!skipUI) {
+            panel.visibility = View.VISIBLE
+        }
         findViewById<View>(R.id.hazard_scan_progress_container)?.visibility = View.VISIBLE
         
         // Ensure FABs are on top (no underlay behind panel)
@@ -2770,7 +2867,16 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         findViewById<android.widget.ImageButton>(R.id.btn_collapse_panel)?.rotation = 0f
         isPanelCollapsed = false
 
-        repositionFabsAbovePanel()
+        // Only reposition FABs above panel when the panel is actually visible
+        if (!skipUI) {
+            repositionFabsAbovePanel()
+            findViewById<View>(R.id.directions_bottom_panel_container)?.postDelayed({
+                repositionFabsAbovePanel()
+            }, 150)
+            findViewById<View>(R.id.directions_bottom_panel_container)?.postDelayed({
+                repositionFabsAbovePanel()
+            }, 400)
+        }
 
         // DEBUG: Log FAB positions after repositioning
         val fabDbg = findViewById<View>(R.id.fab_stack_container)
@@ -2824,6 +2930,18 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             })
         }
         
+        // Setup initial directions text
+        val firstStep = currentPrimaryRoute?.legs()?.firstOrNull()?.steps()?.firstOrNull { 
+            val instr = it.maneuver()?.instruction()?.lowercase() ?: ""
+            instr.isNotEmpty() && !instr.contains("depart") 
+        }
+        val instruction = firstStep?.maneuver()?.instruction() ?: "Continue on route"
+        val distToTurn = firstStep?.distance()?.let {
+            if (it < 1000) "in ${it.toInt()}m" else "in %.1fkm".format(it / 1000.0)
+        } ?: "in 0m"
+        findViewById<TextView>(R.id.tv_active_turn_instruction)?.text = instruction
+        findViewById<TextView>(R.id.tv_active_turn_distance)?.text = distToTurn
+
         val durationMin = (duration / 60.0).toInt()
         val durationText = if (durationMin >= 60) {
             "${durationMin / 60} hr ${durationMin % 60} min"
@@ -2831,7 +2949,10 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             "$durationMin min"
         }
         findViewById<TextView>(R.id.tv_route_duration).text = durationText
-        findViewById<TextView>(R.id.tv_route_distance).text = "%.1f km".format(distance / 1000.0)
+        findViewById<TextView>(R.id.tv_active_time)?.text = durationText
+        val distText = "%.1f km".format(distance / 1000.0)
+        findViewById<TextView>(R.id.tv_route_distance).text = distText
+        findViewById<TextView>(R.id.tv_active_distance)?.text = distText
 
         // Set initial ETA based on current time + duration
         updateETADisplay(duration)
@@ -2872,8 +2993,11 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     }
     
     private fun startNavigation() {
-        isPreviewMode = false
         isNavigating = true
+        isPreviewMode = false
+        
+        // Pre-compose Start page FABs via post-frame callback to prevent transition flash
+        fabLayoutManager.prepareStartPageTransition {}
         isMapTilted = true
         
         // Update ETA for the start of navigation
@@ -2961,60 +3085,59 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         findViewById<View>(R.id.bottom_navigation)?.visibility = View.GONE
         findViewById<View>(R.id.hazard_alert_panel)?.visibility = View.GONE
         findViewById<View>(R.id.trip_briefing_card)?.visibility = View.GONE
-        // Hide drag handle and collapse button for clean nav header
-        findViewById<View>(R.id.panel_drag_handle)?.visibility = View.GONE
-        findViewById<View>(R.id.btn_collapse_panel)?.visibility = View.GONE
-        // Show hazard scan progress circle (it will update dynamically via fetchNextHazardChunk)
-        findViewById<View>(R.id.hazard_scan_progress_container)?.visibility = View.VISIBLE
+        findViewById<View>(R.id.directions_bottom_panel)?.visibility = View.GONE // completely hide old panel
 
-        // Reset FAB stack visibility and layer priority
-        val fabStack = findViewById<View>(R.id.fab_stack_container)
-        fabStack?.let { stack ->
-            stack.translationY = 0f
-            stack.visibility = View.VISIBLE
-            stack.bringToFront()
+        // Show our new Navigation Top and Bottom panels
+        findViewById<View>(R.id.nav_active_top_panel)?.visibility = View.VISIBLE
+        findViewById<View>(R.id.nav_active_bottom_bar)?.visibility = View.VISIBLE
+
+        // Set up the Active Bottom Bar actions
+        findViewById<View>(R.id.btn_nav_active_menu)?.setOnClickListener {
+            Toast.makeText(this, "Menu coming soon", Toast.LENGTH_SHORT).show()
         }
 
-        // Hide others in the stack
+        findViewById<View>(R.id.btn_nav_active_search)?.setOnClickListener {
+            showSearchOverlay(null)
+        }
+        findViewById<View>(R.id.btn_nav_active_notes)?.setOnClickListener {
+            showNoteBottomSheet()
+        }
+        findViewById<View>(R.id.btn_nav_active_exit)?.setOnClickListener {
+            closeDirectionsUI()
+        }
+        
+        // Setup hazard banner dismiss
+        findViewById<View>(R.id.btn_dismiss_hazard_banner)?.setOnClickListener {
+            findViewById<View>(R.id.nav_hazard_banner)?.visibility = View.GONE
+        }
+
+        // FAB visibility handled by FabLayoutManager.prepareStartPageTransition()
+        // START_NAVIGATION state: only speedWidget visible, fabStack+voice GONE
         findViewById<View>(R.id.btn_toggle_osm)?.visibility = View.GONE
         findViewById<View>(R.id.fab_compass)?.visibility = View.GONE
         
-        // Ensure navigation essentials are visible and on top layer
+        // Restore the blue floating recenter button
         findViewById<View>(R.id.fab_recenter)?.apply {
             visibility = View.VISIBLE
             bringToFront()
         }
-        findViewById<View>(R.id.fab_ai_voice)?.apply {
-            visibility = View.VISIBLE
-            translationY = 0f
-            bringToFront()
-        }
+
         findViewById<View>(R.id.speed_limit_widget)?.apply {
             visibility = View.VISIBLE
             translationY = 0f
             bringToFront()
         }
 
-        // Animate bottom panel from bottom to top with smooth slide
-        val panel = findViewById<View>(R.id.directions_bottom_panel)
-        val params = panel.layoutParams as RelativeLayout.LayoutParams
-        params.removeRule(RelativeLayout.ALIGN_PARENT_BOTTOM)
-        params.removeRule(RelativeLayout.ABOVE)
-        params.addRule(RelativeLayout.ALIGN_PARENT_TOP)
-        panel.layoutParams = params
-        // Switch background to flush-top (flat top, rounded bottom)
-        panel.setBackgroundResource(R.drawable.bg_nav_card_top)
-
-        // Adjust map margin to fill bottom bar space
+        // Adjust map margin to fill bottom bar space and make room for opaque top header
         val mapParams = findViewById<View>(R.id.map_view).layoutParams as? ViewGroup.MarginLayoutParams
         mapParams?.let {
-            it.bottomMargin = 0
+            it.topMargin = (165 * resources.displayMetrics.density).toInt() // Clear space for top active nav panel
+            it.bottomMargin = (85 * resources.displayMetrics.density).toInt() // Clear space for nav bottom bar
             findViewById<View>(R.id.map_view).layoutParams = it
         }
 
-        // Show speed widget and stop button
-        findViewById<View>(R.id.speed_limit_widget)?.visibility = View.VISIBLE
-        findViewById<View>(R.id.btn_stop_navigation)?.visibility = View.VISIBLE
+        // Hide old big red stop button
+        findViewById<View>(R.id.btn_stop_navigation)?.visibility = View.GONE
 
         // DEBUG: Log FAB positions after startNavigation
         val fabDbgN = findViewById<View>(R.id.fab_stack_container)
@@ -3030,6 +3153,23 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         }
     }
     
+    private fun showNoteBottomSheet() {
+        val builder = android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+        builder.setTitle("Route Notes")
+        builder.setMessage("Enter a short memo or note for this route.")
+        
+        val input = android.widget.EditText(this)
+        input.hint = "Type here..."
+        builder.setView(input)
+        
+        builder.setPositiveButton("Save") { dialog, _ ->
+            Toast.makeText(this, "Note saved: ${input.text}", Toast.LENGTH_SHORT).show()
+            dialog.dismiss()
+        }
+        builder.setNegativeButton("Cancel") { dialog, _ -> dialog.dismiss() }
+        builder.show()
+    }
+    
     private fun closeDirectionsUI() {
         originPlace = null // Reset origin state locally when UI closes
         isOriginCurrentLocation = true
@@ -3037,8 +3177,9 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         isPreviewMode = false
         isMapTilted = false
         isFollowMode = true // Restore follow mode for map home
-        
-        
+        // Use FabLayoutManager to reset FAB state to Home
+        fabLayoutManager.setPageState(PageState.HOME_EXPLORE)
+        fabLayoutManager.forceUpdateLayout()
         // Reset to default blue dot marker
         resetToDefaultLocationMarker()
         // Reset map to flat view, reset padding, and start tracking again
@@ -3049,32 +3190,22 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         // Restore UI
         findViewById<View>(R.id.search_card).visibility = View.VISIBLE
         findViewById<View>(R.id.bottom_navigation)?.visibility = View.VISIBLE
+        findViewById<View>(R.id.nav_active_top_panel)?.visibility = View.GONE
+        findViewById<View>(R.id.nav_active_bottom_bar)?.visibility = View.GONE
+        findViewById<View>(R.id.nav_hazard_banner)?.visibility = View.GONE
 
-        // Ensure FAB stack anchor is ABOVE bottom_navigation (safety restore)
-        val fabStack = findViewById<View>(R.id.fab_stack_container)
-        fabStack?.let {
-            val fabParams = it.layoutParams as? RelativeLayout.LayoutParams
-            fabParams?.removeRule(RelativeLayout.ALIGN_PARENT_BOTTOM)
-            fabParams?.addRule(RelativeLayout.ABOVE, R.id.bottom_navigation)
-            fabParams?.bottomMargin = (16 * resources.displayMetrics.density).toInt()
-            it.translationY = 0f
-            it.layoutParams = fabParams
-        }
-        // Also reset translationY for AI voice and speed widget
-        findViewById<View>(R.id.fab_ai_voice)?.translationY = 0f
-        findViewById<View>(R.id.speed_limit_widget)?.translationY = 0f
-
-        // DEBUG: Log FAB positions after closeDirectionsUI restore
-        val fabDbgC = fabStack
-        val fabPC = fabDbgC?.layoutParams as? RelativeLayout.LayoutParams
-        Log.w("FAB_DEBUG", "closeDirectionsUI -> fabStack: tY=${fabDbgC?.translationY}, above=${fabPC?.getRule(RelativeLayout.ABOVE)}, alignBot=${fabPC?.getRule(RelativeLayout.ALIGN_PARENT_BOTTOM)}")
-        Log.w("FAB_DEBUG", "closeDirectionsUI -> aiVoice tY=${findViewById<View>(R.id.fab_ai_voice)?.translationY}, speed tY=${findViewById<View>(R.id.speed_limit_widget)?.translationY}")
-
-        // Restore map bottom margin for bottom navigation
+        // Restore map margins
         val mapParams = findViewById<View>(R.id.map_view).layoutParams as? ViewGroup.MarginLayoutParams
         mapParams?.let {
-            it.bottomMargin = (56 * resources.displayMetrics.density).toInt()
+            it.topMargin = 0
+            it.bottomMargin = (56 * resources.displayMetrics.density).toInt() // Required room for bottom nav bar natively
             findViewById<View>(R.id.map_view).layoutParams = it
+        }
+
+        // Reset FAB translationY — XML anchors (ALIGN_PARENT_BOTTOM) are already correct
+        // Animate FABs smoothly back to XML-anchored positions
+        listOf(R.id.fab_stack_container, R.id.fab_ai_voice, R.id.speed_limit_widget).forEach { id ->
+            findViewById<View>(id)?.animate()?.translationY(0f)?.setDuration(250)?.start()
         }
 
         // Restore bottom panel position and background
@@ -3090,7 +3221,6 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         // Restore hazard toggle, compass, AI voice and speed widget
         findViewById<View>(R.id.btn_toggle_osm)?.visibility = View.VISIBLE
         findViewById<View>(R.id.fab_compass)?.visibility = View.VISIBLE
-        findViewById<View>(R.id.fab_ai_voice)?.visibility = View.VISIBLE
         findViewById<View>(R.id.speed_limit_widget)?.visibility = View.VISIBLE
         // Restore drag handle and collapse button
         findViewById<View>(R.id.panel_drag_handle)?.visibility = View.VISIBLE
@@ -3130,12 +3260,13 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         var isNavigatingFromSheet = false
         
         dialog.setOnDismissListener {
-            // Restore FABs when sheet dismissed
-            fabIds.forEach { id -> findViewById<View>(id)?.visibility = View.VISIBLE }
-            // Only clear selectedPlace if the user DISMISSED the sheet manually, not starting navigation
             if (!isNavigatingFromSheet) {
                 selectedPlace = null
                 selectedELoc = null
+                // Restore correct home layout via FabLayoutManager
+                // Avoids repositionFabsAbovePanel() pushing FABs to center
+                // while the sheet dismiss animation still has nonzero height
+                fabLayoutManager.setPageState(PageState.HOME_EXPLORE, immediate = true)
             }
         }
         
@@ -3154,20 +3285,23 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         }
         
         view.findViewById<View>(R.id.btn_detail_directions).setOnClickListener {
+            // Set flags BEFORE dismiss to ensure onDismissListener sees them
             isNavigatingFromSheet = true
-            dialog.dismiss()
-            originPlace = null // Reset for new destination
+            isPreviewMode = true // Force Start Page mode
+            originPlace = null 
             isOriginCurrentLocation = true
             getDirections()
+            dialog.dismiss()
         }
         
         view.findViewById<View>(R.id.btn_detail_start).setOnClickListener {
+            // Set flags BEFORE dismiss to ensure onDismissListener sees them
             isNavigatingFromSheet = true
-            dialog.dismiss()
-            originPlace = null // Reset for new destination
+            isNavigating = true // Force active navigation
+            originPlace = null 
             isOriginCurrentLocation = true
             getDirections(autoStart = true)
-            Toast.makeText(this@MainActivity, "Starting navigation...", Toast.LENGTH_SHORT).show()
+            dialog.dismiss()
         }
         
         view.findViewById<View>(R.id.btn_detail_save).setOnClickListener {
@@ -3205,18 +3339,10 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             // Hide navigation-only widgets
             findViewById<View>(R.id.speed_limit_widget)?.visibility = View.GONE
             findViewById<View>(R.id.btn_stop_navigation)?.visibility = View.GONE
-            // Restore fab_stack anchor from ALIGN_PARENT_BOTTOM back to ABOVE bottom_navigation
-            val fabStack = findViewById<View>(R.id.fab_stack_container)
-            fabStack?.let {
-                val fabParams = it.layoutParams as? RelativeLayout.LayoutParams
-                fabParams?.removeRule(RelativeLayout.ALIGN_PARENT_BOTTOM)
-                fabParams?.addRule(RelativeLayout.ABOVE, R.id.bottom_navigation)
-                it.translationY = 0f
-                it.layoutParams = fabParams
+            // Reset FAB translationY — XML anchors are already correct
+            listOf(R.id.fab_stack_container, R.id.fab_ai_voice, R.id.speed_limit_widget).forEach { id ->
+                findViewById<View>(id)?.translationY = 0f
             }
-            // Reset AI voice and speed widget translationY
-            findViewById<View>(R.id.fab_ai_voice)?.translationY = 0f
-            findViewById<View>(R.id.speed_limit_widget)?.translationY = 0f
             // Restore map bottom margin (startNavigation sets it to 0)
             val mapParams = findViewById<View>(R.id.map_view).layoutParams as? ViewGroup.MarginLayoutParams
             mapParams?.let {
@@ -3356,22 +3482,33 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         
         // Cancel any existing fetch job
         hazardFetchJob?.cancel()
-        currentRoutePoints = routePoints
-        currentHazardFetchIndex = 0
-        
         // Calculate total route distance
         totalRouteDistanceMeters = 0.0
-        for (i in 0 until routePoints.size - 1) {
+        val points = mutableListOf<Point>()
+        routePoints.forEach { points.add(it) }
+        currentRoutePoints = points
+        currentHazardFetchIndex = 0
+        
+        for (i in 0 until points.size - 1) {
             totalRouteDistanceMeters += calculateDistance(
-                routePoints[i].latitude(), routePoints[i].longitude(),
-                routePoints[i + 1].latitude(), routePoints[i + 1].longitude()
+                points[i].latitude(), points[i].longitude(),
+                points[i + 1].latitude(), points[i + 1].longitude()
             )
         }
         
-        Log.d("Zwap", "Total route distance: ${(totalRouteDistanceMeters / 1000).toInt()} km, starting progressive fetch...")
+        if (totalRouteDistanceMeters == 0.0) {
+            Log.w("Zwap", "Route distance is 0, setting to 1 to avoid div by zero")
+            totalRouteDistanceMeters = 1.0
+        }
+        
+        val destPt = points.last()
+        Log.d("HazardScan", "=== ROUTE SCAN START ===")
+        Log.d("HazardScan", "Total points: ${points.size}, distance: ${(totalRouteDistanceMeters / 1000).toInt()} km")
+        Log.d("HazardScan", "DESTINATION: lat=${destPt.latitude()}, lon=${destPt.longitude()}")
         
         // Show progress indicator
         runOnUiThread {
+            isScanningHazards = true
             findViewById<View>(R.id.hazard_scan_progress_container)?.visibility = View.VISIBLE
             updateHazardScanProgress(0)
         }
@@ -3383,12 +3520,35 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     }
     
     private fun updateHazardScanProgress(percent: Int) {
-        findViewById<android.widget.ProgressBar>(R.id.hazard_scan_progress)?.progress = percent
-        findViewById<TextView>(R.id.tv_hazard_scan_percent)?.text = "$percent%"
+        if (!isScanningHazards && percent < 100) isScanningHazards = true
+        runOnUiThread {
+            findViewById<android.widget.ProgressBar>(R.id.hazard_scan_progress)?.progress = percent
+            findViewById<android.widget.TextView>(R.id.tv_hazard_scan_percent)?.text = "$percent%"
+            
+            // Also update the navigation header circle if visible
+            findViewById<android.widget.ProgressBar>(R.id.progress_battery)?.progress = percent
+            findViewById<android.widget.TextView>(R.id.tv_active_battery_pct)?.text = "$percent%"
+            
+            // Set label to HAZARD while scanning
+            findViewById<android.widget.TextView>(R.id.tv_battery_label)?.text = "HAZARD"
+        }
     }
     
     private fun hideHazardScanProgress() {
-        findViewById<View>(R.id.hazard_scan_progress_container)?.visibility = View.GONE
+        isScanningHazards = false
+        runOnUiThread {
+            findViewById<View>(R.id.hazard_scan_progress_container)?.visibility = View.GONE
+            // Set label back to BATTERY
+            findViewById<android.widget.TextView>(R.id.tv_battery_label)?.text = "BATTERY"
+        }
+        
+        // Re-update battery display once scanning is done
+        val batteryIntent = registerReceiver(null, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))
+        val level = batteryIntent?.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val scale = batteryIntent?.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, -1) ?: -1
+        if (level != -1 && scale != -1) {
+            updateBatteryDisplay((level * 100 / scale.toFloat()).toInt())
+        }
     }
 
     /** Show the Trip Briefing card in "Scanning..." state immediately when route loads */
@@ -3403,6 +3563,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         card.visibility = View.VISIBLE
         card.alpha = 0f
         card.animate().alpha(1f).setDuration(300).start()
+        repositionFabsAbovePanel()
     }
 
     /** Update the Trip Briefing card with the real hazard count summary */
@@ -3414,13 +3575,13 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         val detail = findViewById<TextView>(R.id.tv_trip_briefing_detail) ?: return
 
         // Count hazard types from routeHazardMarkerIds using osmFeatures data
-        val cameraCount = routeHazardMarkerIds.count { id ->
-            osmFeatures.any { f -> featureToMarkerMap[f.id]?.id == id && f.type == FeatureType.SPEED_CAMERA }
+        val cameraCount = routeHazardMarkers.count { 
+            osmFeatures.any { f -> it.id == featureToMarkerMap[f.id]?.id && f.type == FeatureType.SPEED_CAMERA }
         }
-        val hazardCount = routeHazardMarkerIds.count { id ->
-            osmFeatures.any { f -> featureToMarkerMap[f.id]?.id == id && f.type != FeatureType.SPEED_CAMERA }
+        val hazardCount = routeHazardMarkers.count { 
+            osmFeatures.any { f -> it.id == featureToMarkerMap[f.id]?.id && f.type != FeatureType.SPEED_CAMERA }
         }
-        val totalHazards = routeHazardMarkerIds.size
+        val totalHazards = routeHazardMarkers.size
 
         if (totalHazards == 0) {
             title.text = "🟢 Route Clear"
@@ -3446,7 +3607,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     
     private suspend fun fetchNextHazardChunk() {
         if (!(isNavigating || isPreviewMode) || currentRoutePoints.isEmpty()) {
-            Log.d("Zwap", "Navigation stopped or no route points, stopping hazard fetch")
+            Log.d("HazardScan", "SCAN STOPPED — isNav=$isNavigating isPreview=$isPreviewMode pts=${currentRoutePoints.size} idx=$currentHazardFetchIndex")
             withContext(Dispatchers.Main) { hideHazardScanProgress() }
             return
         }
@@ -3472,7 +3633,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         
         // If we've reached the end
         if (startIndex >= currentRoutePoints.size - 1) {
-            Log.d("Zwap", "All hazard chunks fetched!")
+            Log.d("HazardScan", "=== ALL CHUNKS DONE — final index ${currentHazardFetchIndex}/${currentRoutePoints.size-1} ===")
             withContext(Dispatchers.Main) {
                 updateHazardScanProgress(100)
                 // Hide after a brief delay to show 100%
@@ -3493,8 +3654,6 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         val progressPercent = if (totalRouteDistanceMeters > 0) {
             ((chunkEndKm / totalRouteDistanceMeters) * 100).toInt().coerceIn(0, 100)
         } else 0
-        
-        Log.d("Zwap", "Fetching hazards: ${progressPercent}% complete")
         
         withContext(Dispatchers.Main) {
             updateHazardScanProgress(progressPercent)
@@ -3517,42 +3676,66 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         val centerLat = (fMinLat + fMaxLat) / 2; val centerLon = (fMinLon + fMaxLon) / 2
         val latDiff = fMaxLat - fMinLat; val lonDiff = fMaxLon - fMinLon
         val radiusKm = (Math.sqrt(latDiff * latDiff + lonDiff * lonDiff) * 111.0) / 2
-        
+
+        val isLastChunk = endIndex >= currentRoutePoints.size - 1
+        Log.d("HazardScan", "--- Chunk $progressPercent% | pts[$startIndex..$endIndex]/${currentRoutePoints.size - 1} | ${(getDistanceToIndex(endIndex)/1000).toInt()}km | lastChunk=$isLastChunk")
+        Log.d("HazardScan", "  bbox lat[${String.format("%.4f", fMinLat)}..${String.format("%.4f", fMaxLat)}] lon[${String.format("%.4f", fMinLon)}..${String.format("%.4f", fMaxLon)}]")
+        if (isLastChunk) {
+            val destPt = currentRoutePoints.last()
+            Log.d("HazardScan", "  DESTINATION lat=${destPt.latitude()} lon=${destPt.longitude()} — covered in this chunk")
+        }
+
         kotlinx.coroutines.coroutineScope {
             // ── 1. OSM Overpass (fired simultaneously)
             val osmJob = async(Dispatchers.IO) {
                 var result: List<RouteHazard> = emptyList()
-                try {
-                    val query = """
-                        [out:json][timeout:10];
-                        (
-                          node["highway"="speed_camera"]($fMinLat,$fMinLon,$fMaxLat,$fMaxLon);
-                          node["enforcement"="speed"]($fMinLat,$fMinLon,$fMaxLat,$fMaxLon);
-                          node["hazard"]($fMinLat,$fMinLon,$fMaxLat,$fMaxLon);
-                          node["traffic_calming"]($fMinLat,$fMinLon,$fMaxLat,$fMaxLon);
-                          node["barrier"="toll_booth"]($fMinLat,$fMinLon,$fMaxLat,$fMaxLon);
-                        );
-                        out body;
-                    """.trimIndent()
-                    val client = okhttp3.OkHttpClient.Builder()
-                        .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
-                        .readTimeout(12, java.util.concurrent.TimeUnit.SECONDS)
-                        .build()
-                    val response = client.newCall(
-                        okhttp3.Request.Builder()
-                            .url("https://overpass-api.de/api/interpreter")
-                            .post(query.toRequestBody("text/plain".toMediaTypeOrNull()))
-                            .build()
-                    ).execute()
-                    val body = response.body?.string()
-                    if (response.isSuccessful && body != null) {
-                        result = parseOSMHazards(body, chunkPoints)
-                        Log.d("Zwap", "OSM: ${result.size} hazards found")
-                    } else {
-                        Log.w("Zwap", "OSM response: ${response.code}")
+                val overpassMirrors = listOf(
+                    "https://overpass-api.de/api/interpreter",
+                    "https://overpass.kumi.systems/api/interpreter",
+                    "https://maps.mail.ru/osm/tools/overpass/api/interpreter"
+                )
+                val query = """
+                    [out:json][timeout:10];
+                    (
+                      node["highway"="speed_camera"]($fMinLat,$fMinLon,$fMaxLat,$fMaxLon);
+                      node["enforcement"="speed"]($fMinLat,$fMinLon,$fMaxLat,$fMaxLon);
+                      node["hazard"]($fMinLat,$fMinLon,$fMaxLat,$fMaxLon);
+                      node["traffic_calming"]($fMinLat,$fMinLon,$fMaxLat,$fMaxLon);
+                      node["barrier"="toll_booth"]($fMinLat,$fMinLon,$fMaxLat,$fMaxLon);
+                    );
+                    out body;
+                """.trimIndent()
+                val client = okhttp3.OkHttpClient.Builder()
+                    .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(12, java.util.concurrent.TimeUnit.SECONDS)
+                    .build()
+                for ((idx, mirror) in overpassMirrors.withIndex()) {
+                    try {
+                        val response = client.newCall(
+                            okhttp3.Request.Builder()
+                                .url(mirror)
+                                .post(query.toRequestBody("text/plain".toMediaTypeOrNull()))
+                                .build()
+                        ).execute()
+                        val body = response.body?.string()
+                        when {
+                            response.isSuccessful && body != null -> {
+                                result = parseOSMHazards(body, chunkPoints)
+                                Log.d("HazardScan", "  OSM[$idx]: ${result.size} hazards (${result.groupBy{it.type}.map{"${it.key.name}x${it.value.size}"}.joinToString(",")})")
+                                break
+                            }
+                            response.code == 429 || response.code == 504 -> {
+                                Log.w("HazardScan", "  OSM[$idx] ${response.code} — trying next mirror")
+                                // no delay: next mirror immediately
+                            }
+                            else -> {
+                                Log.w("HazardScan", "  OSM[$idx] failed ${response.code}")
+                                break
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e("HazardScan", "  OSM[$idx] ERROR: ${e.javaClass.simpleName}: ${e.message}")
                     }
-                } catch (e: Exception) {
-                    Log.e("Zwap", "OSM fetch error: ${e.message}")
                 }
                 result
             }
@@ -3575,7 +3758,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                                 name = "${cluster.hazard_type.replace("_", " ")} (${cluster.verified_image_count} reports)"
                             )
                         }
-                        Log.d("Zwap", "Community: ${result.size} hazards found")
+                        Log.d("HazardScan", "  Community: ${result.size} hazards")
                     } else if (commResponse == null) {
                         Log.w("Zwap", "Community hazard fetch timed out (server unreachable)")
                     }
@@ -3713,8 +3896,10 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                             .fromBitmap(createHazardMarkerBitmap(hazard.type)))
                 )
                 
-                marker?.let { routeHazardMarkerIds.add(it.id) }
-                
+                marker?.let { 
+                    routeHazardMarkers.add(it)
+                    Log.d("Zwap", "SUCCESSfully added ${hazard.type} marker at (${hazard.lat}, ${hazard.lon}) - total: ${routeHazardMarkers.size}")
+                }
                 // CRITICAL: Also add to osmFeatures for proximity alerts
                 val featureType = when (hazard.type) {
                     HazardType.SPEED_CAMERA -> com.swapmap.zwap.demo.model.FeatureType.SPEED_CAMERA
@@ -3737,7 +3922,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                 osmFeatures.add(osmFeature)
                 marker?.let { featureToMarkerMap[osmFeature.id] = it }
                 
-                Log.d("Zwap", "Added ${hazard.type} marker + alert at (${hazard.lat}, ${hazard.lon})")
+                Log.d("Zwap", "Added OSM-backed route hazard alert for ${hazard.type}")
             } catch (e: Exception) {
                 Log.e("Zwap", "Error adding hazard marker: ${e.message}")
             }
@@ -3757,17 +3942,17 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         val size = 64
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        
+
         val bgColor = when (type) {
-            HazardType.SPEED_CAMERA -> Color.parseColor("#2196F3")  // Blue
-            HazardType.HAZARD -> Color.parseColor("#FF9800")        // Orange
-            HazardType.TOLL -> Color.parseColor("#9C27B0")          // Purple
-            HazardType.TRAFFIC_CALMING -> Color.parseColor("#FFC107") // Yellow
+            HazardType.SPEED_CAMERA -> Color.parseColor("#2196F3")           // Blue
+            HazardType.HAZARD -> Color.parseColor("#FF9800")                 // Orange
+            HazardType.TOLL -> Color.parseColor("#9C27B0")                   // Purple
+            HazardType.TRAFFIC_CALMING -> Color.parseColor("#FFC107")        // Yellow
             HazardType.COMMUNITY_VERIFIED_HAZARD -> Color.parseColor("#4CAF50") // Green
-            HazardType.COMMUNITY_REVALIDATE -> Color.parseColor("#FFC107") // Yellow
-            else -> Color.parseColor("#F44336")                      // Red
+            HazardType.COMMUNITY_REVALIDATE -> Color.parseColor("#FFC107")   // Yellow
+            else -> Color.parseColor("#F44336")                              // Red
         }
-        
+
         // Draw background circle
         val bgPaint = Paint().apply {
             color = bgColor
@@ -3775,7 +3960,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             isAntiAlias = true
         }
         canvas.drawCircle(size / 2f, size / 2f, size / 2f - 4, bgPaint)
-        
+
         // Draw white border
         val borderPaint = Paint().apply {
             color = Color.WHITE
@@ -3784,8 +3969,8 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             isAntiAlias = true
         }
         canvas.drawCircle(size / 2f, size / 2f, size / 2f - 4, borderPaint)
-        
-        // Draw icon
+
+        // Draw emoji icon
         val iconPaint = Paint().apply {
             color = Color.WHITE
             textSize = size * 0.45f
@@ -3803,10 +3988,9 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         }
         val yPos = (size / 2f) - ((iconPaint.descent() + iconPaint.ascent()) / 2)
         canvas.drawText(icon, size / 2f, yPos, iconPaint)
-        
+
         return bitmap
     }
-    
     private fun clearRouteHazards() {
         // Cancel ongoing hazard fetch
         hazardFetchJob?.cancel()
@@ -3825,24 +4009,25 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         routeHazards.clear()
         
         mapplsMap?.let { map ->
-            // Clear hazards markers
-            map.markers.filter { routeHazardMarkerIds.contains(it.id) }.forEach { 
-                map.removeMarker(it) 
+            routeHazardMarkers.forEach { marker ->
+                map.removeMarker(marker)
             }
         }
+        routeHazardMarkers.clear()
         
         // Remove route-specific features from the global proximity alert list
         // and its association map to prevent stale alerts and memory leaks
         osmFeatures.removeAll { it.tags.containsKey("route_hazard") }
+        
+        // Markers are managed via routeHazardMarkers list
+        val hazardIds = routeHazardMarkers.map { it.id }.toSet()
         val iterator = featureToMarkerMap.entries.iterator()
         while (iterator.hasNext()) {
             val entry = iterator.next()
-            if (routeHazardMarkerIds.contains(entry.value.id)) {
+            if (hazardIds.contains(entry.value.id)) {
                 iterator.remove()
             }
         }
-        
-        routeHazardMarkerIds.clear()
     }
     
     // Data classes for route hazards
@@ -3854,6 +4039,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             calendar.add(java.util.Calendar.SECOND, durationSeconds.toInt())
             val etaTime = java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(calendar.time)
             findViewById<TextView>(R.id.tv_route_eta)?.text = "ETA $etaTime"
+            findViewById<TextView>(R.id.tv_active_eta)?.text = etaTime
             Log.d("Zwap", "Updated ETA display to: $etaTime")
         } catch (e: Exception) {
             Log.e("Zwap", "Error updating ETA", e)
@@ -4066,6 +4252,9 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             wakeWordReceiver,
             android.content.IntentFilter(WakeWordService.ACTION_WAKE_WORD_DETECTED)
         )
+        // Register battery receiver
+        registerReceiver(batteryReceiver, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))
+        
         val prefs = getSharedPreferences("zwap_prefs", android.content.Context.MODE_PRIVATE)
         if (prefs.getBoolean("wake_word_enabled", false)) {
             val audioPerm = androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO)
@@ -4082,6 +4271,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         mapView?.onPause()
         sensorManager?.unregisterListener(this)
         LocalBroadcastManager.getInstance(this).unregisterReceiver(wakeWordReceiver)
+        unregisterReceiver(batteryReceiver)
     }
 
     override fun onStop() { super.onStop(); mapView?.onStop() }

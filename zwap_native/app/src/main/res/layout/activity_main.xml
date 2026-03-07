@@ -11,38 +11,44 @@
         android:layout_height="match_parent"
         android:layout_marginBottom="56dp" />
 
-    <!-- Compact Speed/Limit Widget (HUD) -->
+    <!-- NEW ACTIVE NAVIGATION LAYOUTS -->
+    <include layout="@layout/layout_nav_active_top" />
+    <include layout="@layout/layout_nav_active_bottom" />
+    <include layout="@layout/layout_nav_hazard_banner" />
+    <!-- END NEW ACTIVE NAVIGATION LAYOUTS -->
+
+    <!-- Compact Speed/Limit Widget (HUD) - Fixed position from bottom -->
     <include
         layout="@layout/widget_speed_limit"
         android:id="@+id/speed_limit_widget"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_alignParentStart="true"
-        android:layout_above="@id/bottom_navigation"
-        android:layout_marginBottom="16dp"
+        android:layout_alignParentBottom="true"
+        android:layout_marginBottom="96dp"
         android:layout_marginStart="16dp"
-        android:layout_alignWithParentIfMissing="true"
         android:visibility="visible" />
 
-    <!-- AI Voice Assistant Button (above speedometer) -->
+    <!-- AI Voice Assistant Button - MUST be declared after speedometer for z-order -->
+    <!-- Elevation must be higher than speedometer (12dp) to render on top -->
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/fab_ai_voice"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_alignParentStart="true"
-        android:layout_above="@id/speed_limit_widget"
+        android:layout_alignParentBottom="true"
         android:layout_marginStart="16dp"
-        android:layout_marginBottom="8dp"
+        android:layout_marginBottom="260dp"
         app:fabSize="normal"
         app:backgroundTint="@color/premium_surface"
         android:src="@drawable/ic_mic_premium"
         app:tint="@color/premium_red"
         app:borderWidth="0dp"
-        app:elevation="0dp"
-        android:elevation="0dp"
+        app:elevation="16dp"
+        android:elevation="16dp"
         app:shapeAppearanceOverlay="@style/App.Shape.Circle"
         android:contentDescription="AI Voice Assistant"
-        android:visibility="visible" />
+        android:visibility="gone" />
 
     <!-- Stop Navigation Button (Premium Red) -->
     <com.google.android.material.floatingactionbutton.FloatingActionButton
@@ -490,16 +496,15 @@
     </LinearLayout>
 
 
-    <!-- Floating Action Buttons Stack (Right Bottom) -->
+    <!-- Floating Action Buttons Stack (Right Bottom) - Fixed position -->
     <LinearLayout
         android:id="@+id/fab_stack_container"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_alignParentEnd="true"
-        android:layout_above="@id/bottom_navigation"
-        android:layout_alignWithParentIfMissing="true"
+        android:layout_alignParentBottom="true"
         android:layout_marginEnd="16dp"
-        android:layout_marginBottom="16dp"
+        android:layout_marginBottom="96dp"
         android:orientation="vertical"
         android:gravity="center_horizontal"
         android:clipChildren="false"

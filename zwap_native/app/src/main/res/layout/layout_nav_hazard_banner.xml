@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/nav_hazard_banner"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_above="@+id/nav_active_bottom_bar"
+    android:layout_marginHorizontal="16dp"
+    android:layout_marginBottom="16dp"
+    android:visibility="gone"
+    app:cardBackgroundColor="#FFB300"
+    app:cardCornerRadius="16dp"
+    app:cardElevation="12dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="12dp"
+        android:gravity="center_vertical">
+
+        <!-- Dark Square Icon Tile -->
+        <androidx.cardview.widget.CardView
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            app:cardBackgroundColor="#1A1C20"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="2dp">
+            
+            <ImageView
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:layout_gravity="center"
+                android:src="@android:drawable/ic_dialog_alert"
+                app:tint="#FFB300" />
+        </androidx.cardview.widget.CardView>
+
+        <!-- Hazard Text -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:layout_marginStart="16dp"
+            android:layout_marginEnd="8dp">
+
+            <TextView
+                android:id="@+id/tv_hazard_banner_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="POTHOLE REPORTED"
+                android:textColor="#000000"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:textAllCaps="true" />
+
+            <TextView
+                android:id="@+id/tv_hazard_banner_subtitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="Watch out for road damage ahead"
+                android:textColor="#333333"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <!-- Dismiss Button -->
+        <ImageButton
+            android:id="@+id/btn_dismiss_hazard_banner"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/ic_menu_close_clear_cancel"
+            app:tint="#000000" />
+            
+    </LinearLayout>
+</androidx.cardview.widget.CardView>
