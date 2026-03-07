@@ -1,4 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Navigation Header Panel
+  ─────────────────────────────────────────────────────────
+  Single solid #1A1A1A panel pinned to top.
+  Row 1 : [Red turn tile] [instruction + distance →] [battery ring]
+  Row 2 : [TIME ─── DISTANCE ─── ETA] dark rounded card
+  ─────────────────────────────────────────────────────────
+-->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/nav_active_top_panel"
@@ -6,28 +14,30 @@
     android:layout_height="wrap_content"
     android:layout_alignParentTop="true"
     android:orientation="vertical"
-    android:background="#1C1C1E"
-    android:paddingTop="56dp"
-    android:paddingBottom="24dp"
-    android:paddingHorizontal="20dp"
+    android:background="@drawable/bg_nav_top_panel"
+    android:paddingTop="12dp"
+    android:paddingBottom="14dp"
+    android:paddingHorizontal="16dp"
+    android:clipChildren="true"
+    android:clipToPadding="true"
     android:visibility="gone"
-    android:elevation="20dp">
+    android:elevation="24dp">
 
-    <!-- Top Row -->
+    <!-- ═══ ROW 1 — Turn tile · Instruction text · Battery ═══ -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:layout_marginBottom="16dp">
+        android:layout_marginBottom="10dp">
 
-        <!-- Turn Direction Icon Tile (Square Rounded, Red Background) -->
+        <!-- Red square turn tile -->
         <androidx.cardview.widget.CardView
-            android:layout_width="72dp"
-            android:layout_height="72dp"
-            app:cardBackgroundColor="#FF4B4B"
-            app:cardCornerRadius="16dp"
-            app:cardElevation="4dp">
+            android:layout_width="76dp"
+            android:layout_height="76dp"
+            app:cardBackgroundColor="#E53935"
+            app:cardCornerRadius="18dp"
+            app:cardElevation="6dp">
             
             <ImageView
                 android:id="@+id/iv_active_turn_icon"
@@ -35,40 +45,42 @@
                 android:layout_height="48dp"
                 android:layout_gravity="center"
                 android:src="@drawable/ic_turn_left_arrow"
-                app:tint="#FFFFFF" />
+                app:tint="#FFFFFF"
+                android:contentDescription="Turn direction" />
         </androidx.cardview.widget.CardView>
 
-        <!-- Turn Instructions Text -->
+        <!-- Turn instruction + distance — fills all remaining width -->
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:orientation="vertical"
-            android:layout_marginStart="16dp"
-            android:layout_marginEnd="8dp">
+            android:layout_marginStart="14dp"
+            android:layout_marginEnd="10dp">
 
             <TextView
                 android:id="@+id/tv_active_turn_instruction"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Turn left onto MG Road"
+                android:text="Continue on route"
                 android:textColor="#FFFFFF"
-                android:textSize="22sp"
+                android:textSize="24sp"
                 android:textStyle="bold"
                 android:maxLines="2"
-                android:ellipsize="end" />
+                android:ellipsize="end"
+                android:lineSpacingMultiplier="1.05" />
 
             <TextView
                 android:id="@+id/tv_active_turn_distance"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
+                android:layout_marginTop="3dp"
                 android:text="in 500m"
-                android:textColor="#94A3B8"
+                android:textColor="#8E9BAC"
                 android:textSize="16sp" />
         </LinearLayout>
 
-        <!-- Battery Indicator -->
+        <!-- Battery ring indicator -->
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -77,13 +89,13 @@
             android:layout_marginStart="8dp">
 
             <FrameLayout
-                android:layout_width="48dp"
-                android:layout_height="48dp">
-                
+                android:layout_width="52dp"
+                android:layout_height="52dp">
+
                 <ProgressBar
                     android:id="@+id/progress_battery"
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
+                    android:layout_width="52dp"
+                    android:layout_height="52dp"
                     android:layout_gravity="center"
                     style="?android:attr/progressBarStyleHorizontal"
                     android:progressDrawable="@drawable/bg_battery_ring_blue"
@@ -106,27 +118,28 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="BATTERY"
-                android:textColor="#94A3B8"
+                android:textColor="#8E9BAC"
                 android:textSize="9sp"
                 android:textStyle="bold"
-                android:layout_marginTop="2dp" />
+                android:layout_marginTop="2dp"
+                android:letterSpacing="0.08" />
         </LinearLayout>
     </LinearLayout>
 
-    <!-- Info Bar (3-Column) -->
+    <!-- ═══ ROW 2 — TIME | DISTANCE | ETA info bar ═══ -->
     <androidx.cardview.widget.CardView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        app:cardBackgroundColor="#2C2C2E"
-        app:cardCornerRadius="16dp"
-        app:cardElevation="2dp">
+        app:cardBackgroundColor="#2A2A2C"
+        app:cardCornerRadius="18dp"
+        app:cardElevation="0dp">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:paddingVertical="12dp"
-            android:paddingHorizontal="16dp"
+            android:paddingVertical="10dp"
+            android:paddingHorizontal="8dp"
             android:baselineAligned="false">
 
             <!-- TIME Column -->
@@ -140,9 +153,10 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="TIME"
-                    android:textColor="#94A3B8"
+                    android:textColor="#8E9BAC"
                     android:textSize="10sp"
-                    android:textStyle="bold" />
+                    android:textStyle="bold"
+                    android:letterSpacing="0.1" />
                 <TextView
                     android:id="@+id/tv_active_time"
                     android:layout_width="wrap_content"
@@ -150,15 +164,16 @@
                     android:layout_marginTop="2dp"
                     android:text="28 min"
                     android:textColor="#FFFFFF"
-                    android:textSize="18sp"
+                    android:textSize="19sp"
                     android:textStyle="bold" />
             </LinearLayout>
 
+            <!-- Divider -->
             <View
                 android:layout_width="1dp"
                 android:layout_height="match_parent"
-                android:background="#444444"
-                android:layout_marginVertical="4dp"/>
+                android:background="#3D3D3F"
+                android:layout_marginVertical="6dp" />
 
             <!-- DISTANCE Column -->
             <LinearLayout
@@ -171,9 +186,10 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="DISTANCE"
-                    android:textColor="#94A3B8"
+                    android:textColor="#8E9BAC"
                     android:textSize="10sp"
-                    android:textStyle="bold" />
+                    android:textStyle="bold"
+                    android:letterSpacing="0.1" />
                 <TextView
                     android:id="@+id/tv_active_distance"
                     android:layout_width="wrap_content"
@@ -181,15 +197,16 @@
                     android:layout_marginTop="2dp"
                     android:text="14.2 km"
                     android:textColor="#FFFFFF"
-                    android:textSize="18sp"
+                    android:textSize="19sp"
                     android:textStyle="bold" />
             </LinearLayout>
 
+            <!-- Divider -->
             <View
                 android:layout_width="1dp"
                 android:layout_height="match_parent"
-                android:background="#444444"
-                android:layout_marginVertical="4dp"/>
+                android:background="#3D3D3F"
+                android:layout_marginVertical="6dp" />
 
             <!-- ETA Column -->
             <LinearLayout
@@ -202,9 +219,10 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="ETA"
-                    android:textColor="#94A3B8"
+                    android:textColor="#8E9BAC"
                     android:textSize="10sp"
-                    android:textStyle="bold" />
+                    android:textStyle="bold"
+                    android:letterSpacing="0.1" />
                 <TextView
                     android:id="@+id/tv_active_eta"
                     android:layout_width="wrap_content"
@@ -212,7 +230,7 @@
                     android:layout_marginTop="2dp"
                     android:text="05:30 PM"
                     android:textColor="#FF4B4B"
-                    android:textSize="18sp"
+                    android:textSize="19sp"
                     android:textStyle="bold" />
             </LinearLayout>
             

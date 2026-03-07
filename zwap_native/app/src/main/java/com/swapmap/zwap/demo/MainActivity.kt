@@ -149,6 +149,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     private val ALERT_COOLDOWN = 3000L  // 3 seconds
     private val HAZARD_ALERT_DISTANCE = 300.0  // 300 meters
     private val alertedHazardIds = mutableSetOf<Long>()
+    private val hazardPillSpokenIds = mutableSetOf<Long>()  // tracks 500m early-warn TTS for pill
 
     // ── ViewModel: owns speed limit state, fetch logic, over-speed TTS ────────
     private lateinit var hazardViewModel: HazardViewModel
@@ -2335,6 +2336,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         // ── Check hazard proximity (during overlay mode OR navigation) ─────────
         if (osmOverlayEnabled || isNavigating) {
             checkHazardProximity(location.latitude, location.longitude)
+        updateHazardAlertPill(location.latitude, location.longitude)
         }
 
         // ── Refresh OSM overlay data every 1km ────────────────────────────────
@@ -2360,7 +2362,85 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         tts?.speak(message, TextToSpeech.QUEUE_ADD, null, null)
     }
 
-    private fun checkHazardProximity(userLat: Double, userLon: Double) {
+    private fun updateHazardAlertPill(userLat: Double, userLon: Double) {
+        if (!isNavigating && !isPreviewMode) return
+
+        // Find nearest route hazard within 10 km
+        val nearest = osmFeatures
+            .filter { it.type in listOf(
+                FeatureType.SPEED_CAMERA, FeatureType.TOLL, FeatureType.TRAFFIC_CALMING,
+                FeatureType.COMMUNITY_VERIFIED, FeatureType.COMMUNITY_NEEDS_REVALIDATION
+            )}
+            .mapNotNull { feature ->
+                val r = FloatArray(1)
+                android.location.Location.distanceBetween(userLat, userLon, feature.lat, feature.lon, r)
+                if (r[0] < 10000f) Pair(feature, r[0].toDouble()) else null
+            }
+            .minByOrNull { it.second }
+
+        runOnUiThread {
+            val pill = findViewById<android.view.ViewGroup>(R.id.hazard_alert_pill) ?: return@runOnUiThread
+            val pillIcon = findViewById<android.widget.ImageView>(R.id.iv_hazard_pill_icon)
+            val pillType = findViewById<android.widget.TextView>(R.id.tv_hazard_pill_type)
+            val pillDist = findViewById<android.widget.TextView>(R.id.tv_hazard_pill_dist)
+
+            pill.visibility = android.view.View.VISIBLE
+
+            val bg = android.graphics.drawable.GradientDrawable()
+            bg.cornerRadius = 100f
+
+            if (nearest != null) {
+                val (feature, dist) = nearest
+                val distStr = if (dist < 1000) "${dist.toInt()}m" else "${"%.1f".format(dist / 1000)}km"
+
+                val (bgColor, iconRes, label) = when (feature.type) {
+                    FeatureType.SPEED_CAMERA ->
+                        Triple(android.graphics.Color.parseColor("#FFD600"), R.drawable.ic_camera_outlined, "CAMERA")
+                    FeatureType.TOLL ->
+                        Triple(android.graphics.Color.parseColor("#00E5FF"), R.drawable.ic_hazard_waze, "TOLL")
+                    FeatureType.TRAFFIC_CALMING ->
+                        Triple(android.graphics.Color.parseColor("#FF6D00"), R.drawable.ic_hazard_waze, "BUMP")
+                    else ->
+                        Triple(android.graphics.Color.parseColor("#FF6D00"), R.drawable.ic_hazard_waze, "HAZARD")
+                }
+
+                bg.setColor(bgColor)
+                bg.setStroke(3, android.graphics.Color.BLACK)
+                pill.background = bg
+
+                pillIcon?.setImageResource(iconRes)
+                pillIcon?.imageTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.BLACK)
+                pillType?.text = label
+                pillType?.setTextColor(android.graphics.Color.BLACK)
+                pillDist?.text = distStr
+                pillDist?.setTextColor(android.graphics.Color.parseColor("#1A1A1A"))
+
+                // 500 m early audio warning (once per hazard, only during active navigation)
+                if (dist < 500 && !hazardPillSpokenIds.contains(feature.id) && isNavigating) {
+                    hazardPillSpokenIds.add(feature.id)
+                    val spokenType = when (feature.type) {
+                        FeatureType.SPEED_CAMERA -> "Speed camera"
+                        FeatureType.TOLL        -> "Toll booth"
+                        FeatureType.TRAFFIC_CALMING -> "Speed bump"
+                        else -> "Hazard"
+                    }
+                    tts?.speak("$spokenType in $distStr", android.speech.tts.TextToSpeech.QUEUE_ADD, null, null)
+                }
+            } else {
+                // SAFE — no hazard within 10 km
+                bg.setColor(android.graphics.Color.parseColor("#00C853"))
+                bg.setStroke(3, android.graphics.Color.BLACK)
+                pill.background = bg
+                pillIcon?.setImageResource(R.drawable.ic_hazard_waze)
+                pillIcon?.imageTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.BLACK)
+                pillType?.text = "SAFE"
+                pillType?.setTextColor(android.graphics.Color.BLACK)
+                pillDist?.text = ""
+            }
+        }
+    }
+
+        private fun checkHazardProximity(userLat: Double, userLon: Double) {
         // Note: we no longer block the panel during preview mode;
         // only audio (TTS) is suppressed below if isPreviewMode is true.
         
@@ -3193,6 +3273,8 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         findViewById<View>(R.id.nav_active_top_panel)?.visibility = View.GONE
         findViewById<View>(R.id.nav_active_bottom_bar)?.visibility = View.GONE
         findViewById<View>(R.id.nav_hazard_banner)?.visibility = View.GONE
+        findViewById<View>(R.id.hazard_alert_pill)?.visibility = View.GONE
+        hazardPillSpokenIds.clear()
 
         // Restore map margins
         val mapParams = findViewById<View>(R.id.map_view).layoutParams as? ViewGroup.MarginLayoutParams
@@ -3933,6 +4015,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             val currentLocation = mapplsMap?.locationComponent?.lastKnownLocation
             if (currentLocation != null) {
                 checkHazardProximity(currentLocation.latitude, currentLocation.longitude)
+                updateHazardAlertPill(currentLocation.latitude, currentLocation.longitude)
                 Log.d("Zwap", "Triggered immediate proximity check for ${hazards.size} new hazards")
             }
         }

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, shrink-to-fit=no, viewport-fit=cover"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://apis.google.com" />
+    <link rel="preconnect" href="https://cdn.tailwindcss.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Google+Sans:ital,opsz,wght@0,17..18,400..700;1,17..18,400..700&display=swap"
+      rel="stylesheet"
+    />
+    <!-- Design System Fonts & Icons. -->
+    <link href="https://fonts.googleapis.com/css2?family=Arimo:wght@400;500;600;700&family=Be+Vietnam+Pro:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&family=Domine:wght@400;500;600;700&family=EB+Garamond:wght@400;500;600;700&family=Epilogue:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Lexend:wght@400;500;600;700&family=Libre+Caslon+Text:wght@400;700&family=Literata:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=Montserrat:wght@400;500;600;700&family=Newsreader:wght@400;500;600;700&family=Noto+Serif:wght@400;500;600;700&family=Nunito+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Public+Sans:wght@400;500;600;700&family=Rubik:wght@400;500;600;700&family=Sora:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600;700&family=Source+Serif+4:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=Spline+Sans:wght@400;500;600;700&family=Work+Sans:wght@400;500;600;700&display=swap"
+          rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Material+Icons+Outlined"
+          rel="stylesheet" />
+    <title>Stitch</title>
+    <script type="module" crossorigin src="/assets/index-DLedYMbL.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/vendor-react-C0ealNL6.js">
+    <link rel="modulepreload" crossorigin href="/assets/vendor-ui-BMQEOPPK.js">
+    <link rel="modulepreload" crossorigin href="/assets/editor-monaco-xA1i9vj4.js">
+    <link rel="modulepreload" crossorigin href="/assets/vendor-utils-BmgFD2KC.js">
+    <link rel="modulepreload" crossorigin href="/assets/vendor-query-B0RBLvti.js">
+    <link rel="modulepreload" crossorigin href="/assets/editor-xyflow-CHkIcOW2.js">
+    <link rel="modulepreload" crossorigin href="/assets/vendor-carousel-DI-RibNB.js">
+    <link rel="modulepreload" crossorigin href="/assets/vendor-marked-DKjyhwJX.js">
+    <link rel="modulepreload" crossorigin href="/assets/editor-tiptap-DjXxkjT9.js">
+    <link rel="stylesheet" crossorigin href="/assets/editor-monaco-CpN8rtOO.css">
+    <link rel="stylesheet" crossorigin href="/assets/index-CJY0qf2L.css">
+    <!-- 1a4b159f082102bed844efe148eb7759b6af189b -->
+  <script>window.AC_BUILD = "1a4b159f082102bed844efe148eb7759b6af189b";</script>
+</head>
+  <body class="editor_dark">
+    <div id="root"></div>
+  </body>
+</html>
