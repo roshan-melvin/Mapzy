@@ -661,7 +661,6 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         }
         
         // Native Gesture Handling: Modern OnBackPressedDispatcher for Edge-Swipe Support
-        // Modern OnBackPressedDispatcher: Consolidates search, navigation, tab switching, and exit confirmation
         onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 // 1. Close search overlay if open
@@ -671,35 +670,79 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                     return
                 }
 
-                // 2. Navigation Flow: If navigating OR in preview mode, close and return to place details
-                val panel = findViewById<View>(R.id.directions_bottom_panel)
-                if (isNavigating || panel?.visibility == View.VISIBLE) {
+                // 2. If navigating, stop navigation and go back to directions
+                if (isNavigating) {
                     closeDirectionsUI()
                     return
                 }
 
-                // 3. Pop fragment back stack if any (e.g. CreateReport -> Community)
+                // 3. If directions panel is showing (preview mode), close it
+                val panel = findViewById<View>(R.id.directions_bottom_panel_container)
+                if (panel?.visibility == View.VISIBLE) {
+                    closeDirectionsUI()
+                    return
+                }
+
+                // 4. Pop fragment back stack if any
                 if (supportFragmentManager.backStackEntryCount > 0) {
                     supportFragmentManager.popBackStack()
                     return
                 }
 
-                // 4. Tab Flow: If not on Explore tab, return to Explore
+                // 5. If not on Explore tab, switch to Explore
                 val bottomNav = findViewById<com.google.android.material.bottomnavigation.BottomNavigationView>(R.id.bottom_navigation)
                 if (bottomNav != null && bottomNav.selectedItemId != R.id.nav_explore) {
                     bottomNav.selectedItemId = R.id.nav_explore
                     return
                 }
 
-                // 5. Exit Confirmation: If on Explore tab, show one-press exit check
-                androidx.appcompat.app.AlertDialog.Builder(this@MainActivity)
-                    .setTitle("Exit Mapzy")
-                    .setMessage("Are you sure you want to close the app?")
-                    .setPositiveButton("Exit") { _, _ ->
-                        finishAffinity()
-                    }
-                    .setNegativeButton("Cancel", null)
-                    .show()
+                // 6. Allow default system back to exit
+                isEnabled = false
+                onBackPressedDispatcher.onBackPressed()
+                isEnabled = true
+            }
+        })
+
+        // Native Gesture Handling: Modern OnBackPressedDispatcher for Edge-Swipe Support
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                // 1. Close search overlay if open
+                val overlay = findViewById<View>(R.id.search_overlay)
+                if (overlay?.visibility == View.VISIBLE) {
+                    overlay.visibility = View.GONE
+                    return
+                }
+
+                // 2. If navigating, stop navigation and go back to directions
+                if (isNavigating) {
+                    closeDirectionsUI()
+                    return
+                }
+
+                // 3. If directions panel is showing (preview mode), close it
+                val panel = findViewById<View>(R.id.directions_bottom_panel_container)
+                if (panel?.visibility == View.VISIBLE) {
+                    closeDirectionsUI()
+                    return
+                }
+
+                // 4. Pop fragment back stack if any
+                if (supportFragmentManager.backStackEntryCount > 0) {
+                    supportFragmentManager.popBackStack()
+                    return
+                }
+
+                // 5. If not on Explore tab, switch to Explore
+                val bottomNav = findViewById<com.google.android.material.bottomnavigation.BottomNavigationView>(R.id.bottom_navigation)
+                if (bottomNav != null && bottomNav.selectedItemId != R.id.nav_explore) {
+                    bottomNav.selectedItemId = R.id.nav_explore
+                    return
+                }
+
+                // 6. Allow default system back to exit
+                isEnabled = false
+                onBackPressedDispatcher.onBackPressed()
+                isEnabled = true
             }
         })
 
@@ -2290,24 +2333,13 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         // Measure synchronously — caller must ensure panel is laid out
         val doReposition = Runnable {
             val panelHeight = panel.height
-            // If bottom nav is hidden, we treat its height as 0 for translation purposes
-            val navHeight = if (bottomNav.visibility == View.VISIBLE) bottomNav.height else 0
-            
+            val navHeight = bottomNav.height
             if (panelHeight == 0) return@Runnable  // not yet measured, skip
-            val gap = (12 * resources.displayMetrics.density)  // Increased gap for visibility
-            
-            // We translate the FABs up by exactly the height of the panel (minus any offset from bottom nav)
+            val gap = (8 * resources.displayMetrics.density)  // 8dp fixed gap
             val targetTranslation = -(panelHeight.toFloat() - navHeight.toFloat() + gap)
-            
             val fabStack = findViewById<View>(R.id.fab_stack_container)
             val aiVoice = findViewById<View>(R.id.fab_ai_voice)
             val speedWidget = findViewById<View>(R.id.speed_limit_widget)
-            
-            // Ensure they are on the top layer (no "underlay")
-            fabStack?.bringToFront()
-            aiVoice?.bringToFront()
-            speedWidget?.bringToFront()
-            
             fabStack?.animate()?.translationY(targetTranslation)?.setDuration(200)?.start()
             aiVoice?.animate()?.translationY(targetTranslation)?.setDuration(200)?.start()
             speedWidget?.animate()?.translationY(targetTranslation)?.setDuration(200)?.start()
@@ -2333,9 +2365,6 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     }
 
     private fun showDirectionsUI(distance: Double, duration: Double) {
-        // Hide bottom navigation
-        findViewById<View>(R.id.bottom_navigation)?.visibility = View.GONE
-
         // Hide search bar, hazard toggle and compass for clean directions view (like Google Maps)
         findViewById<View>(R.id.search_card).visibility = View.GONE
         findViewById<View>(R.id.btn_toggle_osm)?.visibility = View.GONE
@@ -2390,21 +2419,16 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         // Show directions bottom panel and scan progress
         panel.visibility = View.VISIBLE
         findViewById<View>(R.id.hazard_scan_progress_container)?.visibility = View.VISIBLE
-        
-        // Ensure FABs are on top (no underlay behind panel)
-        findViewById<View>(R.id.fab_stack_container)?.bringToFront()
-        findViewById<View>(R.id.fab_ai_voice)?.bringToFront()
-        findViewById<View>(R.id.speed_limit_widget)?.bringToFront()
 
-        // SET TO MAXIMIZED BY DEFAULT (as requested: "minimized by default set to maximized")
+        // Start collapsed by default — hide all children below the stats row (index >= 2)
         val panelContainerDefault = findViewById<android.view.ViewGroup>(R.id.directions_bottom_panel_container)
         panelContainerDefault?.let { vg ->
-            for (i in 0 until vg.childCount) {
-                vg.getChildAt(i).visibility = View.VISIBLE
+            for (i in 2 until vg.childCount) {
+                vg.getChildAt(i).visibility = View.GONE
             }
         }
-        findViewById<android.widget.ImageButton>(R.id.btn_collapse_panel)?.rotation = 0f
-        isPanelCollapsed = false
+        findViewById<android.widget.ImageButton>(R.id.btn_collapse_panel)?.rotation = 180f
+        isPanelCollapsed = true
 
         repositionFabsAbovePanel()
 
@@ -2530,33 +2554,14 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         findViewById<android.widget.ProgressBar>(R.id.hazard_scan_progress)?.progress = 100
         findViewById<android.widget.TextView>(R.id.tv_hazard_scan_percent)?.text = "100%"
 
-        // Reset FAB stack visibility and layer priority
+        // Reset FAB translationY (was shifted up by repositionFabsAbovePanel) — no layout param changes
         val fabStack = findViewById<View>(R.id.fab_stack_container)
-        fabStack?.let { stack ->
-            stack.translationY = 0f
-            stack.visibility = View.VISIBLE
-            stack.bringToFront()
-        }
-
-        // Hide others in the stack
-        findViewById<View>(R.id.btn_toggle_osm)?.visibility = View.GONE
-        findViewById<View>(R.id.fab_compass)?.visibility = View.GONE
-        
-        // Ensure navigation essentials are visible and on top layer
-        findViewById<View>(R.id.fab_recenter)?.apply {
-            visibility = View.VISIBLE
-            bringToFront()
-        }
-        findViewById<View>(R.id.fab_ai_voice)?.apply {
-            visibility = View.VISIBLE
-            translationY = 0f
-            bringToFront()
-        }
-        findViewById<View>(R.id.speed_limit_widget)?.apply {
-            visibility = View.VISIBLE
-            translationY = 0f
-            bringToFront()
-        }
+        fabStack?.translationY = 0f
+        fabStack?.visibility = View.VISIBLE
+        // Ensure recenter FAB is visible on the start/navigation page
+        findViewById<View>(R.id.fab_recenter)?.visibility = View.VISIBLE
+        findViewById<View>(R.id.fab_ai_voice)?.translationY = 0f
+        findViewById<View>(R.id.speed_limit_widget)?.translationY = 0f
 
         // Animate bottom panel from bottom to top with smooth slide
         val panel = findViewById<View>(R.id.directions_bottom_panel)
@@ -2650,7 +2655,6 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         findViewById<View>(R.id.directions_actions_layout)?.visibility = View.VISIBLE
         findViewById<View>(R.id.btn_stop_navigation)?.visibility = View.GONE
         findViewById<View>(R.id.hazard_alert_panel)?.visibility = View.GONE
-        findViewById<View>(R.id.bottom_navigation)?.visibility = View.VISIBLE
 
         // Clear route
         lineManager?.clearAll()
@@ -2659,14 +2663,8 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
 
         // Reset state
         currentRoute = null
-        currentPrimaryRoute = null
         isNavigating = false
         isPreviewMode = false
-
-        // Important: Re-show place details sheet when coming back from directions
-        selectedPlace?.let { place ->
-            showPlaceDetailsBottomSheet(place)
-        }
     }
     
     private fun showPlaceDetailsBottomSheet(location: ELocation) {
@@ -2675,16 +2673,9 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         fabIds.forEach { id -> findViewById<View>(id)?.visibility = View.GONE }
 
         val dialog = com.google.android.material.bottomsheet.BottomSheetDialog(this, R.style.BottomSheetDialogTheme)
-        var isNavigatingFromSheet = false
-        
         dialog.setOnDismissListener {
             // Restore FABs when sheet dismissed
             fabIds.forEach { id -> findViewById<View>(id)?.visibility = View.VISIBLE }
-            // Only clear selectedPlace if the user DISMISSED the sheet manually, not starting navigation
-            if (!isNavigatingFromSheet) {
-                selectedPlace = null
-                selectedELoc = null
-            }
         }
         
         val view = layoutInflater.inflate(R.layout.fragment_location_details, null)
@@ -2702,13 +2693,11 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         }
         
         view.findViewById<View>(R.id.btn_detail_directions).setOnClickListener {
-            isNavigatingFromSheet = true
             dialog.dismiss()
             getDirections()
         }
         
         view.findViewById<View>(R.id.btn_detail_start).setOnClickListener {
-            isNavigatingFromSheet = true
             dialog.dismiss()
             getDirections(autoStart = true)
             Toast.makeText(this@MainActivity, "Starting navigation...", Toast.LENGTH_SHORT).show()

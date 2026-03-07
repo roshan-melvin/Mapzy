@@ -498,6 +498,7 @@
         android:layout_height="wrap_content"
         android:layout_alignParentEnd="true"
         android:layout_above="@id/bottom_navigation"
+        android:layout_alignWithParentIfMissing="true"
         android:layout_marginEnd="16dp"
         android:layout_marginBottom="16dp"
         android:orientation="vertical"
@@ -947,6 +948,8 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_above="@id/bottom_navigation"
+        android:background="#000000"
+        android:elevation="50dp"
         android:visibility="gone" />
 
     <!-- Hidden placeholders for backward compatibility with existing Kotlin code -->
