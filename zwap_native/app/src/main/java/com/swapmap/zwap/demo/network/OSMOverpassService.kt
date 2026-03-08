@@ -48,9 +48,13 @@ object OSMOverpassService {
     }
 
     fun buildSpeedLimitQuery(lat: Double, lon: Double, radius: Int = 50): String {
+        // Fetch ALL highway ways near the driver (no maxspeed filter).
+        // This lets us read both the "maxspeed" tag (preferred) and the
+        // "highway" type tag (used as an India-standard fallback when maxspeed
+        // is absent).
         return """
             [out:json][timeout:10];
-            way(around:$radius,$lat,$lon)["maxspeed"];
+            way["highway"](around:${'$'}radius,${'$'}lat,${'$'}lon);
             out tags center;
         """.trimIndent()
     }

@@ -17,6 +17,28 @@
     <include layout="@layout/layout_nav_hazard_banner" />
     <!-- END NEW ACTIVE NAVIGATION LAYOUTS -->
 
+    <!-- Music App Selector Tray — slides up above bottom bar when hamburger tapped -->
+    <!-- Backdrop: full-screen transparent overlay that dismisses the tray on outside tap -->
+    <View
+        android:id="@+id/music_tray_backdrop"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#00000000"
+        android:visibility="gone"
+        android:clickable="true"
+        android:focusable="true" />
+
+    <include
+        android:id="@+id/music_tray"
+        layout="@layout/layout_music_tray"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="92dp"
+        android:visibility="gone" />
+
     <!-- Compact Speed/Limit Widget (HUD) - Fixed position from bottom -->
     <include
         layout="@layout/widget_speed_limit"
@@ -936,7 +958,8 @@
         android:layout_width="match_parent"
         android:layout_height="72dp"
         android:layout_alignParentBottom="true"
-        android:background="@color/premium_bg"
+        android:background="@drawable/bg_bottom_nav_curved"
+        android:clipToOutline="true"
         app:itemIconSize="28dp"
         app:itemIconTint="@color/nav_item_color"
         app:itemTextColor="@color/nav_item_color"

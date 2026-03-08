@@ -116,6 +116,10 @@ import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.lifecycle.ProcessCameraProvider
 import java.util.concurrent.Executors
+import com.swapmap.zwap.demo.db.AppDatabase
+import com.swapmap.zwap.demo.navigation.DriverTasksManager
+import com.swapmap.zwap.demo.navigation.TaskCategory
+import com.swapmap.zwap.demo.navigation.TaskIndicatorView
 
 class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnInitListener, SensorEventListener {
 
@@ -150,6 +154,11 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     private val HAZARD_ALERT_DISTANCE = 300.0  // 300 meters
     private val alertedHazardIds = mutableSetOf<Long>()
     private val hazardPillSpokenIds = mutableSetOf<Long>()  // tracks 500m early-warn TTS for pill
+    private val taskPillSpokenIds = mutableSetOf<Long>()       // tracks TTS for task place alerts
+    private var driverTasksManager: DriverTasksManager? = null
+    private var taskIndicatorView: TaskIndicatorView? = null
+    private var cachedTasks: List<com.swapmap.zwap.demo.db.DriverTask> = emptyList()
+    private var musicTrayVisible = false
 
     // ── ViewModel: owns speed limit state, fetch logic, over-speed TTS ────────
     private lateinit var hazardViewModel: HazardViewModel
@@ -201,10 +210,13 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     // Interactive Route selection maps
     private val markerToRouteMap = mutableMapOf<Long, DirectionsRoute>()
     private val routeMetaMarkerIds = mutableListOf<Long>()
+    private val taskRouteMarkerIds = mutableListOf<Long>()
     // Store all route geometries for tap-detection on gray lines
     private val allRouteGeometries = mutableMapOf<DirectionsRoute, List<com.mappls.sdk.maps.geometry.LatLng>>()
     // The currently displayed primary (blue) route
     private var currentPrimaryRoute: DirectionsRoute? = null
+    // Tracks which route step the user is currently on — updated every GPS tick during navigation
+    private var currentStepIndex = 0
     
     // Firebase live sync state
     private val liveConfidenceMap = mutableMapOf<Long, Double>()
@@ -452,8 +464,13 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         Mappls.getInstance(this)
 
         setContentView(R.layout.activity_main)
-        
-        
+
+        // Create notification channels immediately (must run before any notify() call)
+        createAppNotificationChannels()
+
+        // Request ALL runtime permissions the app needs in one upfront dialog
+        requestAllAppPermissions()
+
         // Initialize FAB layout manager for handling FAB positions per page state
         fabLayoutManager = FabLayoutManager(this)
         fabLayoutManager.setPageState(PageState.HOME_EXPLORE, immediate = true)
@@ -463,6 +480,14 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
 
         // ── Initialize HazardViewModel ────────────────────────────────────────
         hazardViewModel = ViewModelProvider(this)[HazardViewModel::class.java]
+
+        // ── Initialize DriverTasksManager ─────────────────────────────────────
+        driverTasksManager = DriverTasksManager(
+            context = this,
+            db = AppDatabase.getDatabase(this),
+            scope = lifecycleScope,
+            lifecycleOwner = this
+        )
 
         // Observe speed limit changes and update tv_limit automatically.
         // This runs on the Main thread, is lifecycle-safe, and replaces the
@@ -762,6 +787,9 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
 
         setupBottomNavigation()
         setupSearchOverlay()
+        setupTaskIndicator()
+        setupMusicTray()
+        setupNavBottomBarCurvedBg()
     }
 
     private fun startVoiceAnimation() {
@@ -881,6 +909,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         val fragmentContainer = findViewById<View>(R.id.fragment_container)
         
         bottomNav.setOnItemSelectedListener { item ->
+            hideMusicTray()
             when (item.itemId) {
                 R.id.nav_explore -> {
                     // Show map, hide fragment container
@@ -1497,7 +1526,80 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     }
     
 
-    /** Swap icon to spinner and start infinite rotation — call from Main thread */
+    private fun createTaskMarkerBitmap(task: com.swapmap.zwap.demo.db.DriverTask): android.graphics.Bitmap {
+        val baseSize = 100
+        val bitmap = android.graphics.Bitmap.createBitmap(baseSize, baseSize, android.graphics.Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bitmap)
+
+        val category = com.swapmap.zwap.demo.navigation.TaskCategory.fromName(task.category)
+        val circleColor = category?.color ?: android.graphics.Color.parseColor("#9C27B0")
+        val emoji = category?.emoji ?: "📍"
+
+        // Outer white border
+        val borderPaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.WHITE
+            style = android.graphics.Paint.Style.FILL
+            isAntiAlias = true
+        }
+        canvas.drawCircle(baseSize / 2f, baseSize / 2f, baseSize / 2f - 1, borderPaint)
+
+        // Inner colored circle
+        val paint = android.graphics.Paint().apply {
+            color = circleColor
+            style = android.graphics.Paint.Style.FILL
+            isAntiAlias = true
+        }
+        canvas.drawCircle(baseSize / 2f, baseSize / 2f, baseSize / 2f - 7, paint)
+
+        // Draw emoji icon
+        val textPaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.WHITE
+            textSize = baseSize * 0.42f
+            textAlign = android.graphics.Paint.Align.CENTER
+            isAntiAlias = true
+        }
+        val yPos = (baseSize / 2f) - ((textPaint.descent() + textPaint.ascent()) / 2)
+        canvas.drawText(emoji, baseSize / 2f, yPos, textPaint)
+
+        return bitmap
+    }
+
+    private fun addTaskMarkersOnRoute() {
+        val map = mapplsMap ?: return
+        val tasks = cachedTasks.filter { !it.isCompleted && it.nearestPlaceLat != null && it.nearestPlaceLon != null }
+        if (tasks.isEmpty()) return
+
+        for (task in tasks) {
+            try {
+                val lat = task.nearestPlaceLat ?: continue
+                val lon = task.nearestPlaceLon ?: continue
+                val label = com.swapmap.zwap.demo.navigation.TaskCategory.fromName(task.category)?.label
+                    ?: task.nearestPlaceName ?: "Task"
+                val markerOptions = com.mappls.sdk.maps.annotations.MarkerOptions()
+                    .position(com.mappls.sdk.maps.geometry.LatLng(lat, lon))
+                    .title(label)
+                    .snippet(task.nearestPlaceName ?: "")
+                    .icon(com.mappls.sdk.maps.annotations.IconFactory.getInstance(this)
+                        .fromBitmap(createTaskMarkerBitmap(task)))
+                val marker = map.addMarker(markerOptions)
+                if (marker != null) {
+                    taskRouteMarkerIds.add(marker.id)
+                    Log.d("Zwap", "Task marker added: $label at $lat,$lon")
+                }
+            } catch (e: Exception) {
+                Log.e("Zwap", "Error adding task marker", e)
+            }
+        }
+    }
+
+    private fun clearTaskRouteMarkers() {
+        mapplsMap?.let { map ->
+            map.markers.filter { taskRouteMarkerIds.contains(it.id) }.forEach { map.removeMarker(it) }
+        }
+        taskRouteMarkerIds.clear()
+    }
+
+        /** Swap icon to spinner and start infinite rotation — call from Main thread */
     private fun startOSMLoadingAnimation() {
         val btn = findViewById<com.google.android.material.floatingactionbutton.FloatingActionButton>(R.id.btn_toggle_osm) ?: return
         btn.setImageResource(R.drawable.ic_osm_spinner)
@@ -2310,7 +2412,276 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         startBtn?.visibility = if (isOriginCurrentLocation) View.VISIBLE else View.GONE
     }
 
+    // ── Music Tray ───────────────────────────────────────────────────────────
+
+    // ── Live Navigation Header Updates ──────────────────────────────────────────
+
+    /** Returns the appropriate turn icon drawable for the given maneuver type + modifier */
+    private fun maneuverIconRes(type: String?, modifier: String?): Int {
+        val t = type?.lowercase() ?: ""
+        val m = modifier?.lowercase() ?: ""
+        return when {
+            t.contains("arrive")                              -> R.drawable.ic_turn_arrive
+            t.contains("roundabout") || t.contains("rotary") -> R.drawable.ic_turn_roundabout
+            m.contains("uturn") || t.contains("uturn")        -> R.drawable.ic_turn_uturn
+            m.contains("right")                               -> R.drawable.ic_turn_right_arrow
+            m.contains("left")                                -> R.drawable.ic_turn_left_arrow
+            else                                              -> R.drawable.ic_turn_straight
+        }
+    }
+
+    /**
+     * Called on every GPS update while isNavigating == true.
+     * Advances the step index when the user passes a maneuver point,
+     * then refreshes all header fields (icon, instruction, distance,
+     * remaining time, remaining distance, ETA).
+     */
+    private fun updateNavActiveHeader(location: android.location.Location) {
+        val steps = currentPrimaryRoute?.legs()?.firstOrNull()?.steps() ?: return
+        if (steps.size < 2) return
+
+        // ── step[i].maneuver().location() = START of step i (behind driver).
+        // ── The UPCOMING maneuver is at step[currentStepIndex + 1].maneuver().location().
+        // ── Advance index when the user passes within 40 m of the next turn point.
+        while (currentStepIndex + 1 < steps.size - 1) {
+            val nextManeuverLoc = steps[currentStepIndex + 1].maneuver()?.location() ?: break
+            val d = FloatArray(1)
+            android.location.Location.distanceBetween(
+                location.latitude, location.longitude,
+                nextManeuverLoc.latitude(), nextManeuverLoc.longitude(), d
+            )
+            if (d[0] < 40f) currentStepIndex++ else break
+        }
+
+        // ── NEXT maneuver = step[currentStepIndex + 1] (upcoming, ahead of driver) ──
+        val nextIdx  = (currentStepIndex + 1).coerceAtMost(steps.size - 1)
+        val nextStep = steps[nextIdx]
+        val nextLoc  = nextStep.maneuver()?.location()
+
+        // ── Distance to that upcoming maneuver point ──────────────────────────
+        val distToManeuver: Double = if (nextLoc != null) {
+            val d = FloatArray(1)
+            android.location.Location.distanceBetween(
+                location.latitude, location.longitude,
+                nextLoc.latitude(), nextLoc.longitude(), d
+            )
+            d[0].toDouble()
+        } else {
+            // Fallback: use the step's declared distance minus distance already walked
+            steps[currentStepIndex].distance() ?: 0.0
+        }
+        val distText = if (distToManeuver < 1000)
+            "in ${distToManeuver.toInt()}m"
+        else
+            "in %.1f km".format(distToManeuver / 1000.0)
+
+        // ── Remaining distance + duration ────────────────────────────────────────
+        // distToManeuver = remaining distance on the CURRENT step (to the next turn).
+        // From nextIdx onward = full distances of all subsequent steps.
+        var remDist = distToManeuver
+        var remDur  = 0.0
+        for (i in nextIdx until steps.size) {
+            remDist += steps[i].distance() ?: 0.0
+            remDur  += steps[i].duration() ?: 0.0
+        }
+        // Estimate time for remaining portion of current step using the step's avg speed
+        val curDist = steps[currentStepIndex].distance() ?: 0.0
+        val curDur  = steps[currentStepIndex].duration() ?: 0.0
+        val curStepSpeed = if (curDur > 0 && curDist > 0) curDist / curDur else 8.33
+        remDur += distToManeuver / curStepSpeed
+
+        // ── Icon + instruction from NEXT maneuver ─────────────────────────────
+        val maneuver    = nextStep.maneuver()
+        val iconRes     = maneuverIconRes(maneuver?.type(), maneuver?.modifier())
+        val instruction = maneuver?.instruction()
+            ?.takeIf { it.isNotBlank() }
+            ?: "Continue on route"
+
+        // ── Push to UI ────────────────────────────────────────────────────────
+        val dMin      = (remDur / 60).toInt()
+        val timeText  = if (dMin >= 60) "${dMin / 60} hr ${dMin % 60} min" else "$dMin min"
+        val distKmText = "%.1f km".format(remDist / 1000.0)
+
+        runOnUiThread {
+            findViewById<android.widget.ImageView>(R.id.iv_active_turn_icon)?.setImageResource(iconRes)
+            findViewById<android.widget.TextView>(R.id.tv_active_turn_instruction)?.text = instruction
+            findViewById<android.widget.TextView>(R.id.tv_active_turn_distance)?.text = distText
+            findViewById<android.widget.TextView>(R.id.tv_active_time)?.text = timeText
+            findViewById<android.widget.TextView>(R.id.tv_active_distance)?.text = distKmText
+            updateETADisplay(remDur)
+        }
+    }
+
+    private fun setupNavBottomBarCurvedBg() {
+        val navBar = findViewById<android.view.View>(R.id.nav_active_bottom_bar) ?: return
+        val radiusPx = (20f * resources.displayMetrics.density)
+        val bg = android.graphics.drawable.GradientDrawable().apply {
+            shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+            setColor(android.graphics.Color.BLACK)
+            cornerRadii = floatArrayOf(radiusPx, radiusPx, radiusPx, radiusPx, 0f, 0f, 0f, 0f)
+        }
+        navBar.background = bg
+        navBar.outlineProvider = object : android.view.ViewOutlineProvider() {
+            override fun getOutline(view: android.view.View, outline: android.graphics.Outline) {
+                val r = (20f * view.resources.displayMetrics.density)
+                outline.setRoundRect(0, 0, view.width, (view.height + r).toInt(), r)
+            }
+        }
+        navBar.clipToOutline = true
+        navBar.elevation = 10f * resources.displayMetrics.density
+    }
+
+    private fun setupMusicTray() {
+        val spotifyIv = findViewById<android.widget.ImageView>(R.id.iv_spotify_icon)
+        val gaanaIv   = findViewById<android.widget.ImageView>(R.id.iv_gaana_icon)
+        // Use real app icon when installed; fall back to brand-accurate drawables
+        if (spotifyIv != null) {
+            try {
+                spotifyIv.setImageDrawable(packageManager.getApplicationIcon("com.spotify.music"))
+            } catch (e: android.content.pm.PackageManager.NameNotFoundException) {
+                spotifyIv.setImageResource(R.drawable.ic_spotify_logo)
+                spotifyIv.background = null
+            }
+        }
+        if (gaanaIv != null) {
+            try {
+                gaanaIv.setImageDrawable(packageManager.getApplicationIcon("com.gaana"))
+            } catch (e: android.content.pm.PackageManager.NameNotFoundException) {
+                gaanaIv.setImageResource(R.drawable.ic_gaana_logo)
+                gaanaIv.background = null
+            }
+        }
+
+        findViewById<View>(R.id.btn_open_spotify)?.setOnClickListener {
+            hideMusicTray()
+            openAppOrStore("com.spotify.music",
+                "spotify://",
+                "https://play.google.com/store/apps/details?id=com.spotify.music")
+        }
+        findViewById<View>(R.id.btn_open_gaana)?.setOnClickListener {
+            hideMusicTray()
+            openAppOrStore("com.gaana",
+                "gaana://",
+                "https://play.google.com/store/apps/details?id=com.gaana")
+        }
+        findViewById<View>(R.id.music_tray_backdrop)?.setOnClickListener {
+            hideMusicTray()
+        }
+    }
+
+    private fun openAppOrStore(pkg: String, deepLink: String, storeUrl: String) {
+        val launchIntent = packageManager.getLaunchIntentForPackage(pkg)
+        if (launchIntent != null) {
+            startActivity(launchIntent)
+        } else {
+            startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(storeUrl)))
+        }
+    }
+
+    private fun toggleMusicTray() {
+        if (musicTrayVisible) hideMusicTray() else showMusicTray()
+    }
+
+    private fun showMusicTray() {
+        val tray     = findViewById<View>(R.id.music_tray)          ?: return
+        val backdrop = findViewById<View>(R.id.music_tray_backdrop)  ?: return
+        musicTrayVisible = true
+        backdrop.visibility = View.VISIBLE
+        tray.visibility     = View.VISIBLE
+        tray.post {
+            tray.translationY = tray.height.toFloat()
+            tray.animate()
+                .translationY(0f)
+                .setDuration(260)
+                .setInterpolator(android.view.animation.DecelerateInterpolator())
+                .start()
+        }
+    }
+
+    private fun hideMusicTray() {
+        val tray     = findViewById<View>(R.id.music_tray)          ?: return
+        val backdrop = findViewById<View>(R.id.music_tray_backdrop)  ?: return
+        musicTrayVisible = false
+        backdrop.visibility = View.GONE
+        tray.animate()
+            .translationY(tray.height.toFloat())
+            .setDuration(220)
+            .setInterpolator(android.view.animation.AccelerateInterpolator())
+            .withEndAction { tray.visibility = View.GONE }
+            .start()
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+
+        private fun setupTaskIndicator() {
+        taskIndicatorView = findViewById(R.id.task_indicator_view)
+        if (taskIndicatorView == null) return
+
+        // Click opens driver tasks panel
+        taskIndicatorView?.setOnClickListener { showNoteBottomSheet() }
+
+        // Observe task changes; cache them so location updates can refresh without DB query
+        AppDatabase.getDatabase(this).driverTaskDao().getAllLive().observe(this) { tasks ->
+            cachedTasks = tasks
+            refreshTaskIndicator()
+            // Refresh task map markers live if a route is already displayed
+            if (currentPrimaryRoute != null) {
+                clearTaskRouteMarkers()
+                addTaskMarkersOnRoute()
+            }
+        }
+    }
+
+    private fun refreshTaskIndicator() {
+        val tasks = cachedTasks
+        val indicator = taskIndicatorView ?: return
+        val incompleteTasks = tasks.filter { !it.isCompleted }
+        if (incompleteTasks.isEmpty()) {
+            indicator.updateTask(null, null)
+            return
+        }
+        val loc = mapplsMap?.locationComponent?.lastKnownLocation
+        if (loc == null) {
+            indicator.updateTask(incompleteTasks.first(), null)
+            return
+        }
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val nearestPair = driverTasksManager?.nearestActiveTaskPlace(loc.latitude, loc.longitude)
+                withContext(Dispatchers.Main) {
+                    if (nearestPair != null) {
+                        indicator.updateTask(nearestPair.first, nearestPair.second)
+                    } else {
+                        val nearest = incompleteTasks.minByOrNull { task ->
+                            if (task.nearestPlaceLat != null && task.nearestPlaceLon != null) {
+                                val r = FloatArray(1)
+                                android.location.Location.distanceBetween(
+                                    loc.latitude, loc.longitude,
+                                    task.nearestPlaceLat, task.nearestPlaceLon, r)
+                                r[0].toDouble()
+                            } else Double.MAX_VALUE
+                        }
+                        if (nearest?.nearestPlaceLat != null && nearest.nearestPlaceLon != null) {
+                            val r = FloatArray(1)
+                            android.location.Location.distanceBetween(
+                                loc.latitude, loc.longitude,
+                                nearest.nearestPlaceLat, nearest.nearestPlaceLon, r)
+                            indicator.updateTask(nearest, r[0] / 1000.0)
+                        } else {
+                            indicator.updateTask(incompleteTasks.first(), null)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("Zwap", "Error updating task indicator", e)
+            }
+        }
+    }
+
     fun handleLocationUpdate(location: Location) {
+        // Refresh task indicator distance on every GPS location change (uses cached tasks - no DB hit)
+        if (cachedTasks.any { !it.isCompleted }) refreshTaskIndicator()
+
         val speedKmh = (location.speed * 3.6).toInt()
 
         // ── Update current speed display ──────────────────────────────────────
@@ -2339,6 +2710,9 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         updateHazardAlertPill(location.latitude, location.longitude)
         }
 
+        // ── Update live navigation header (turn icon, instruction, distance, time) ─
+        if (isNavigating) updateNavActiveHeader(location)
+
         // ── Refresh OSM overlay data every 1km ────────────────────────────────
         if (osmOverlayEnabled) {
             if (lastOSMFetchLocation == null || location.distanceTo(lastOSMFetchLocation!!) > 1000) {
@@ -2365,77 +2739,115 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     private fun updateHazardAlertPill(userLat: Double, userLon: Double) {
         if (!isNavigating && !isPreviewMode) return
 
-        // Find nearest route hazard within 10 km
-        val nearest = osmFeatures
-            .filter { it.type in listOf(
-                FeatureType.SPEED_CAMERA, FeatureType.TOLL, FeatureType.TRAFFIC_CALMING,
-                FeatureType.COMMUNITY_VERIFIED, FeatureType.COMMUNITY_NEEDS_REVALIDATION
-            )}
-            .mapNotNull { feature ->
-                val r = FloatArray(1)
-                android.location.Location.distanceBetween(userLat, userLon, feature.lat, feature.lon, r)
-                if (r[0] < 10000f) Pair(feature, r[0].toDouble()) else null
+        lifecycleScope.launch {
+            // ── Priority 1: task-linked place within 500 m ──────────────────────
+            val taskAlert = withContext(Dispatchers.IO) {
+                driverTasksManager?.nearestActiveTaskPlace(userLat, userLon)
             }
-            .minByOrNull { it.second }
 
-        runOnUiThread {
-            val pill = findViewById<android.view.ViewGroup>(R.id.hazard_alert_pill) ?: return@runOnUiThread
+            // ── Priority 2: nearest OSM route hazard within 10 km ───────────────
+            val nearest = osmFeatures
+                .filter { it.type in listOf(
+                    FeatureType.SPEED_CAMERA, FeatureType.TOLL,
+                    FeatureType.TRAFFIC_CALMING,
+                    FeatureType.COMMUNITY_VERIFIED,
+                    FeatureType.COMMUNITY_NEEDS_REVALIDATION
+                )}
+                .mapNotNull { feature ->
+                    val r = FloatArray(1)
+                    android.location.Location.distanceBetween(userLat, userLon, feature.lat, feature.lon, r)
+                    if (r[0] < 10000f) Pair(feature, r[0].toDouble()) else null
+                }
+                .minByOrNull { it.second }
+
+            // ── Update UI (already on Main via lifecycleScope) ───────────────────
+            val pill = findViewById<android.view.ViewGroup>(R.id.hazard_alert_pill)
+                ?: return@launch
             val pillIcon = findViewById<android.widget.ImageView>(R.id.iv_hazard_pill_icon)
             val pillType = findViewById<android.widget.TextView>(R.id.tv_hazard_pill_type)
             val pillDist = findViewById<android.widget.TextView>(R.id.tv_hazard_pill_dist)
-
             pill.visibility = android.view.View.VISIBLE
 
             val bg = android.graphics.drawable.GradientDrawable()
             bg.cornerRadius = 100f
 
-            if (nearest != null) {
-                val (feature, dist) = nearest
-                val distStr = if (dist < 1000) "${dist.toInt()}m" else "${"%.1f".format(dist / 1000)}km"
-
-                val (bgColor, iconRes, label) = when (feature.type) {
-                    FeatureType.SPEED_CAMERA ->
-                        Triple(android.graphics.Color.parseColor("#FFD600"), R.drawable.ic_camera_outlined, "CAMERA")
-                    FeatureType.TOLL ->
-                        Triple(android.graphics.Color.parseColor("#00E5FF"), R.drawable.ic_hazard_waze, "TOLL")
-                    FeatureType.TRAFFIC_CALMING ->
-                        Triple(android.graphics.Color.parseColor("#FF6D00"), R.drawable.ic_hazard_waze, "BUMP")
-                    else ->
-                        Triple(android.graphics.Color.parseColor("#FF6D00"), R.drawable.ic_hazard_waze, "HAZARD")
-                }
-
-                bg.setColor(bgColor)
-                bg.setStroke(3, android.graphics.Color.BLACK)
-                pill.background = bg
-
-                pillIcon?.setImageResource(iconRes)
-                pillIcon?.imageTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.BLACK)
-                pillType?.text = label
-                pillType?.setTextColor(android.graphics.Color.BLACK)
-                pillDist?.text = distStr
-                pillDist?.setTextColor(android.graphics.Color.parseColor("#1A1A1A"))
-
-                // 500 m early audio warning (once per hazard, only during active navigation)
-                if (dist < 500 && !hazardPillSpokenIds.contains(feature.id) && isNavigating) {
-                    hazardPillSpokenIds.add(feature.id)
-                    val spokenType = when (feature.type) {
-                        FeatureType.SPEED_CAMERA -> "Speed camera"
-                        FeatureType.TOLL        -> "Toll booth"
-                        FeatureType.TRAFFIC_CALMING -> "Speed bump"
-                        else -> "Hazard"
+            when {
+                taskAlert != null -> {
+                    // Task-linked place (highest priority after SAFE)
+                    val (task, distKm) = taskAlert
+                    val cat = TaskCategory.fromName(task.category)
+                    val distStr = if (distKm < 1.0) "${(distKm * 1000).toInt()}m"
+                                  else "${"%.1f".format(distKm)}km"
+                    val pillColor = cat?.color ?: android.graphics.Color.parseColor("#26A69A")
+                    bg.setColor(pillColor)
+                    bg.setStroke(3, android.graphics.Color.BLACK)
+                    pill.background = bg
+                    pillIcon?.setImageResource(R.drawable.ic_note_document)
+                    pillIcon?.imageTintList = android.content.res.ColorStateList
+                        .valueOf(android.graphics.Color.BLACK)
+                    pillType?.text = cat?.label?.uppercase() ?: "TASK"
+                    pillType?.setTextColor(android.graphics.Color.BLACK)
+                    pillDist?.text = (task.nearestPlaceName?.take(12) ?: "") + "  " + distStr
+                    pillDist?.setTextColor(android.graphics.Color.parseColor("#1A1A1A"))
+                    if (isNavigating && !taskPillSpokenIds.contains(task.id)) {
+                        taskPillSpokenIds.add(task.id)
+                        tts?.speak("${cat?.label ?: "Task place"} in $distStr",
+                            android.speech.tts.TextToSpeech.QUEUE_ADD, null, null)
                     }
-                    tts?.speak("$spokenType in $distStr", android.speech.tts.TextToSpeech.QUEUE_ADD, null, null)
                 }
-            } else {
-                // SAFE — no hazard within 10 km
-                bg.setColor(android.graphics.Color.parseColor("#00C853"))
-                bg.setStroke(3, android.graphics.Color.BLACK)
-                pill.background = bg
-                pillIcon?.setImageResource(R.drawable.ic_hazard_waze)
-                pillIcon?.imageTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.BLACK)
-                pillType?.text = "SAFE"
-                pillType?.setTextColor(android.graphics.Color.BLACK)
-                pillDist?.text = ""
+                nearest != null -> {
+                    // Nearest hazard
+                    val (feature, dist) = nearest
+                    val distStr = if (dist < 1000) "${dist.toInt()}m"
+                                  else "${"%.1f".format(dist / 1000)}km"
+                    val (bgColor, iconRes, label) = when (feature.type) {
+                        FeatureType.SPEED_CAMERA ->
+                            Triple(android.graphics.Color.parseColor("#FFD600"),
+                                R.drawable.ic_camera_outlined, "CAMERA")
+                        FeatureType.TOLL ->
+                            Triple(android.graphics.Color.parseColor("#00E5FF"),
+                                R.drawable.ic_hazard_waze, "TOLL")
+                        FeatureType.TRAFFIC_CALMING ->
+                            Triple(android.graphics.Color.parseColor("#FF6D00"),
+                                R.drawable.ic_hazard_waze, "BUMP")
+                        else ->
+                            Triple(android.graphics.Color.parseColor("#FF6D00"),
+                                R.drawable.ic_hazard_waze, "HAZARD")
+                    }
+                    bg.setColor(bgColor)
+                    bg.setStroke(3, android.graphics.Color.BLACK)
+                    pill.background = bg
+                    pillIcon?.setImageResource(iconRes)
+                    pillIcon?.imageTintList = android.content.res.ColorStateList
+                        .valueOf(android.graphics.Color.BLACK)
+                    pillType?.text = label
+                    pillType?.setTextColor(android.graphics.Color.BLACK)
+                    pillDist?.text = distStr
+                    pillDist?.setTextColor(android.graphics.Color.parseColor("#1A1A1A"))
+                    if (dist < 500 && !hazardPillSpokenIds.contains(feature.id) && isNavigating) {
+                        hazardPillSpokenIds.add(feature.id)
+                        val spokenType = when (feature.type) {
+                            FeatureType.SPEED_CAMERA -> "Speed camera"
+                            FeatureType.TOLL        -> "Toll booth"
+                            FeatureType.TRAFFIC_CALMING -> "Speed bump"
+                            else -> "Hazard"
+                        }
+                        tts?.speak("$spokenType in $distStr",
+                            android.speech.tts.TextToSpeech.QUEUE_ADD, null, null)
+                    }
+                }
+                else -> {
+                    // SAFE — nothing nearby
+                    bg.setColor(android.graphics.Color.parseColor("#00C853"))
+                    bg.setStroke(3, android.graphics.Color.BLACK)
+                    pill.background = bg
+                    pillIcon?.setImageResource(R.drawable.ic_hazard_waze)
+                    pillIcon?.imageTintList = android.content.res.ColorStateList
+                        .valueOf(android.graphics.Color.BLACK)
+                    pillType?.text = "SAFE"
+                    pillType?.setTextColor(android.graphics.Color.BLACK)
+                    pillDist?.text = ""
+                }
             }
         }
     }
@@ -3011,14 +3423,17 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         }
         
         // Setup initial directions text
-        val firstStep = currentPrimaryRoute?.legs()?.firstOrNull()?.steps()?.firstOrNull { 
-            val instr = it.maneuver()?.instruction()?.lowercase() ?: ""
-            instr.isNotEmpty() && !instr.contains("depart") 
-        }
-        val instruction = firstStep?.maneuver()?.instruction() ?: "Continue on route"
-        val distToTurn = firstStep?.distance()?.let {
-            if (it < 1000) "in ${it.toInt()}m" else "in %.1fkm".format(it / 1000.0)
-        } ?: "in 0m"
+        // steps[0]=depart step (distance = road to first turn); steps[1]=first turn maneuver
+        val allSteps   = currentPrimaryRoute?.legs()?.firstOrNull()?.steps()
+        val departStep = allSteps?.getOrNull(0)
+        val firstTurn  = allSteps?.getOrNull(1) ?: allSteps?.getOrNull(0)
+        val instruction = firstTurn?.maneuver()?.instruction()?.takeIf { it.isNotBlank() } ?: "Continue on route"
+        val departDist  = departStep?.distance() ?: 0.0
+        val distToTurn  = if (departDist > 0) {
+            if (departDist < 1000) "in ${departDist.toInt()}m" else "in %.1fkm".format(departDist / 1000.0)
+        } else "calculating..."
+        val initIconRes = maneuverIconRes(firstTurn?.maneuver()?.type(), firstTurn?.maneuver()?.modifier())
+        findViewById<android.widget.ImageView>(R.id.iv_active_turn_icon)?.setImageResource(initIconRes)
         findViewById<TextView>(R.id.tv_active_turn_instruction)?.text = instruction
         findViewById<TextView>(R.id.tv_active_turn_distance)?.text = distToTurn
 
@@ -3075,6 +3490,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     private fun startNavigation() {
         isNavigating = true
         isPreviewMode = false
+        currentStepIndex = 0
         
         // Pre-compose Start page FABs via post-frame callback to prevent transition flash
         fabLayoutManager.prepareStartPageTransition {}
@@ -3169,17 +3585,44 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
 
         // Show our new Navigation Top and Bottom panels
         findViewById<View>(R.id.nav_active_top_panel)?.visibility = View.VISIBLE
-        findViewById<View>(R.id.nav_active_bottom_bar)?.visibility = View.VISIBLE
+        val navBottomBar = findViewById<android.view.View>(R.id.nav_active_bottom_bar)
+        navBottomBar?.visibility = android.view.View.VISIBLE
+        // Re-apply curved bg AFTER layout pass so view has real width/height
+        navBottomBar?.post { setupNavBottomBarCurvedBg() }
+
+        // Seed header immediately with last known location (before first GPS tick arrives)
+        mapplsMap?.locationComponent?.lastKnownLocation?.let { updateNavActiveHeader(it) }
+
+        // Fix 2: Show hazard pill immediately in SAFE state when navigation starts
+        // (never leaves it invisible/missing on nav start)
+        val pill = findViewById<android.view.ViewGroup>(R.id.hazard_alert_pill)
+        if (pill != null) {
+            pill.visibility = View.VISIBLE
+            val bg = android.graphics.drawable.GradientDrawable()
+            bg.cornerRadius = 100f
+            bg.setColor(android.graphics.Color.parseColor("#00C853"))
+            bg.setStroke(3, android.graphics.Color.BLACK)
+            pill.background = bg
+            findViewById<android.widget.ImageView>(R.id.iv_hazard_pill_icon)?.let {
+                it.setImageResource(R.drawable.ic_hazard_waze)
+                it.imageTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.BLACK)
+            }
+            findViewById<android.widget.TextView>(R.id.tv_hazard_pill_type)?.apply {
+                text = "SAFE"
+                setTextColor(android.graphics.Color.BLACK)
+            }
+            findViewById<android.widget.TextView>(R.id.tv_hazard_pill_dist)?.text = ""
+        }
 
         // Set up the Active Bottom Bar actions
         findViewById<View>(R.id.btn_nav_active_menu)?.setOnClickListener {
-            Toast.makeText(this, "Menu coming soon", Toast.LENGTH_SHORT).show()
+            toggleMusicTray()
         }
 
         findViewById<View>(R.id.btn_nav_active_search)?.setOnClickListener {
             showSearchOverlay(null)
         }
-        findViewById<View>(R.id.btn_nav_active_notes)?.setOnClickListener {
+        findViewById<View>(R.id.task_indicator_view)?.setOnClickListener {
             showNoteBottomSheet()
         }
         findViewById<View>(R.id.btn_nav_active_exit)?.setOnClickListener {
@@ -3212,7 +3655,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         val mapParams = findViewById<View>(R.id.map_view).layoutParams as? ViewGroup.MarginLayoutParams
         mapParams?.let {
             it.topMargin = (165 * resources.displayMetrics.density).toInt() // Clear space for top active nav panel
-            it.bottomMargin = (85 * resources.displayMetrics.density).toInt() // Clear space for nav bottom bar
+            it.bottomMargin = 0 // Nav bar floats over map — no black strip behind curved corners
             findViewById<View>(R.id.map_view).layoutParams = it
         }
 
@@ -3234,26 +3677,21 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     }
     
     private fun showNoteBottomSheet() {
-        val builder = android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-        builder.setTitle("Route Notes")
-        builder.setMessage("Enter a short memo or note for this route.")
-        
-        val input = android.widget.EditText(this)
-        input.hint = "Type here..."
-        builder.setView(input)
-        
-        builder.setPositiveButton("Save") { dialog, _ ->
-            Toast.makeText(this, "Note saved: ${input.text}", Toast.LENGTH_SHORT).show()
-            dialog.dismiss()
-        }
-        builder.setNegativeButton("Cancel") { dialog, _ -> dialog.dismiss() }
-        builder.show()
+        val loc = mapplsMap?.locationComponent?.lastKnownLocation
+        val lat = loc?.latitude ?: 0.0
+        val lon = loc?.longitude ?: 0.0
+        // Pass route geometry so DriverTasksManager can search along the full
+        // path (not just a fixed radius around current position).
+        val routePts = currentRoutePoints.map { Pair(it.latitude(), it.longitude()) }
+        driverTasksManager?.show(lat, lon, routePts)
     }
     
     private fun closeDirectionsUI() {
+        hideMusicTray()
         originPlace = null // Reset origin state locally when UI closes
         isOriginCurrentLocation = true
         isNavigating = false
+        currentStepIndex = 0
         isPreviewMode = false
         isMapTilted = false
         isFollowMode = true // Restore follow mode for map home
@@ -3275,6 +3713,8 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         findViewById<View>(R.id.nav_hazard_banner)?.visibility = View.GONE
         findViewById<View>(R.id.hazard_alert_pill)?.visibility = View.GONE
         hazardPillSpokenIds.clear()
+        taskPillSpokenIds.clear()
+        driverTasksManager?.dismiss()
 
         // Restore map margins
         val mapParams = findViewById<View>(R.id.map_view).layoutParams as? ViewGroup.MarginLayoutParams
@@ -3479,6 +3919,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         markerToRouteMap.clear()
         
         clearRouteHazards()  // Clear previous hazard points/markers/jobs
+        clearTaskRouteMarkers()   // Clear previous task overlay markers
         
         // Use provided primary route or the shortest one as default if null
         val actualPrimaryRoute = primaryRoute ?: routes.minByOrNull { it.distance() ?: Double.MAX_VALUE } ?: routes[0]
@@ -3551,6 +3992,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                 // Fetch hazards ONLY for the primary route
                 if (isPrimary) {
                     fetchHazardsAlongRouteProgressive(points)
+                    addTaskMarkersOnRoute()
                 }
             }
         }
@@ -4310,9 +4752,90 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == 201 && grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            mapplsMap?.getStyle { enableLocationComponent(it) }
+        when (requestCode) {
+            // Upfront all-permissions request on first launch (code 100)
+            100 -> {
+                val locIdx = permissions.indexOf(Manifest.permission.ACCESS_FINE_LOCATION)
+                if (locIdx >= 0 && grantResults.getOrElse(locIdx) { -1 } == PackageManager.PERMISSION_GRANTED) {
+                    mapplsMap?.getStyle { enableLocationComponent(it) }
+                }
+                val audioIdx = permissions.indexOf(android.Manifest.permission.RECORD_AUDIO)
+                if (audioIdx >= 0 && grantResults.getOrElse(audioIdx) { -1 } == PackageManager.PERMISSION_GRANTED) {
+                    val prefs = getSharedPreferences("zwap_prefs", android.content.Context.MODE_PRIVATE)
+                    if (prefs.getBoolean("wake_word_enabled", false)) {
+                        startForegroundService(android.content.Intent(this, WakeWordService::class.java))
+                    }
+                }
+            }
+            // Location requested from map init flow
+            201 -> {
+                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    mapplsMap?.getStyle { enableLocationComponent(it) }
+                }
+            }
         }
+    }
+
+    /**
+     * Requests every runtime permission the app needs in ONE upfront dialog.
+     * Only includes permissions not already granted.
+     */
+    private fun requestAllAppPermissions() {
+        val needed = mutableListOf<String>()
+        fun need(perm: String) {
+            if (androidx.core.content.ContextCompat.checkSelfPermission(this, perm)
+                != PackageManager.PERMISSION_GRANTED) needed.add(perm)
+        }
+        need(Manifest.permission.ACCESS_FINE_LOCATION)
+        need(Manifest.permission.ACCESS_COARSE_LOCATION)
+        need(android.Manifest.permission.CAMERA)
+        need(android.Manifest.permission.RECORD_AUDIO)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            need(android.Manifest.permission.READ_MEDIA_IMAGES)
+            need(android.Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            @Suppress("DEPRECATION")
+            need(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
+        if (needed.isNotEmpty()) {
+            ActivityCompat.requestPermissions(this, needed.toTypedArray(), 100)
+        }
+    }
+
+    /**
+     * Creates all system notification channels used by Zwap.
+     * Must be called before any notify() call.
+     * Safe to call multiple times — Android ignores duplicate channel creation.
+     */
+    private fun createAppNotificationChannels() {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) return
+        val nm = getSystemService(android.app.NotificationManager::class.java) ?: return
+
+        // General alerts: hazard pings, community activity, task reminders
+        nm.createNotificationChannel(
+            android.app.NotificationChannel(
+                "zwap_alerts",
+                "Zwap Alerts",
+                android.app.NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+                description = "Hazard warnings, community pings and task reminders"
+                enableVibration(true)
+                enableLights(true)
+                lightColor = android.graphics.Color.parseColor("#FF9800")
+            }
+        )
+
+        // Silent channel for ongoing navigation foreground service
+        nm.createNotificationChannel(
+            android.app.NotificationChannel(
+                "zwap_navigation",
+                "Navigation",
+                android.app.NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Ongoing navigation status"
+                setSound(null, null)
+            }
+        )
     }
 
     private class LocationChangeCallback(activity: MainActivity) : LocationEngineCallback<LocationEngineResult> {

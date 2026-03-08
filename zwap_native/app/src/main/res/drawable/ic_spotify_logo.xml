@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Spotify brand icon: green circle + three white arcs (sound-wave) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+
+    <!-- Green background circle -->
+    <path
+        android:fillColor="#1DB954"
+        android:pathData="M24,24m-24,0a24,24 0 1,0 48,0a24,24 0 1,0 -48,0" />
+
+    <!-- Top arc — widest -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M10.5,20Q24,11 37.5,20"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.8"
+        android:strokeLineCap="round" />
+
+    <!-- Middle arc -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M13.5,26Q24,19 34.5,26"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.8"
+        android:strokeLineCap="round" />
+
+    <!-- Bottom arc — narrowest -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M16.5,32Q24,27 31.5,32"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.8"
+        android:strokeLineCap="round" />
+
+</vector>

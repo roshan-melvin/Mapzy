@@ -37,4 +37,14 @@ interface DriverTaskDao {
 
     @Query("UPDATE driver_tasks SET geminiProcessing = :processing WHERE id = :id")
     suspend fun setGeminiProcessing(id: Long, processing: Boolean)
+
+    /** Marks a task's place search as completed but no nearby place was found.
+     *  Sets nearestPlaceName="" (sentinel: empty = no place), lat/lon stay NULL
+     *  so getTasksWithPlaces() naturally excludes this task from proximity alerts. */
+    @Query("UPDATE driver_tasks SET nearestPlaceName = '' WHERE id = :id")
+    suspend fun markNoPlaceFound(id: Long)
+
+    /** Clears the category (and place data) so the chip row shows again for re-selection. */
+    @Query("UPDATE driver_tasks SET category = NULL, geminiProcessing = 0, nearestPlaceName = NULL, nearestPlaceDistance = NULL, nearestPlaceLat = NULL, nearestPlaceLon = NULL WHERE id = :id")
+    suspend fun clearCategory(id: Long)
 }

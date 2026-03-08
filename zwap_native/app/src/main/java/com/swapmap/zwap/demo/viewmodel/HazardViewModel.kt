@@ -89,15 +89,22 @@ class HazardViewModel : ViewModel() {
                 val response = OSMOverpassService.instance.queryFeatures(query).execute()
                 if (response.isSuccessful) {
                     val elements = response.body()?.elements ?: return@launch
-                    val rawLimit = elements
-                        .mapNotNull { it.tags?.get("maxspeed") }
-                        .firstOrNull() ?: return@launch
 
-                    val limitKmh: Int? = parseMaxspeed(rawLimit)
+                    // Prefer the explicit maxspeed tag from the nearest way
+                    val rawLimit = elements.mapNotNull { it.tags?.get("maxspeed") }.firstOrNull()
+                    val limitKmh: Int? = if (rawLimit != null) {
+                        parseMaxspeed(rawLimit)
+                            .also { Log.d("HazardVM", "Speed limit from OSM maxspeed: $it km/h (raw='$rawLimit')") }
+                    } else {
+                        // No maxspeed tag — fall back to India road-type advisory
+                        val highwayType = elements.mapNotNull { it.tags?.get("highway") }.firstOrNull()
+                        highwayTypeToSpeedLimit(highwayType)
+                            .also { Log.d("HazardVM", "Speed limit from highway type '$highwayType': $it km/h") }
+                    }
+
                     if (limitKmh != null) {
                         withContext(Dispatchers.Main) {
                             _speedLimitKmh.value = limitKmh
-                            Log.d("HazardVM", "Speed limit updated: $limitKmh km/h (raw='$rawLimit')")
                         }
                     }
                 }
@@ -105,6 +112,25 @@ class HazardViewModel : ViewModel() {
                 Log.w("HazardVM", "Speed limit fetch failed: ${e.message}")
             }
         }
+    }
+
+    /**
+     * Maps OSM highway type to India advisory speed limits (km/h).
+     * Used when a road has no explicit maxspeed tag.
+     *
+     * Reference: MoRTH / IRC speed advisories for India.
+     */
+    private fun highwayTypeToSpeedLimit(highway: String?): Int? = when (highway) {
+        "motorway", "motorway_link"       -> 120
+        "trunk", "trunk_link"             -> 100
+        "primary", "primary_link"         -> 80
+        "secondary", "secondary_link"     -> 60
+        "tertiary", "tertiary_link"       -> 50
+        "unclassified"                    -> 50
+        "residential"                     -> 30
+        "living_street"                   -> 20
+        "service"                         -> 20
+        else                              -> null   // unknown type — show nothing
     }
 
     /**

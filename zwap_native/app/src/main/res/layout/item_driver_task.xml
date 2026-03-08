@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingVertical="4dp">
+
+    <!-- Main task row -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="8dp"
+        android:paddingVertical="8dp"
+        android:background="@drawable/bg_task_row">
+
+        <!-- Checkbox -->
+        <CheckBox
+            android:id="@+id/cb_task_done"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_marginEnd="8dp"
+            android:buttonTint="#E53935"
+            android:scaleX="1.1"
+            android:scaleY="1.1" />
+
+        <!-- Text + subtitle column -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tv_task_text"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Task text"
+                android:textColor="#FFFFFF"
+                android:textSize="15sp"
+                android:maxLines="2"
+                android:ellipsize="end" />
+
+            <TextView
+                android:id="@+id/tv_task_subtitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:textColor="#94A3B8"
+                android:textSize="12sp"
+                android:visibility="gone"
+                android:maxLines="2"
+                android:ellipsize="end" />
+
+            <ProgressBar
+                android:id="@+id/pb_task_gemini"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:layout_marginTop="4dp"
+                style="?android:attr/progressBarStyle"
+                android:visibility="gone"
+                android:indeterminateTint="#FFD600" />
+        </LinearLayout>
+
+        <!-- Delete button (trash icon) -->
+        <ImageButton
+            android:id="@+id/btn_task_delete"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_marginStart="4dp"
+            android:src="@drawable/ic_delete_task"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:tint="#E53935"
+            android:contentDescription="Delete task" />
+    </LinearLayout>
+
+    <!-- Horizontal category chips row (shown until user picks or Gemini assigns) -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rv_task_category_chips"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:visibility="gone"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="6dp"
+        android:clipToPadding="false"
+        android:overScrollMode="never" />
+
+</LinearLayout>
