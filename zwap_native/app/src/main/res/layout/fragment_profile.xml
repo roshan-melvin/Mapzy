@@ -404,6 +404,50 @@
                             android:buttonTint="#43B581"/>
 
                     </RadioGroup>
+
+                    <!-- Preview Camera button (shown when Hands-Free is active) -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginTop="14dp">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Preview Camera"
+                                android:textColor="#FFFFFF"
+                                android:textSize="15sp"
+                                android:textStyle="bold"/>
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Open live viewfinder to position your phone"
+                                android:textColor="#B9BBBE"
+                                android:textSize="12sp"
+                                android:layout_marginTop="2dp"/>
+                        </LinearLayout>
+
+                        <Button
+                            android:id="@+id/btn_preview_camera"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Preview"
+                            android:textColor="#FFFFFF"
+                            android:backgroundTint="#5865F2"
+                            android:textAllCaps="false"
+                            android:paddingStart="18dp"
+                            android:paddingEnd="18dp"/>
+                    </LinearLayout>
+
                 </LinearLayout>
 
                 <TextView

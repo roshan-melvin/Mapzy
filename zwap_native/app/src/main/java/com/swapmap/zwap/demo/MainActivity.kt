@@ -20,6 +20,8 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import com.mappls.sdk.geojson.Point
 import com.mappls.sdk.geojson.utils.PolylineUtils
 import com.mappls.sdk.maps.MapView
@@ -120,6 +122,7 @@ import com.swapmap.zwap.demo.db.AppDatabase
 import com.swapmap.zwap.demo.navigation.DriverTasksManager
 import com.swapmap.zwap.demo.navigation.TaskCategory
 import com.swapmap.zwap.demo.navigation.TaskIndicatorView
+import com.google.firebase.firestore.ListenerRegistration
 
 class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnInitListener, SensorEventListener {
 
@@ -225,6 +228,8 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     
     private lateinit var auth: FirebaseAuth
     private var currentUserId: String? = null
+    private var userNotifListener: ListenerRegistration? = null
+    private val seenNotifIds = mutableSetOf<String>()
 
     // CameraX for hands-free auto-capture
     private var imageCapture: ImageCapture? = null
@@ -511,6 +516,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             currentUserId = auth.currentUser!!.uid
             Log.d("Zwap", "User already logged in: $currentUserId")
             setupUI()
+            startUserNotificationListener(currentUserId!!)
         } else {
             // Show login/signup dialog
             showAuthDialog()
@@ -577,6 +583,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                     Log.d("Zwap", "✅ Signed in: $currentUserId")
                     Toast.makeText(this@MainActivity, "Welcome back!", Toast.LENGTH_SHORT).show()
                     setupUI()
+                    startUserNotificationListener(currentUserId!!)
                 }
                 .addOnFailureListener { signInException ->
                     Log.d("Zwap", "Sign in failed, trying to create account...")
@@ -587,6 +594,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                             Log.d("Zwap", "✅ Account created: $currentUserId")
                             Toast.makeText(this@MainActivity, "Account created successfully!", Toast.LENGTH_SHORT).show()
                             setupUI()
+                            startUserNotificationListener(currentUserId!!)
                         }
                         .addOnFailureListener { signUpException ->
                             Log.e("Zwap", "Sign up failed: ${signUpException.message}")
@@ -1223,7 +1231,6 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             alertedHazardIds.clear()
             activeHazards.clear()
             hazardAlertAdapter?.notifyDataSetChanged()
-            findViewById<View>(R.id.hazard_alert_panel)?.visibility = View.GONE
             clearOSMMarkers(fullWipe = false)
         }
     }
@@ -1297,7 +1304,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                 // ── Launch both network calls IN PARALLEL ─────────────────────
                 val osmDeferred = async {
                     try {
-                        val query = OSMOverpassService.buildQuery(south, west, north, east)
+                        val query = OSMOverpassService.buildQuery(lat, lon)
                         Log.d("Mapzy", "📤 OSM query dispatched (parallel)")
                         OSMOverpassService.instance.queryFeatures(query).execute()
                     } catch (e: Exception) {
@@ -1310,7 +1317,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                     try {
                         Log.d("Mapzy", "🚀 Community hazards dispatched (parallel)")
                         // Cap at 8s so a down/unreachable backend never delays OSM results
-                        kotlinx.coroutines.withTimeoutOrNull(8_000) {
+                        kotlinx.coroutines.withTimeoutOrNull(6_000) {
                             com.swapmap.zwap.demo.network.ApiClient.hazardApiService.getHazards(
                                 lat, lon, delta * 111.0
                             )
@@ -2789,11 +2796,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                     pillType?.setTextColor(android.graphics.Color.BLACK)
                     pillDist?.text = (task.nearestPlaceName?.take(12) ?: "") + "  " + distStr
                     pillDist?.setTextColor(android.graphics.Color.parseColor("#1A1A1A"))
-                    if (isNavigating && !taskPillSpokenIds.contains(task.id)) {
-                        taskPillSpokenIds.add(task.id)
-                        tts?.speak("${cat?.label ?: "Task place"} in $distStr",
-                            android.speech.tts.TextToSpeech.QUEUE_ADD, null, null)
-                    }
+                    // TTS handled by checkHazardProximity only (no duplicate pill speech)
                 }
                 nearest != null -> {
                     // Nearest hazard
@@ -2824,17 +2827,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                     pillType?.setTextColor(android.graphics.Color.BLACK)
                     pillDist?.text = distStr
                     pillDist?.setTextColor(android.graphics.Color.parseColor("#1A1A1A"))
-                    if (dist < 500 && !hazardPillSpokenIds.contains(feature.id) && isNavigating) {
-                        hazardPillSpokenIds.add(feature.id)
-                        val spokenType = when (feature.type) {
-                            FeatureType.SPEED_CAMERA -> "Speed camera"
-                            FeatureType.TOLL        -> "Toll booth"
-                            FeatureType.TRAFFIC_CALMING -> "Speed bump"
-                            else -> "Hazard"
-                        }
-                        tts?.speak("$spokenType in $distStr",
-                            android.speech.tts.TextToSpeech.QUEUE_ADD, null, null)
-                    }
+                    // TTS handled by checkHazardProximity only (no duplicate pill speech)
                 }
                 else -> {
                     // SAFE — nothing nearby
@@ -2890,8 +2883,9 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                     }
                 }
                 Log.d("Zwap", "HAZARD ALERT: $msg")
-                if (!isPreviewMode) {
-                    Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+                sendHazardNotification(title, subtitle, feature.id)
+                Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+                if (isNavigating) {
                     tts?.speak(msg, TextToSpeech.QUEUE_ADD, null, null)
                 }
                 addHazardToPanel(feature, distance.toInt())
@@ -2904,67 +2898,11 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         updateHazardPanel(userLat, userLon)
     }
 
-    private fun setupHazardAlertPanel() {
-        val recyclerView = findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.rv_hazard_alerts)
-        recyclerView?.layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this)
-        hazardAlertAdapter = HazardAlertAdapter(activeHazards) { hazard ->
-            Log.d("Zwap", "Hazard crossed: \${hazard.type}")
-        }
-        recyclerView?.adapter = hazardAlertAdapter
-        
-        findViewById<View>(R.id.hazard_panel_header)?.setOnClickListener {
-            toggleHazardPanel()
-        }
-        
-        // Ensure panel is above everything
-        val panel = findViewById<View>(R.id.hazard_alert_panel)
-        panel?.elevation = 100f
-        panel?.translationZ = 100f
-        panel?.bringToFront()
-    }
+    private fun setupHazardAlertPanel() { /* panel removed */ }
 
-    private fun toggleHazardPanel() {
-        isHazardPanelExpanded = !isHazardPanelExpanded
-        val recyclerView = findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.rv_hazard_alerts)
-        val expandArrow = findViewById<android.widget.ImageView>(R.id.iv_hazard_expand)
-        
-        if (isHazardPanelExpanded) {
-            recyclerView?.visibility = View.VISIBLE
-            expandArrow?.animate()?.rotation(180f)?.setDuration(200)?.start()
-        } else {
-            recyclerView?.visibility = View.GONE
-            expandArrow?.animate()?.rotation(0f)?.setDuration(200)?.start()
-        }
-    }
+    private fun toggleHazardPanel() { /* panel removed */ }
 
-    private fun updateHazardPanel(userLat: Double, userLon: Double) {
-        val panel = findViewById<View>(R.id.hazard_alert_panel)
-        val countView = findViewById<TextView>(R.id.tv_hazard_count)
-        val toRemove = mutableListOf<Long>()
-        activeHazards.forEach { hazard ->
-            val feature = osmFeatures.find { it.id == hazard.id }
-            if (feature != null) {
-                val results = FloatArray(1)
-                android.location.Location.distanceBetween(userLat, userLon, feature.lat, feature.lon, results)
-                val newDistance = results[0].toInt()
-                // Simply update distance without auto-removing right now
-                hazardAlertAdapter?.updateHazard(hazard.id, newDistance)
-            }
-        }
-        toRemove.forEach { id ->
-            hazardAlertAdapter?.removeHazard(id)
-            activeHazards.removeIf { it.id == id }
-        }
-        countView?.text = activeHazards.size.toString()
-        val directionsPanel = findViewById<View>(R.id.directions_bottom_panel)
-        val isDirectionsMode = directionsPanel?.visibility == View.VISIBLE
-        if (activeHazards.isNotEmpty() && !isDirectionsMode) {
-            panel?.visibility = View.VISIBLE
-            panel?.bringToFront()
-        } else if (isDirectionsMode || activeHazards.isEmpty()) {
-            panel?.visibility = View.GONE
-        }
-    }
+    private fun updateHazardPanel(userLat: Double, userLon: Double) { /* panel removed */ }
 
     private fun addHazardToPanel(feature: OSMFeature, distance: Int) {
         val hazard = HazardAlert(
@@ -2976,22 +2914,9 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         if (activeHazards.none { it.id == hazard.id }) {
             activeHazards.add(hazard)
             activeHazards.sortBy { it.distance }
-            hazardAlertAdapter?.notifyDataSetChanged()
-            val panel = findViewById<View>(R.id.hazard_alert_panel)
-            val countView = findViewById<TextView>(R.id.tv_hazard_count)
-            val dirPanel = findViewById<View>(R.id.directions_bottom_panel)
-            if (dirPanel?.visibility != View.VISIBLE) {
-                panel?.visibility = View.VISIBLE
-                panel?.elevation = 150f
-                panel?.translationZ = 150f
-                panel?.bringToFront()
-                panel?.requestLayout()
-                panel?.invalidate()
-            }
-            countView?.text = activeHazards.size.toString()
-            Log.d("Zwap", "Visually added hazard to panel, total showing: ${activeHazards.size}")
         }
     }
+
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == 202 && resultCode == RESULT_OK) {
@@ -3048,7 +2973,10 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         
         // Reset navigation state — fresh route search always shows directions UI
         isNavigating = false
-        isPreviewMode = true 
+        isPreviewMode = true
+        alertedHazardIds.clear()       // reset so hazards alert fresh on the new route
+        hazardPillSpokenIds.clear()
+        taskPillSpokenIds.clear()
         
         Log.d("Zwap", "Getting directions from $originObj to $destObj")
         
@@ -3190,7 +3118,6 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         findViewById<View>(R.id.btn_toggle_osm)?.visibility = View.GONE
         findViewById<View>(R.id.fab_compass)?.visibility = View.GONE
         // Hide old hazard alert panel — it overlaps directions panel
-        findViewById<View>(R.id.hazard_alert_panel)?.visibility = View.GONE
         findViewById<View>(R.id.trip_briefing_card)?.visibility = View.GONE
         
         // 1. IMPROVED: Setup map for active navigation context (Stable margins)
@@ -3492,6 +3419,9 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         isPreviewMode = false
         currentStepIndex = 0
         
+        // Post silent persistent notification on navigation channel
+        postNavigationActiveNotification()
+
         // Pre-compose Start page FABs via post-frame callback to prevent transition flash
         fabLayoutManager.prepareStartPageTransition {}
         isMapTilted = true
@@ -3579,7 +3509,6 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         findViewById<View>(R.id.directions_actions_layout)?.visibility = View.GONE
         findViewById<View>(R.id.search_card)?.visibility = View.GONE
         findViewById<View>(R.id.bottom_navigation)?.visibility = View.GONE
-        findViewById<View>(R.id.hazard_alert_panel)?.visibility = View.GONE
         findViewById<View>(R.id.trip_briefing_card)?.visibility = View.GONE
         findViewById<View>(R.id.directions_bottom_panel)?.visibility = View.GONE // completely hide old panel
 
@@ -3712,6 +3641,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         findViewById<View>(R.id.nav_active_bottom_bar)?.visibility = View.GONE
         findViewById<View>(R.id.nav_hazard_banner)?.visibility = View.GONE
         findViewById<View>(R.id.hazard_alert_pill)?.visibility = View.GONE
+        alertedHazardIds.clear()       // reset so alerts fire fresh on next navigation session
         hazardPillSpokenIds.clear()
         taskPillSpokenIds.clear()
         driverTasksManager?.dismiss()
@@ -3753,7 +3683,6 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         findViewById<View>(R.id.directions_bottom_panel).visibility = View.GONE
         findViewById<View>(R.id.directions_actions_layout)?.visibility = View.VISIBLE
         findViewById<View>(R.id.btn_stop_navigation)?.visibility = View.GONE
-        findViewById<View>(R.id.hazard_alert_panel)?.visibility = View.GONE
         findViewById<View>(R.id.bottom_navigation)?.visibility = View.VISIBLE
 
         // Clear route
@@ -3766,6 +3695,9 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         currentPrimaryRoute = null
         isNavigating = false
         isPreviewMode = false
+        alertedHazardIds.clear()       // reset so alerts fire fresh on next navigation session
+        hazardPillSpokenIds.clear()
+        taskPillSpokenIds.clear()
 
         // Important: Re-show place details sheet when coming back from directions
         selectedPlace?.let { place ->
@@ -4443,22 +4375,28 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                     tags = mapOf("route_hazard" to "true")
                 )
                 
-                osmFeatures.add(osmFeature)
+                // Dedup: skip if an existing OSMFeature is already within 50m (avoids double-speak)
+                val isDuplicate = osmFeatures.any { existing ->
+                    val r = FloatArray(1)
+                    android.location.Location.distanceBetween(
+                        existing.lat, existing.lon, osmFeature.lat, osmFeature.lon, r)
+                    r[0] < 50f
+                }
+                if (!isDuplicate) osmFeatures.add(osmFeature)
                 marker?.let { featureToMarkerMap[osmFeature.id] = it }
                 
-                Log.d("Zwap", "Added OSM-backed route hazard alert for ${hazard.type}")
+                Log.d("Zwap", "Added OSM-backed route hazard alert for ${hazard.type} (dup=$isDuplicate)")
             } catch (e: Exception) {
                 Log.e("Zwap", "Error adding hazard marker: ${e.message}")
             }
         }
         
-        // Immediately check proximity for newly added hazards
+        // Update the visual pill immediately; TTS alert fires via the location listener
         if (hazards.isNotEmpty()) {
             val currentLocation = mapplsMap?.locationComponent?.lastKnownLocation
             if (currentLocation != null) {
-                checkHazardProximity(currentLocation.latitude, currentLocation.longitude)
                 updateHazardAlertPill(currentLocation.latitude, currentLocation.longitude)
-                Log.d("Zwap", "Triggered immediate proximity check for ${hazards.size} new hazards")
+                Log.d("Zwap", "Route hazards added: ${hazards.size} — pill updated")
             }
         }
     }
@@ -4811,31 +4749,107 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) return
         val nm = getSystemService(android.app.NotificationManager::class.java) ?: return
 
-        // General alerts: hazard pings, community activity, task reminders
-        nm.createNotificationChannel(
-            android.app.NotificationChannel(
-                "zwap_alerts",
-                "Zwap Alerts",
-                android.app.NotificationManager.IMPORTANCE_DEFAULT
-            ).apply {
-                description = "Hazard warnings, community pings and task reminders"
-                enableVibration(true)
-                enableLights(true)
-                lightColor = android.graphics.Color.parseColor("#FF9800")
-            }
-        )
+        // zwap_alerts: high-importance heads-up for nearby hazard alerts (create once)
+        if (nm.getNotificationChannel("zwap_alerts") == null) {
+            nm.createNotificationChannel(
+                android.app.NotificationChannel(
+                    "zwap_alerts",
+                    "Hazard Alerts",
+                    android.app.NotificationManager.IMPORTANCE_HIGH
+                ).apply {
+                    description = "Heads-up banners for nearby road hazards"
+                    enableVibration(true)
+                    enableLights(true)
+                    lightColor = android.graphics.Color.parseColor("#FF9800")
+                }
+            )
+        }
 
-        // Silent channel for ongoing navigation foreground service
-        nm.createNotificationChannel(
-            android.app.NotificationChannel(
-                "zwap_navigation",
-                "Navigation",
-                android.app.NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Ongoing navigation status"
-                setSound(null, null)
-            }
-        )
+        // zwap_community: community/Firestore notifications (create once)
+        if (nm.getNotificationChannel("zwap_community") == null) {
+            nm.createNotificationChannel(
+                android.app.NotificationChannel(
+                    "zwap_community",
+                    "Community & Rewards",
+                    android.app.NotificationManager.IMPORTANCE_DEFAULT
+                ).apply {
+                    description = "Verification results, rewards and community activity"
+                    enableVibration(true)
+                }
+            )
+        }
+
+        // zwap_navigation: silent persistent notification while navigating (create once)
+        if (nm.getNotificationChannel("zwap_navigation") == null) {
+            nm.createNotificationChannel(
+                android.app.NotificationChannel(
+                    "zwap_navigation",
+                    "Navigation",
+                    android.app.NotificationManager.IMPORTANCE_LOW
+                ).apply {
+                    description = "Ongoing navigation status"
+                    setSound(null, null)
+                }
+            )
+        }
+    }
+
+    /**
+     * Returns a PendingIntent that brings MainActivity to the foreground when tapped.
+     * Used as setContentIntent on all app notifications.
+     */
+    private fun buildMainPendingIntent(): android.app.PendingIntent {
+        val intent = android.content.Intent(this, MainActivity::class.java).apply {
+            flags = android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val flags = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M)
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+        else
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT
+        return android.app.PendingIntent.getActivity(this, 0, intent, flags)
+    }
+
+    /**
+     * Posts a system-level (status-bar) notification for a hazard alert.
+     * Uses the zwap_alerts channel; auto-cancels after 15s.
+     */
+    private fun sendHazardNotification(title: String, subtitle: String, featureId: Long) {
+        Log.d("Zwap", "sendHazardNotification: called title=$title id=$featureId")
+
+        // Check POST_NOTIFICATIONS permission (Android 13+)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                this, android.Manifest.permission.POST_NOTIFICATIONS
+            ) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            Log.w("Zwap", "sendHazardNotification: POST_NOTIFICATIONS permission denied — skipping")
+            return
+        }
+
+        val notifId = (featureId % Int.MAX_VALUE).toInt().let { if (it < 0) -it else it } + 9000
+
+        // Use a system built-in icon — custom drawables with color cause silent failures
+        // on many OEMs (notification small icons must be white/transparent only)
+        val iconRes = android.R.drawable.ic_dialog_alert
+
+        val notification = NotificationCompat.Builder(this, "zwap_alerts")
+            .setSmallIcon(iconRes)
+            .setContentTitle(title)
+            .setContentText(subtitle)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_NAVIGATION)
+            .setContentIntent(buildMainPendingIntent())
+            .setAutoCancel(true)
+            .setTimeoutAfter(15_000)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .build()
+
+        try {
+            NotificationManagerCompat.from(this).notify(notifId, notification)
+            Log.d("Zwap", "sendHazardNotification: posted id=$notifId channel=zwap_alerts")
+        } catch (e: Exception) {
+            Log.e("Zwap", "sendHazardNotification: FAILED to post — ${e.message}", e)
+        }
     }
 
     private class LocationChangeCallback(activity: MainActivity) : LocationEngineCallback<LocationEngineResult> {
@@ -4882,10 +4896,115 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
 
     override fun onStop() { super.onStop(); mapView?.onStop() }
     override fun onSaveInstanceState(outState: Bundle) { super.onSaveInstanceState(outState); mapView?.onSaveInstanceState(outState) }
+    // ── Real-time Firestore notification listener ────────────────────────────
+    /**
+     * Attaches a snapshot listener to users/{uid}/notifications.
+     * Unread docs not yet seen post a system notification on zwap_community.
+     */
+    private fun startUserNotificationListener(uid: String) {
+        userNotifListener?.remove()
+        seenNotifIds.clear()
+        var isFirstSnapshot = true
+        userNotifListener = FirebaseFirestore.getInstance()
+            .collection("users")
+            .document(uid)
+            .collection("notifications")
+            .orderBy("createdAt", com.google.firebase.firestore.Query.Direction.DESCENDING)
+            .limit(20)
+            .addSnapshotListener { snap, err ->
+                if (err != null) {
+                    Log.w("Zwap", "Notification listener error: ${err.message}")
+                    return@addSnapshotListener
+                }
+                if (isFirstSnapshot) {
+                    // Seed seenNotifIds with all existing doc IDs so we don't
+                    // re-notify for documents that were already in Firestore.
+                    snap?.documents?.forEach { doc -> seenNotifIds.add(doc.id) }
+                    isFirstSnapshot = false
+                    return@addSnapshotListener
+                }
+                // Only process genuinely new documents added after we attached.
+                snap?.documentChanges?.forEach { change ->
+                    if (change.type == com.google.firebase.firestore.DocumentChange.Type.ADDED) {
+                        val doc = change.document
+                        val notif = doc.toObject(com.swapmap.zwap.demo.model.UserNotification::class.java)
+                            ?.copy(id = doc.id) ?: return@forEach
+                        if (!notif.isRead && notif.id.isNotEmpty() && !seenNotifIds.contains(notif.id)) {
+                            seenNotifIds.add(notif.id)
+                            sendCommunityNotification(notif.title, notif.message, notif.type, notif.id.hashCode())
+                        }
+                    }
+                }
+            }
+        Log.d("Zwap", "startUserNotificationListener: attached for uid=$uid")
+    }
+
+    /**
+     * Posts a system notification on the zwap_community channel.
+     * Used for Firestore-sourced user notifications.
+     */
+    private fun sendCommunityNotification(title: String, message: String, type: String, notifId: Int) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                this, android.Manifest.permission.POST_NOTIFICATIONS
+            ) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            Log.w("Zwap", "sendCommunityNotification: POST_NOTIFICATIONS denied")
+            return
+        }
+        val iconRes = when (type) {
+            "reward"       -> android.R.drawable.btn_star
+            "verification" -> android.R.drawable.ic_dialog_info
+            else           -> android.R.drawable.ic_dialog_email
+        }
+        val notification = NotificationCompat.Builder(this, "zwap_community")
+            .setSmallIcon(iconRes)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setContentIntent(buildMainPendingIntent())
+            .setAutoCancel(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .build()
+        try {
+            NotificationManagerCompat.from(this).notify(notifId, notification)
+            Log.d("Zwap", "sendCommunityNotification: posted id=$notifId type=$type")
+        } catch (e: Exception) {
+            Log.e("Zwap", "sendCommunityNotification: FAILED — ${e.message}", e)
+        }
+    }
+
+    /**
+     * Posts a silent ongoing notification on zwap_navigation while navigating.
+     * Fixed ID 8001 so it updates in place.
+     */
+    private fun postNavigationActiveNotification() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                this, android.Manifest.permission.POST_NOTIFICATIONS
+            ) != android.content.pm.PackageManager.PERMISSION_GRANTED) return
+        val notification = NotificationCompat.Builder(this, "zwap_navigation")
+            .setSmallIcon(android.R.drawable.ic_dialog_map)
+            .setContentTitle("Navigation Active")
+            .setContentText("Hazard alerts will appear as they are detected")
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setContentIntent(buildMainPendingIntent())
+            .setOngoing(true)
+            .setSilent(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .build()
+        try {
+            NotificationManagerCompat.from(this).notify(8001, notification)
+        } catch (e: Exception) {
+            Log.e("Zwap", "postNavigationActiveNotification: FAILED — ${e.message}", e)
+        }
+    }
+
     override fun onDestroy() {
+        userNotifListener?.remove()
         locationEngine?.removeLocationUpdates(callback)
         tts?.stop(); tts?.shutdown()
         cameraExecutor.shutdown()
+        NotificationManagerCompat.from(this).cancel(8001)
         super.onDestroy()
         mapView?.onDestroy()
     }

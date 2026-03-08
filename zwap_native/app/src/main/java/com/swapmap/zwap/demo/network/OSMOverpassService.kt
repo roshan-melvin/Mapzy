@@ -19,9 +19,9 @@ object OSMOverpassService {
     private const val BASE_URL = "https://overpass.kumi.systems/api/"
 
     private val okHttpClient = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)  // Overpass [timeout:25] + buffer; default OkHttp 10s was killing calls silently
-        .writeTimeout(10, TimeUnit.SECONDS)
+        .connectTimeout(6, TimeUnit.SECONDS)
+        .readTimeout(14, TimeUnit.SECONDS)  // Overpass [timeout:10] + 4s buffer
+        .writeTimeout(6, TimeUnit.SECONDS)
         .build()
 
     val instance: OSMOverpassAPI by lazy {
@@ -33,19 +33,29 @@ object OSMOverpassService {
             .create(OSMOverpassAPI::class.java)
     }
     
-    fun buildQuery(south: Double, west: Double, north: Double, east: Double): String {
-        val bbox = "$south,$west,$north,$east"
+    /**
+     * Fetches hazard POIs within [radiusM] metres of [lat],[lon].
+     * Uses `around` (radial) queries which are significantly faster than
+     * bbox scans because Overpass spatially indexes nodes by proximity.
+     * Timeout capped at 10s to match OkHttp readTimeout (14s).
+     */
+    fun buildQuery(lat: Double, lon: Double, radiusM: Int = 2500): String {
+        val around = "around:$radiusM,$lat,$lon"
         return """
-            [out:json][timeout:25][maxsize:524288];
+            [out:json][timeout:10][maxsize:262144];
             (
-              node["highway"="speed_camera"]($bbox);
-              node["traffic_calming"]($bbox);
-              node["highway"="stop"]($bbox);
-              node["highway"="give_way"]($bbox);
+              node["highway"="speed_camera"]($around);
+              node["traffic_calming"]($around);
+              node["highway"="stop"]($around);
+              node["highway"="give_way"]($around);
             );
             out body;
         """.trimIndent()
     }
+
+    @Deprecated("Use buildQuery(lat, lon, radiusM) instead", ReplaceWith("buildQuery(lat, lon)"))
+    fun buildQuery(south: Double, west: Double, north: Double, east: Double): String =
+        buildQuery((south + north) / 2, (west + east) / 2)
 
     fun buildSpeedLimitQuery(lat: Double, lon: Double, radius: Int = 50): String {
         // Fetch ALL highway ways near the driver (no maxspeed filter).

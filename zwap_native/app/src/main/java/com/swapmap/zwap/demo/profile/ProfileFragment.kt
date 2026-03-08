@@ -7,10 +7,16 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.RadioGroup
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.widget.SwitchCompat
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
@@ -106,6 +112,13 @@ class ProfileFragment : Fragment() {
             view.findViewById<android.widget.RadioButton>(R.id.rb_lens_back).isChecked = true
         }
 
+        // Wire Preview Camera button
+        val btnPreview = view.findViewById<Button>(R.id.btn_preview_camera)
+        btnPreview?.setOnClickListener {
+            val useFront = prefs.getString("voice_camera_lens", "back") == "front"
+            showCameraPreviewDialog(useFront)
+        }
+
         // Toggle lens selector visibility on mode change
         rgMode.setOnCheckedChangeListener { _, checkedId ->
             val isAuto = checkedId == R.id.rb_camera_auto
@@ -163,6 +176,86 @@ class ProfileFragment : Fragment() {
                 android.util.Log.e("ZwapProfile", "Error fetching stats", e)
             }
         }
+    }
+
+    // ── Camera Preview Dialog ────────────────────────────────────────────────
+    /**
+     * Opens a full-screen live viewfinder so the user can position the phone.
+     * Uses the lens (front/back) saved in preferences.
+     * Tap anywhere or press Back to close.
+     */
+    private fun showCameraPreviewDialog(useFrontCamera: Boolean) {
+        val ctx = requireContext()
+        val dialog = android.app.Dialog(ctx, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+
+        // Root container
+        val container = FrameLayout(ctx)
+        container.setBackgroundColor(android.graphics.Color.BLACK)
+
+        // Live viewfinder
+        val previewView = PreviewView(ctx)
+        previewView.layoutParams = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT
+        )
+        previewView.implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+
+        // Instruction overlay
+        val tvHint = TextView(ctx)
+        tvHint.text = if (useFrontCamera) "Front camera — Position your phone, then tap to close"
+                      else "Back camera — Point at the road, then tap to close"
+        tvHint.setTextColor(android.graphics.Color.WHITE)
+        tvHint.setBackgroundColor(0xAA000000.toInt())
+        tvHint.gravity = android.view.Gravity.CENTER
+        tvHint.textSize = 14f
+        tvHint.setPadding(24, 16, 24, 16)
+        val hintParams = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            android.view.Gravity.BOTTOM
+        )
+        hintParams.bottomMargin = 80
+        tvHint.layoutParams = hintParams
+
+        container.addView(previewView)
+        container.addView(tvHint)
+        dialog.setContentView(container)
+
+        // Bind CameraX preview
+        val cameraSelector = if (useFrontCamera)
+            CameraSelector.DEFAULT_FRONT_CAMERA
+        else
+            CameraSelector.DEFAULT_BACK_CAMERA
+
+        val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
+        cameraProviderFuture.addListener({
+            val cameraProvider = cameraProviderFuture.get()
+            val preview = Preview.Builder().build()
+            preview.setSurfaceProvider(previewView.surfaceProvider)
+            try {
+                cameraProvider.unbindAll()
+                cameraProvider.bindToLifecycle(viewLifecycleOwner, cameraSelector, preview)
+            } catch (e: Exception) {
+                android.util.Log.e("CameraPreview", "bind failed", e)
+                Toast.makeText(ctx, "Could not open camera", Toast.LENGTH_SHORT).show()
+                dialog.dismiss()
+            }
+        }, ContextCompat.getMainExecutor(ctx))
+
+        // Close on tap anywhere
+        container.setOnClickListener {
+            dialog.dismiss()
+        }
+
+        // Release camera on dismiss
+        dialog.setOnDismissListener {
+            try {
+                val cameraProvider = cameraProviderFuture.get()
+                cameraProvider.unbindAll()
+            } catch (e: Exception) { /* camera already unbound */ }
+        }
+
+        dialog.show()
     }
 
     private fun setupButtons(view: View) {

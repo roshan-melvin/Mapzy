@@ -155,42 +155,10 @@ class ImagePrefilter:
             logger.error(f"Duplicate check failed: {e}")
             return {"is_duplicate": False, "closest_distance": None, "reason": ""}
     
-    def check_blur(self, image_path: str, threshold: float = 100.0) -> Dict[str, any]:
-        """
-        Detect if image is too blurry using Laplacian variance.
-        
-        Args:
-            image_path: Path to image file
-            threshold: Variance threshold (lower = blurrier)
-            
-        Returns:
-            Dict with 'is_blurry' (bool), 'blur_score' (float), 'reason' (str)
-        """
-        try:
-            image = cv2.imread(image_path)
-            if image is None:
-                return {"is_blurry": True, "blur_score": 0, "reason": "Failed to load image"}
-            
-            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-            laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
-            
-            is_blurry = laplacian_var < threshold
-            
-            return {
-                "is_blurry": is_blurry,
-                "blur_score": float(laplacian_var),
-                "reason": f"Image too blurry (score: {laplacian_var:.2f})" if is_blurry else ""
-            }
-        
-        except Exception as e:
-            logger.error(f"Blur detection failed: {e}")
-            return {"is_blurry": False, "blur_score": 0, "reason": ""}
-    
     def check_all(
         self, 
         image_path: str, 
-        existing_hashes: Optional[List[str]] = None,
-        check_blur_enabled: bool = True
+        existing_hashes: Optional[List[str]] = None
     ) -> Dict[str, any]:
         """
         Run all pre-filter checks on an image.
@@ -198,7 +166,6 @@ class ImagePrefilter:
         Args:
             image_path: Path to image file
             existing_hashes: Optional list of existing image hashes for duplicate detection
-            check_blur_enabled: Whether to check for blur
             
         Returns:
             Dict with 'valid' (bool), 'reason' (str), 'details' (dict), 'image_hash' (str)
@@ -226,20 +193,11 @@ class ImagePrefilter:
             results["reason"] = resolution_check["reason"]
             return results
         
-        # Check 3: Blur (optional)
-        if check_blur_enabled:
-            blur_check = self.check_blur(image_path)
-            results["details"]["blur"] = blur_check
-            if blur_check["is_blurry"]:
-                results["valid"] = False
-                results["reason"] = blur_check["reason"]
-                return results
-        
-        # Check 4: Compute hash
+        # Check 3: Compute hash
         image_hash = self.compute_image_hash(image_path)
         results["image_hash"] = image_hash
         
-        # Check 5: Duplicate detection
+        # Check 4: Duplicate detection
         if existing_hashes and image_hash:
             duplicate_check = self.is_duplicate(image_hash, existing_hashes)
             results["details"]["duplicate"] = duplicate_check
