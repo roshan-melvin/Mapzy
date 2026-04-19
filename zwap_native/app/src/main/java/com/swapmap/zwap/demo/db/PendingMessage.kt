@@ -5,15 +5,14 @@ import androidx.room.PrimaryKey
 
 @Entity(tableName = "pending_messages")
 data class PendingMessage(
-    @PrimaryKey
-    val id: String,
+    @PrimaryKey val id: String, // UUID for local identification
     val channelId: String,
     val threadId: String,
     val userId: String,
     val userName: String,
     val messageText: String,
-    val messageType: String = "text",
-    val imageUri: String? = null,
-    val status: String = "Pending", // Pending, Uploading, Sent, Failed
+    val messageType: String, // text, image
+    val imageUri: String?,   // Local URI
+    val status: String = "Pending", // Pending, Sending, Failed
     val createdAt: Long = System.currentTimeMillis()
 )

@@ -1,22 +1,16 @@
 package com.swapmap.zwap.demo.network
 
-import com.swapmap.zwap.demo.config.AppConfig
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.postgrest.Postgrest
 
 object SupabaseManager {
-    private val supabaseUrl = AppConfig.get("SUPABASE_URL", "")
-    private val supabaseKey = AppConfig.get("SUPABASE_KEY", "")
-
-    init {
-        if (supabaseUrl.isBlank() || supabaseKey.isBlank()) {
-            android.util.Log.e("SupabaseManager", "Supabase config missing. Check zwap.env")
-        }
-    }
+    // TODO: Replace with your actual Supabase Project URL and Anon Key
+    private const val SUPABASE_URL = "https://mjsylrqiyjupixopbdez.supabase.co"
+    private const val SUPABASE_KEY = "sb_publishable_pPnGYcgWm5HlRZFARW2kHA_QsrXLtv8"
 
     val client = createSupabaseClient(
-        supabaseUrl = supabaseUrl,
-        supabaseKey = supabaseKey
+        supabaseUrl = SUPABASE_URL,
+        supabaseKey = SUPABASE_KEY
     ) {
         install(Postgrest)
     }
