@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="horizontal"
+    android:background="@color/premium_bg">
+
+    <!-- Server List (Left Sidebar) -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rv_servers"
+        android:layout_width="72dp"
+        android:layout_height="match_parent"
+        android:background="@color/premium_bg"
+        android:paddingTop="12dp"
+        android:clipToPadding="false"/>
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/premium_bg">
+
+        <!-- Normal Header -->
+        <LinearLayout
+            android:id="@+id/header_normal"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="16dp"
+            android:background="@color/premium_surface"
+            android:elevation="4dp">
+
+            <ImageView
+                android:id="@+id/btn_back_channels"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@android:drawable/ic_menu_revert"
+                android:visibility="gone"
+                app:tint="#B9BBBE"
+                android:layout_marginEnd="16dp"/>
+
+            <TextView
+                android:id="@+id/tv_server_name"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Community Hub"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold"
+                android:textSize="18sp"/>
+
+            <ImageView
+                android:id="@+id/btn_community_options"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@android:drawable/ic_menu_more"
+                android:visibility="gone"
+                app:tint="#B9BBBE"/>
+        </LinearLayout>
+
+        <!-- Selection Mode Header (shown when notifications are selected) -->
+        <LinearLayout
+            android:id="@+id/header_selection"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="16dp"
+            android:background="#5865F2"
+            android:elevation="5dp"
+            android:visibility="gone">
+
+            <ImageView
+                android:id="@+id/btn_selection_back"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@android:drawable/ic_menu_revert"
+                app:tint="#FFFFFF"
+                android:layout_marginEnd="16dp"/>
+
+            <TextView
+                android:id="@+id/tv_selection_count"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="0 selected"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold"
+                android:textSize="16sp"/>
+
+            <TextView
+                android:id="@+id/btn_select_all"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="All"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold"
+                android:textSize="14sp"
+                android:background="#ffffff33"
+                android:paddingHorizontal="12dp"
+                android:paddingVertical="6dp"
+                android:layout_marginEnd="12dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:contentDescription="Select All"/>
+
+            <TextView
+                android:id="@+id/btn_delete_selected"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Delete"
+                android:textColor="#FF5555"
+                android:textStyle="bold"
+                android:textSize="14sp"
+                android:background="#ffffff33"
+                android:paddingHorizontal="12dp"
+                android:paddingVertical="6dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:contentDescription="Delete Selected"/>
+        </LinearLayout>
+
+        <!-- Channels List -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rv_channels"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:padding="8dp"
+            android:layout_marginTop="56dp"/>
+
+        <!-- Feed List -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rv_feed"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:padding="8dp"
+            android:layout_marginTop="56dp"
+            android:layout_marginBottom="60dp"
+            android:visibility="gone"
+            android:background="@color/premium_bg"/>
+
+        <!-- Leaderboard List -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rv_leaderboard"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:padding="8dp"
+            android:layout_marginTop="56dp"
+            android:layout_marginBottom="60dp"
+            android:visibility="gone"
+            android:background="@color/premium_bg"/>
+
+        <!-- Notifications List -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rv_notifications"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:padding="8dp"
+            android:layout_marginTop="56dp"
+            android:layout_marginBottom="60dp"
+            android:visibility="gone"
+            android:background="@color/premium_bg"/>
+
+        <TextView
+            android:id="@+id/tv_empty_feed"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:text="No reports in this channel yet."
+            android:textColor="#72767D"
+            android:visibility="gone"/>
+
+        <!-- Thread View (Initially Hidden) -->
+        <include
+            android:id="@+id/thread_view_container"
+            layout="@layout/layout_thread_view"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone"/>
+
+    </FrameLayout>
+
+</LinearLayout>

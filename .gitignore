@@ -1,39 +1,104 @@
-# Mappls API Configuration - Contains sensitive access tokens
-config.js
+# Large model files
+backend/models/*.pt
+backend/models/*.pth
+backend/models/*.h5
+backend/models/*.ckpt
+yolov8n.pt
 
-# Environment files
+# Environment and Secret files
 .env
-.env.local
+.env.*
+*.env
+zwap.env
+zwap.env.*
+config.js
+serviceAccountKey.json
+**/serviceAccountKey.json
+google-services.json
+**/google-services.json
+local.properties
+**/local.properties
+zwap_native/app/src/main/assets/zwap.env
 
 # OS files
 .DS_Store
 Thumbs.db
+*.hprof
+java_pid*.hprof
+**/documentation/.DS_Store
 
 # IDE files
 .vscode/
 .idea/
 *.swp
 *.swo
+*.sublime-project
+*.sublime-workspace
 
-# Flutter builds
-zwap/build/
-zwap/.dart_tool/
-zwap/.flutter-plugins
-zwap/.flutter-plugins-dependencies
-zwap/.pub-cache/
-zwap/.pub/
-zwap/android/.gradle
-zwap/android/local.properties
-zwap/android/key.properties
-
-# ==========================================
-# ANDROID NATIVE APP (zwap_native/)
-# ==========================================
-.gradle/
+# Android Native App (zwap_native/)
 zwap_native/.gradle/
 zwap_native/build/
 zwap_native/app/build/
+zwap_native/captures/
+zwap_native/*.iml
+zwap_native/app/*.iml
 zwap_native/local.properties
-zwap_native/google-services.json
-zwap_native/*.hprof
-java_pid*.hprof
+zwap_native/External Libraries/
+.gradle/
+build/
+
+# Build artifacts and logs
+build_output.txt
+full_log.txt
+*.log
+
+# Python
+# Ignore Python virtual environments
+/zwap/
+/venv/
+/.venv/
+/env/
+/.env/
+/ENV/
+
+# Ignore zwap Python virtual environment specific folders
+zwap/bin/
+zwap/lib/
+zwap/include/
+zwap/share/
+
+# Generic root level environment folders
+bin/
+lib/
+include/
+share/
+
+# Ignore Python cache and build artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+*.egg
+build/
+dist/
+.eggs/
+
+# Node dependencies
+node_modules/
+package-lock.json
+yarn.lock
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Flutter (if any remains)
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+
+#UI vertion control
+/zwap_native_ui_enhan/

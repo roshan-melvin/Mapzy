@@ -1,0 +1,11 @@
+fastapi[all]
+uvicorn
+python-multipart
+python-dotenv
+google-generativeai
+ultralytics
+opencv-python-headless
+cloudinary
+supabase
+httpx
+firebase-admin

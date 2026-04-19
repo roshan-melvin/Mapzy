@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeepBlueS11 | Admin Review Queue</title>
+    <!-- Modern Typography -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Local CSS -->
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="background-elements">
+        <div class="gradient-sphere sphere-1"></div>
+        <div class="gradient-sphere sphere-2"></div>
+    </div>
+
+    <nav class="glass-nav">
+        <div class="nav-content">
+            <div class="nav-brand">
+                <i class="fa-solid fa-shield-halved text-accent"></i>
+                <h1>Admin Intelligence Core</h1>
+            </div>
+            <div class="nav-stats">
+                <span class="stat-badge pending-badge">
+                    <i class="fa-solid fa-clipboard-question"></i>
+                    <span id="pending-count">0</span> Pending Review
+                </span>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container">
+        <header class="page-header">
+            <h2>Uncertain Reports Queue</h2>
+            <p>AI identified these hazards as low-confidence. Manual review required.</p>
+        </header>
+
+        <div id="loader" class="loader-container">
+            <div class="spinner"></div>
+            <p>Fetching intelligence...</p>
+        </div>
+
+        <div id="empty-state" class="empty-state hidden">
+            <div class="empty-icon"><i class="fa-solid fa-check-double"></i></div>
+            <h3>Queue is empty</h3>
+            <p>All uncertain reports have been processed.</p>
+            <button class="btn-primary" onclick="loadPendingReports()">Refresh Queue</button>
+        </div>
+
+        <div id="reports-grid" class="reports-grid hidden">
+            <!-- Cards will be injected here by JS -->
+        </div>
+    </main>
+
+    <!-- UI Notification Toast -->
+    <div id="toast" class="toast hidden">
+        <div class="toast-content">
+            <i id="toast-icon" class="fa-solid fa-circle-info"></i>
+            <span id="toast-message">Notification</span>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="script.js"></script>
+</body>
+</html>

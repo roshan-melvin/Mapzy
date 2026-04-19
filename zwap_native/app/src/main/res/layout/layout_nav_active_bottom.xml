@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Bottom navigation bar — full-width container with curved top corners.
+  Pills float inside via padding. Container owns the black curved background.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/nav_active_bottom_bar"
+    android:layout_width="match_parent"
+    android:layout_height="76dp"
+    android:layout_alignParentBottom="true"
+    android:visibility="gone"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingStart="16dp"
+    android:paddingEnd="16dp"
+    android:paddingTop="8dp"
+    android:paddingBottom="8dp">
+
+    <!-- Hamburger pill -->
+    <ImageButton
+        android:id="@+id/btn_nav_active_menu"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:layout_weight="0"
+        android:layout_marginEnd="5dp"
+        android:background="@drawable/bg_pill_dark"
+        android:src="@drawable/ic_hamburger_menu"
+        android:padding="10dp"
+        app:tint="#FFFFFF" />
+
+    <!-- Search pill -->
+    <ImageButton
+        android:id="@+id/btn_nav_active_search"
+        android:layout_width="0dp"
+        android:layout_height="44dp"
+        android:layout_weight="1"
+        android:layout_marginEnd="5dp"
+        android:background="@drawable/bg_pill_dark"
+        android:src="@android:drawable/ic_menu_search"
+        android:padding="10dp"
+        app:tint="#FFFFFF" />
+
+    <!-- Task Indicator pill — weight managed in code (1=icon, 2.5=pill) -->
+    <com.swapmap.zwap.demo.navigation.TaskIndicatorView
+        android:id="@+id/task_indicator_view"
+        android:layout_width="0dp"
+        android:layout_height="44dp"
+        android:layout_weight="2.5"
+        android:layout_marginEnd="5dp"
+        android:clickable="true"
+        android:focusable="true"
+        android:background="@null" />
+
+    <!-- Hazard Alert Pill — background set in code -->
+    <LinearLayout
+        android:id="@+id/hazard_alert_pill"
+        android:layout_width="0dp"
+        android:layout_height="44dp"
+        android:layout_weight="2.5"
+        android:layout_marginEnd="5dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="10dp"
+        android:background="@drawable/hazard_button_bg"
+        android:visibility="gone">
+
+        <FrameLayout
+            android:id="@+id/hazard_pill_icon_bg"
+            android:layout_width="30dp"
+            android:layout_height="30dp">
+            <ImageView
+                android:id="@+id/iv_hazard_pill_icon"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:layout_gravity="center"
+                android:src="@drawable/ic_camera_outlined" />
+        </FrameLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:layout_marginStart="6dp">
+            <TextView
+                android:id="@+id/tv_hazard_pill_type"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="CAMERA"
+                android:textColor="#000000"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:maxLines="1" />
+            <TextView
+                android:id="@+id/tv_hazard_pill_dist"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="500m"
+                android:textColor="#1A1A1A"
+                android:textSize="10sp"
+                android:maxLines="1" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- EXIT — red X capsule -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btn_nav_active_exit"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:layout_weight="0"
+        android:minWidth="0dp"
+        android:text=""
+        android:insetTop="0dp"
+        android:insetBottom="0dp"
+        android:paddingStart="0dp"
+        android:paddingEnd="0dp"
+        app:backgroundTint="#FF4B4B"
+        app:cornerRadius="22dp"
+        app:icon="@android:drawable/ic_menu_close_clear_cancel"
+        app:iconSize="24dp"
+        app:iconTint="#FFFFFF"
+        app:iconGravity="textStart"
+        app:iconPadding="0dp" />
+
+</LinearLayout>

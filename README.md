@@ -79,13 +79,36 @@ Navigation, alerts, voice, reports, heatmaps, gamification - **free forever.**
 ### Navigation Interface
 Clean, single-screen navigation with integrated safety alerts
 
+<img src="pic/navigation-route-preview-mobile.png" alt="Route Planning" width="380" />
+
+<img src="pic/navigation-active-mobile.png" alt="Live Navigation" width="380" />
+
 ### Gamification System
 - **Reward Points**: Earn coins for genuine reports
 - **Leaderboard**: Compete with other users
 - **Stats Dashboard**: Track your contributions
 
+<img src="pic/user-profile-gamification.png" alt="User Profile & Gamification" width="420" />
+
 ### Nearby Places
 Find essential services within 5km radius with one click
+
+### Community Reporting
+Report hazards quickly with channel tags, map pinpointing, and verification workflow
+
+<img src="pic/report-issue-form-mobile.png" alt="Report Issue (Mobile)" width="380" />
+
+<img src="pic/contribute-panel-web.png" alt="Contribute Panel (Web)" width="520" />
+
+### Chat & Community
+Location-based channels for live local safety discussions
+
+<img src="pic/chat-channels-mobile.png" alt="Chat Channels" width="380" />
+
+### Report History & Stats
+Track total reports, hazard contributions, and moderation status
+
+<img src="pic/reports-dashboard-web.png" alt="Reports Dashboard (Web)" width="520" />
 
 ---
 

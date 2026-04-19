@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Gaana brand icon: red circle + white musical note -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+
+    <!-- Red background circle -->
+    <path
+        android:fillColor="#E84545"
+        android:pathData="M24,24m-24,0a24,24 0 1,0 48,0a24,24 0 1,0 -48,0" />
+
+    <!-- Musical note: filled note head (tilted oval) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M14,31C14,27.5 23,27.5 23,31C23,34.5 14,34.5 14,31Z" />
+
+    <!-- Note stem (thick vertical stroke from head to top) -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M23,31L23,13"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.8"
+        android:strokeLineCap="round" />
+
+    <!-- Flag from top of stem (single eighth-note flag) -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M23,13Q34,16 32,24"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.8"
+        android:strokeLineCap="round" />
+
+</vector>

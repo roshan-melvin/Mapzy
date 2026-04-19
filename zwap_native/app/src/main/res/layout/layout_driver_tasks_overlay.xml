@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Driver Tasks & Notes overlay panel — anchored inside BottomSheetDialog -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/bg_task_overlay"
+    android:paddingBottom="20dp">
+
+    <!-- Drag handle -->
+    <View
+        android:layout_width="40dp"
+        android:layout_height="4dp"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="10dp"
+        android:layout_marginBottom="6dp"
+        android:background="#555560"
+        android:importantForAccessibility="no" />
+
+    <!-- Title -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingHorizontal="20dp"
+        android:paddingBottom="10dp"
+        android:text="Driver Tasks &amp; Notes"
+        android:textColor="#FFFFFF"
+        android:textSize="18sp"
+        android:textStyle="bold" />
+
+
+    <!-- Divider -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#2E2E38"
+        android:layout_marginBottom="4dp" />
+
+    <!-- Task list -->
+    <TextView
+        android:id="@+id/tv_task_empty"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingHorizontal="20dp"
+        android:paddingVertical="24dp"
+        android:text="No tasks yet. Add one below!"
+        android:textColor="#666680"
+        android:textSize="14sp"
+        android:gravity="center"
+        android:visibility="gone" />
+
+    <!-- Task list — max 3 rows visible, independently scrollable -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rv_driver_tasks"
+        android:layout_width="match_parent"
+        android:layout_height="240dp"
+        android:nestedScrollingEnabled="true"
+        android:overScrollMode="always"
+        android:paddingHorizontal="12dp"
+        android:paddingBottom="4dp"
+        android:clipToPadding="false" />
+
+    <!-- Divider before pinned bottom section -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#2E2E38"
+        android:layout_marginTop="6dp"
+        android:layout_marginBottom="8dp" />
+
+    <!-- Pinned bottom: input row (always visible) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingHorizontal="16dp"
+        android:gravity="center_vertical">
+
+        <EditText
+            android:id="@+id/et_task_input"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:hint="Type a task..."
+            android:textColorHint="#666680"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:background="@drawable/bg_task_input"
+            android:paddingHorizontal="14dp"
+            android:imeOptions="actionDone"
+            android:inputType="text"
+            android:maxLines="1" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_task_add_inline"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:layout_marginStart="8dp"
+            android:text="Add"
+            android:textColor="#FFFFFF"
+            android:textStyle="bold"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            app:backgroundTint="#388E3C"
+            app:cornerRadius="24dp" />
+    </LinearLayout>
+
+    <!-- Submit button — visible only when ≥1 task exists -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="10dp">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_task_submit"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:text="Submit"
+            android:textColor="#FFFFFF"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:visibility="gone"
+            app:backgroundTint="#1565C0"
+            app:cornerRadius="26dp" />
+
+        <ProgressBar
+            android:id="@+id/pb_task_submit"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:layout_gravity="center"
+            android:visibility="gone"
+            android:indeterminateTint="#FFFFFF" />
+
+    </FrameLayout>
+
+</LinearLayout>

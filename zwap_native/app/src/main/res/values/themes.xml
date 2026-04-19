@@ -1,17 +1,65 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Zwap" parent="Theme.MaterialComponents.Light.NoActionBar">
-        <!-- Primary brand color. -->
-        <item name="colorPrimary">@color/primary_blue</item>
-        <item name="colorPrimaryVariant">@color/primary_blue_dark</item>
-        <item name="colorOnPrimary">@color/white</item>
-        <!-- Secondary brand color. -->
-        <item name="colorSecondary">@color/accent_blue</item>
-        <item name="colorSecondaryVariant">@color/primary_blue_dark</item>
-        <item name="colorOnSecondary">@color/white</item>
-        <!-- Status bar color. -->
-        <item name="android:statusBarColor">@color/primary_blue_dark</item>
-        <item name="android:windowLightStatusBar">false</item>
-        <!-- Customize your theme here. -->
+    <style name="Theme.Zwap" parent="Theme.Material3.Dark.NoActionBar">
+        <!-- Mapzy Colors -->
+        <item name="colorPrimary">@color/mapzy_blue</item>
+        <item name="colorSecondary">@color/mapzy_blue</item>
+        <item name="colorTertiary">@color/mapzy_blue</item>
+        <item name="android:windowBackground">@color/mapzy_black</item>
+        <item name="android:statusBarColor">@color/mapzy_black</item>
+        <item name="android:navigationBarColor">@color/mapzy_black</item>
+    </style>
+
+    <style name="BottomSheetDialogTheme" parent="Theme.MaterialComponents.Light.BottomSheetDialog">
+        <item name="bottomSheetStyle">@style/CustomBottomSheetStyle</item>
+    </style>
+
+    <style name="Theme_Zwap_BottomSheet" parent="Theme.MaterialComponents.BottomSheetDialog">
+        <item name="bottomSheetStyle">@style/PremiumBottomSheetStyle</item>
+        <item name="android:windowIsFloating">false</item>
+        <item name="android:windowSoftInputMode">adjustResize</item>
+    </style>
+
+    <style name="PremiumBottomSheetStyle" parent="Widget.MaterialComponents.BottomSheet.Modal">
+        <item name="android:background">@android:color/transparent</item>
+        <item name="backgroundTint">@android:color/transparent</item>
+        <item name="shapeAppearance">@style/PremiumBottomSheetShape</item>
+    </style>
+
+    <style name="PremiumBottomSheetShape" parent="ShapeAppearance.MaterialComponents.LargeComponent">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSizeTopLeft">24dp</item>
+        <item name="cornerSizeTopRight">24dp</item>
+        <item name="cornerSizeBottomLeft">0dp</item>
+        <item name="cornerSizeBottomRight">0dp</item>
+    </style>
+
+    <style name="CustomBottomSheetStyle" parent="Widget.Design.BottomSheet.Modal">
+        <item name="android:background">@android:color/transparent</item>
+    </style>
+
+    <!-- Material 3 Bottom Navigation Active Indicator — soft rounded pill -->
+    <style name="NavActiveIndicator" parent="Widget.Material3.BottomNavigationView.ActiveIndicator">
+        <item name="android:color">#5B87CEEB</item>
+        <item name="android:width">56dp</item>
+        <item name="android:height">32dp</item>
+        <item name="shapeAppearance">@style/NavPillShape</item>
+    </style>
+
+    <style name="NavPillShape" parent="ShapeAppearance.Material3.MediumComponent">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">16dp</item>
+    </style>
+
+    <!-- Legacy indicator styles (kept for compatibility) -->
+    <style name="App.BottomNavigation.ActiveIndicator" parent="Widget.Material3.BottomNavigationView.ActiveIndicator">
+        <item name="android:color">#5B87CEEB</item>
+        <item name="marginHorizontal">16dp</item>
+        <item name="shapeAppearance">@style/App.Shape.Circle</item>
+    </style>
+
+    <style name="App.Shape.Circle" parent="ShapeAppearance.Material3.MediumComponent">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">50%</item>
     </style>
 </resources>

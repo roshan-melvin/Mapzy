@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="96dp"
+    android:height="96dp"
+    android:viewportWidth="96"
+    android:viewportHeight="96">
+    
+    <!-- Single solid arrow - unified shape, no fragments -->
+    <!-- Larger viewport and path for better visibility -->
+    <!-- Arrow tip at top (48,8), base at bottom (48,88) -->
+    <path
+        android:fillColor="#2196F3"
+        android:strokeColor="#1565C0"
+        android:strokeWidth="3"
+        android:pathData="M48,8 L20,80 L48,64 L76,80 Z" />
+</vector>
