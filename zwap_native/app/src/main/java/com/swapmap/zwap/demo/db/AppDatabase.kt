@@ -5,15 +5,21 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-@Database(entities = [PendingReport::class, PendingMessage::class], version = 2, exportSchema = false)
+@Database(
+    entities = [PendingMessage::class, PendingReport::class, DriverTask::class],
+    version = 2,
+    exportSchema = false
+)
 abstract class AppDatabase : RoomDatabase() {
-    abstract fun pendingReportDao(): PendingReportDao
+    
     abstract fun pendingMessageDao(): PendingMessageDao
-
+    abstract fun pendingReportDao(): PendingReportDao
+    abstract fun driverTaskDao(): DriverTaskDao
+    
     companion object {
         @Volatile
         private var INSTANCE: AppDatabase? = null
-
+        
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
