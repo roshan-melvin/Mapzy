@@ -79,16 +79,16 @@ Navigation, alerts, voice, reports, heatmaps, gamification - **free forever.**
 ### Navigation Interface
 Clean, single-screen navigation with integrated safety alerts
 
-![Route Planning](pic/navigation-route-preview-mobile.png)
+<img src="pic/navigation-route-preview-mobile.png" alt="Route Planning" width="380" />
 
-![Live Navigation](pic/navigation-active-mobile.png)
+<img src="pic/navigation-active-mobile.png" alt="Live Navigation" width="380" />
 
 ### Gamification System
 - **Reward Points**: Earn coins for genuine reports
 - **Leaderboard**: Compete with other users
 - **Stats Dashboard**: Track your contributions
 
-![User Profile & Gamification](pic/user-profile-gamification.png)
+<img src="pic/user-profile-gamification.png" alt="User Profile & Gamification" width="420" />
 
 ### Nearby Places
 Find essential services within 5km radius with one click
@@ -96,19 +96,19 @@ Find essential services within 5km radius with one click
 ### Community Reporting
 Report hazards quickly with channel tags, map pinpointing, and verification workflow
 
-![Report Issue (Mobile)](pic/report-issue-form-mobile.png)
+<img src="pic/report-issue-form-mobile.png" alt="Report Issue (Mobile)" width="380" />
 
-![Contribute Panel (Web)](pic/contribute-panel-web.png)
+<img src="pic/contribute-panel-web.png" alt="Contribute Panel (Web)" width="520" />
 
 ### Chat & Community
 Location-based channels for live local safety discussions
 
-![Chat Channels](pic/chat-channels-mobile.png)
+<img src="pic/chat-channels-mobile.png" alt="Chat Channels" width="380" />
 
 ### Report History & Stats
 Track total reports, hazard contributions, and moderation status
 
-![Reports Dashboard (Web)](pic/reports-dashboard-web.png)
+<img src="pic/reports-dashboard-web.png" alt="Reports Dashboard (Web)" width="520" />
 
 ---
 
